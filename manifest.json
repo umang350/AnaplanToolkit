@@ -1,0 +1,75 @@
+{
+  "manifest_version": 3,
+  "name": "Advanced Anaplan Tool",
+  "short_name": "Advanced Anaplan Tool",
+  "description": "Anaplan model analysis. Author: Umang Chauhan. Internal tool - not for redistribution or reuse.",
+  "version": "2.3.0",
+  "version_name": "2.3.0 (internal build)",
+  "author": {
+    "email": "anaplan@umang.dev"
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "host_permissions": [
+    "https://*.anaplan.com/*"
+  ],
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Advanced Anaplan Tool",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.anaplan.com/*/anaplan/framework.jsp*"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle",
+      "js": [
+        "content-scripts/inner.js"
+      ]
+    },
+    {
+      "matches": [
+        "https://*.anaplan.com/*/anaplan/framework.jsp*"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle",
+      "js": [
+        "content-scripts/main.js"
+      ],
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.anaplan.com/*modeling-ui*"
+      ],
+      "all_frames": true,
+      "exclude_matches": [
+        "https://*.anaplan.com/*selectedWorkspace*"
+      ],
+      "run_at": "document_idle",
+      "js": [
+        "content-scripts/outer.js"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+/*
+ * Advanced Anaplan Tool
+ * Author: Umang Chauhan
+ */
+/* Overrides for the bundled view pages (loaded after style-DoRxNK32.css).
+   Anaplan names - line items, saved views, page names - are long unbroken
+   tokens ("INP_Edit_SKU.FTR_Diplay"). Grid items default to min-width:auto and
+   text only breaks at spaces, so those tokens pushed the last column straight
+   through the right-hand border of the card. */
+
+[class*="grid-cols-"] > * { min-width: 0; }
+
+[class*="grid-cols-"] p,
+[class*="grid-cols-"] h3,
+[class*="grid-cols-"] span,
+[class*="grid-cols-"] a { overflow-wrap: anywhere; }
+
+/* The badge is inline; let it wrap with the text rather than stay rigid. */
+[class*="grid-cols-"] .font-mono { white-space: normal; }

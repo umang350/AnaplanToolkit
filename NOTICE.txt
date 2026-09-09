@@ -1,0 +1,30 @@
+ADVANCED ANAPLAN TOOL
+Third-party notices
+
+This extension is an internal build, modified and maintained by
+Umang Chauhan. It is not an original work in its entirety.
+
+ORIGIN
+  Parts of this extension derive from the "Improved Anaplan" browser extension
+  published by valantic. Those parts remain the property of valantic and are
+  subject to valantic's own terms. The Author's copyright and the licence
+  in LICENSE.txt apply only to the modifications, additions and configuration
+  authored by Umang Chauhan, which include:
+
+    - the side panel shell (sidepanel.html / sidepanel.js / sidepanel.css)
+    - result caching, progress reporting and message routing in background.js
+    - the saved-view module attribution and the performance rework of the
+      report gathering in content-scripts/inner.js
+    - branding, icons and packaging
+
+  Before distributing this extension, confirm that redistribution of the
+  derived parts is permitted.
+
+BUNDLED LIBRARIES
+  Svelte (compiled output)     - MIT Licence, (c) Svelte contributors
+  Tailwind CSS (compiled CSS)  - MIT Licence, (c) Tailwind Labs Inc.
+  Geist (font)                 - SIL Open Font Licence 1.1, (c) Vercel Inc.
+
+TRADEMARKS
+  "Anaplan" is a trademark of Anaplan, Inc. This tool is not affiliated with,
+  endorsed by, or supported by Anaplan, Inc.

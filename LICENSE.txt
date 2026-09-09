@@ -1,0 +1,58 @@
+ADVANCED ANAPLAN TOOL
+Proprietary Software Licence
+
+Copyright (c) 2026. All rights reserved.
+Author: Umang Chauhan.
+
+1. DEFINITIONS
+   "Software" means this browser extension, including all source code, compiled
+   assets, configuration, icons and documentation supplied with it.
+   "Author" means Umang Chauhan, the copyright holder of the Software.
+   "Recipient" means the organisation or individual to whom the Author has
+   supplied the Software.
+
+2. GRANT
+   The Author grants the Recipient a non-exclusive, non-transferable,
+   revocable, royalty-free licence to install and use the Software solely to
+   analyse and support the Recipient's own Anaplan models, and solely for the
+   duration of the Recipient's engagement with the Author.
+
+3. RESTRICTIONS
+   The Recipient shall not, without prior written consent from the Author:
+   (a) copy, publish, distribute, sublicense, sell or otherwise make the
+       Software available to any third party;
+   (b) reuse the Software, or any part of its source code, logic, structure or
+       design, in any other product, tool, client engagement, internal system
+       or deliverable;
+   (c) create derivative works from the Software;
+   (d) decompile, disassemble or reverse engineer the Software, except to the
+       extent this restriction is unenforceable under applicable law;
+   (e) remove, obscure or alter any copyright, authorship or proprietary notice
+       contained in the Software.
+
+4. CONFIDENTIALITY
+   The Software and its source code are confidential information of the
+   Author. The Recipient shall protect them with no less care than it
+   applies to its own confidential information, and shall restrict access to
+   personnel who require it for the permitted purpose.
+
+5. RETURN AND DELETION
+   On completion or termination of the engagement, or on written request by
+   the Author, the Recipient shall cease all use of the Software and
+   delete all copies in its possession or control, and confirm deletion in
+   writing if asked to do so.
+
+6. THIRD-PARTY COMPONENTS
+   The Software incorporates third-party components that remain the property
+   of their respective owners and are governed by their own terms. See
+   NOTICE.txt. Nothing in this licence grants the Recipient any right in those
+   components beyond what their own terms allow.
+
+7. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED. THE SOFTWARE READS ANAPLAN MODEL METADATA FOR ANALYSIS PURPOSES
+   AND IS NOT A SUPPORTED ANAPLAN PRODUCT. THE AUTHOR SHALL NOT BE LIABLE
+   FOR ANY CLAIM, DAMAGE OR LOSS ARISING FROM ITS USE.
+
+8. RESERVATION OF RIGHTS
+   All rights not expressly granted are reserved by the Author.

@@ -1,0 +1,154 @@
+/*
+ * Advanced Anaplan Tool
+ * Author: Umang Chauhan
+ */
+/* Shell around the five result pages. Light-only, matching assets/style-*.css tokens. */
+html, body { height: 100%; }
+body {
+  margin: 0; display: flex; flex-direction: column;
+  background: var(--background); color: var(--foreground);
+  font-family: Geist, Consolas, monospace;
+}
+
+#bar {
+  flex: none; display: flex; align-items: center; gap: .25rem;
+  padding: .375rem .5rem; border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+#tabs {
+  flex: 1 1 auto; display: flex; gap: .125rem; min-width: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+#tabs::-webkit-scrollbar { display: none; }
+
+#tabs button {
+  flex: none; display: inline-flex; align-items: center; gap: .375rem;
+  padding: .3125rem .5rem; border-radius: calc(var(--radius) - .25rem);
+  font: inherit; font-size: .75rem; font-weight: 500; line-height: 1;
+  color: var(--muted-foreground); background: transparent;
+  border: 0; cursor: pointer; white-space: nowrap;
+  transition: background-color .15s, color .15s;
+}
+#tabs button:hover { background: var(--muted); color: var(--foreground); }
+#tabs button[aria-selected="true"] { background: var(--secondary); color: var(--foreground); }
+
+/* Marker: hollow = never loaded, filled = cached, spinning = gathering now. */
+#tabs button .dot {
+  width: .375rem; height: .375rem; border-radius: 50%;
+  border: 1px solid var(--muted-foreground); box-sizing: border-box;
+}
+#tabs button[data-has="1"] .dot { background: var(--primary); border-color: var(--primary); }
+#tabs button[data-busy="1"] .dot {
+  background: none; border: 1px solid var(--muted-foreground);
+  border-top-color: transparent; animation: ia-spin .7s linear infinite;
+}
+
+#refresh {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.75rem; height: 1.75rem; border-radius: calc(var(--radius) - .25rem);
+  color: var(--muted-foreground); background: transparent;
+  border: 1px solid var(--border); cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+#refresh:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+#refresh:disabled { opacity: .5; cursor: default; }
+#refresh[data-busy="1"] svg { animation: ia-spin .8s linear infinite; }
+
+@keyframes ia-spin { to { transform: rotate(360deg); } }
+
+#views { position: relative; flex: 1 1 auto; min-height: 0; }
+#views iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+#views iframe[hidden] { display: none; }
+
+#empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: .5rem;
+  padding: 1.5rem 1.25rem; text-align: center;
+}
+#empty[hidden] { display: none; }
+#empty h1 { margin: 0; font-size: .9375rem; font-weight: 600; }
+#empty p { margin: 0; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); max-width: 32ch; }
+#empty-note:empty { display: none; }
+#empty-note { color: var(--destructive); font-weight: 600; }
+#empty-load {
+  margin-top: .5rem; padding: .4375rem .875rem; border-radius: calc(var(--radius) - .25rem);
+  font: inherit; font-size: .75rem; font-weight: 500;
+  color: var(--primary-foreground); background: var(--primary);
+  border: 0; cursor: pointer; transition: opacity .15s;
+}
+#empty-load:hover:not(:disabled) { opacity: .85; }
+#empty-load:disabled { opacity: .6; cursor: default; }
+
+/* Live overview of the gather in flight. Covers the view while there is nothing
+   to show yet; shrinks to a strip over the top of existing results on refresh. */
+#progress {
+  position: absolute; inset: 0; overflow-y: auto;
+  padding: 1.25rem 1rem; background: var(--background);
+}
+#progress[hidden] { display: none; }
+#progress-head {
+  margin: 0 0 .75rem; font-size: .6875rem; font-weight: 600;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--muted-foreground);
+}
+#steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .375rem; }
+#steps li { display: flex; align-items: flex-start; gap: .5rem; font-size: .75rem; line-height: 1.4; }
+
+#steps .mark {
+  flex: none; width: .75rem; height: .75rem; margin-top: .125rem;
+  border-radius: 50%; box-sizing: border-box;
+  border: 1px solid var(--muted-foreground);
+}
+#steps li[data-state="done"] .mark { background: var(--primary); border-color: var(--primary); }
+#steps li[data-state="active"] .mark { border-color: var(--foreground); border-top-color: transparent; animation: ia-spin .7s linear infinite; }
+
+#steps .body { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .5rem; }
+#steps .label { color: var(--muted-foreground); }
+#steps li[data-state="active"] .label { color: var(--foreground); font-weight: 500; }
+#steps .detail {
+  min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--muted-foreground);
+}
+#steps .count { flex: none; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+
+#steps .bar { width: 100%; height: 2px; border-radius: 1px; background: var(--muted); overflow: hidden; }
+#steps .bar > i { display: block; height: 100%; background: var(--primary); transition: width .2s; }
+
+/* Refresh over results already on screen. */
+#progress.compact {
+  inset: 0 0 auto 0; padding: .4375rem .625rem;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .04);
+}
+#progress.compact #progress-head { display: none; }
+#progress.compact #steps li { display: none; }
+#progress.compact #steps li[data-state="active"] { display: flex; }
+
+/* ---------------------------------------------------------------------------
+   Brand footer. Fixed height strip below the views so it never scrolls away;
+   #views already takes the remaining flex space, so this only needs flex:none.
+   --------------------------------------------------------------------------- */
+#brand {
+  flex: none; display: flex; align-items: center; gap: .4375rem;
+  padding: .3125rem .5rem;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+  font-size: .6875rem; line-height: 1;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+
+#brand-mark {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.0625rem; height: 1.0625rem; border-radius: .25rem;
+  background: #E60012; color: #fff;
+  font-size: .5625rem; font-weight: 700; letter-spacing: -.02em;
+}
+
+#brand-text {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#brand-text strong { color: var(--foreground); font-weight: 600; }
+
+#brand-by { flex: none; opacity: .75; white-space: nowrap; }
