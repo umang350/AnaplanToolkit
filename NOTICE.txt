@@ -1,4 +1,4 @@
-ADVANCED ANAPLAN TOOL
+ANAPLAN TOOLKIT
 Third-party notices
 
 This extension is an internal build, modified and maintained by

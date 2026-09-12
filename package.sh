@@ -7,7 +7,7 @@
 set -eu
 
 OUT=dist
-ZIP=advanced-anaplan-tool.zip
+ZIP=anaplan-toolkit.zip
 
 rm -rf "$OUT" "$ZIP"
 mkdir -p "$OUT"

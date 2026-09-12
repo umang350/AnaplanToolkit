@@ -1,10 +1,12 @@
-# Advanced Anaplan Tool
+# Anaplan Toolkit
 
-Internal Chrome extension for analysing Anaplan models.
+Chrome extension for analysing Anaplan models. Not affiliated with, endorsed by, or
+supported by Anaplan, Inc.
 
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
-**Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). Not for redistribution or reuse.
+**Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
+extension; you may not copy, redistribute, or reuse its code.
 
 ---
 

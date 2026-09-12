@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Manifest V3 Chrome extension ("Advanced Anaplan Tool") that reports on the structure of the
+A Manifest V3 Chrome extension ("Anaplan Toolkit") that reports on the structure of the
 Anaplan model open in the active tab. Seven read-only views, each gathered on demand, cached, and
 exportable to CSV. Proprietary internal tool — see `LICENSE.txt` and `NOTICE.txt` (parts derive
 from valantic's "Improved Anaplan"; confirm redistribution rights before shipping anywhere).
@@ -15,7 +15,7 @@ There is **no npm project, no bundler, no test suite, and no lint step** — the
 extension. Everything shipped is plain JS loaded directly by Chrome.
 
 ```sh
-sh package.sh          # copy the manifest-referenced files into dist/ and zip to advanced-anaplan-tool.zip
+sh package.sh          # copy the manifest-referenced files into dist/ and zip to anaplan-toolkit.zip
 ```
 
 To run it: `chrome://extensions` → Developer mode → **Load unpacked** → this folder. After editing
@@ -23,7 +23,7 @@ a content script you must reload the extension **and** reload the Anaplan tab �
 orphans content scripts in already-open frames, and `background.js` reports that condition with a
 dedicated error message rather than retrying.
 
-`dist/` and `advanced-anaplan-tool.zip` are committed build output. `package.sh` deletes and
+`dist/` and `anaplan-toolkit.zip` are committed build output. `package.sh` deletes and
 regenerates both, so re-run it after any change to a shipped file or the two will drift from source.
 `package.sh` maintains an explicit allowlist of top-level files — **a new top-level HTML/JS/CSS file
 must be added to that list or it will be missing from the package** (the script hard-fails only on

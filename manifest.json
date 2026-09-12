@@ -1,13 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Advanced Anaplan Tool",
-  "short_name": "Advanced Anaplan Tool",
-  "description": "Anaplan model analysis. Author: Umang Chauhan. Internal tool - not for redistribution or reuse.",
+  "name": "Anaplan Toolkit",
+  "short_name": "Anaplan Toolkit",
+  "description": "Analyze the structure of an Anaplan model: actions, usages, modules, filters, and saved views. Not affiliated with Anaplan, Inc.",
   "version": "2.3.0",
-  "version_name": "2.3.0 (internal build)",
-  "author": {
-    "email": "anaplan@umang.dev"
-  },
+  "version_name": "2.3.0",
+  "author": "Umang Chauhan",
   "icons": {
     "16": "icon-16.png",
     "32": "icon-32.png",
@@ -25,7 +23,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Advanced Anaplan Tool",
+    "default_title": "Anaplan Toolkit",
     "default_icon": {
       "16": "icon-16.png",
       "32": "icon-32.png",

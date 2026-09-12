@@ -1,5 +1,5 @@
 /*
- * Advanced Anaplan Tool
+ * Anaplan Toolkit
  * Author: Umang Chauhan
  */
 var background=(function(){

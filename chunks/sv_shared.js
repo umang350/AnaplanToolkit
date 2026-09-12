@@ -1,5 +1,5 @@
 /*
- * Advanced Anaplan Tool
+ * Anaplan Toolkit
  * Author: Umang Chauhan
  */
 /*
@@ -205,7 +205,7 @@ function loadingState() {
     '</div>';
   root.querySelector('.absolute.inset-0.flex').appendChild(icon('package-open', null, 48, 1));
   var img = el('img');
-  img.alt = 'Advanced Anaplan Tool';
+  img.alt = 'Anaplan Toolkit';
   img.src = LOGO;
   root.appendChild(img);
   return root;
@@ -309,7 +309,7 @@ export function renderPage(opts) {
     // Logo + export
     var bar = el('div', 'w-full flex justify-between items-center'),
         img = el('img', 'h-6');
-    img.alt = 'Advanced Anaplan Tool';
+    img.alt = 'Anaplan Toolkit';
     img.src = LOGO;
     bar.appendChild(img);
 

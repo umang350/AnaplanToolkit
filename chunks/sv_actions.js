@@ -1,5 +1,5 @@
 /*
- * Advanced Anaplan Tool
+ * Anaplan Toolkit
  * Author: Umang Chauhan
  */
 import { renderPage, textCell, idCell } from './sv_shared.js';
