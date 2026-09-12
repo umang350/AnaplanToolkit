@@ -3,14 +3,14 @@
  * Author: Umang Chauhan
  */
 /*
- * Shared shell for the hand-written report pages (SV Screens, SV Actions).
+ * Shared shell for the hand-written report pages (SV List, SV Items, SV Screens, SV Actions).
  *
  * The other five views are compiled Svelte (chunks/<page>-<hash>.js) and there
  * is no Svelte source in this repository - the chunks are committed build
  * output. So these two pages are plain ES modules instead.
  *
  * The CSV writer and the search scorer below are deliberate ports of the ones
- * inside chunks/Empty-CLVvVHxX.js, so all seven views export and search
+ * inside chunks/Empty-CLVvVHxX.js, so all nine views export and search
  * identically. They are copied rather than imported because that chunk's
  * exports are minified single letters (`u`, `f`, `i`): if the bundle were ever
  * rebuilt elsewhere those names would very likely still resolve, but to

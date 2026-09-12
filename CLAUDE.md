@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 Chrome extension ("Anaplan Toolkit") that reports on the structure of the
-Anaplan model open in the active tab. Seven read-only views, each gathered on demand, cached, and
+Anaplan model open in the active tab. Nine read-only views, each gathered on demand, cached, and
 exportable to CSV. Proprietary internal tool — see `LICENSE.txt` and `NOTICE.txt` (parts derive
 from valantic's "Improved Anaplan"; confirm redistribution rights before shipping anywhere).
 
@@ -77,15 +77,16 @@ No other server is ever contacted.
 
 ## Editing constraints
 
-- **Five of the seven view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
+- **Five of the nine view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
   are committed Svelte build output (actions, action_usages, pages, filter_items, sv_filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
-- `sv_screens` and `sv_actions` are hand-written ES modules over `chunks/sv_shared.js`. `sv_shared.js`
-  deliberately re-implements the CSV writer and the fuzzy search scorer from `chunks/Empty-*.js`
-  rather than importing them — that chunk's exports are minified single letters that would resolve
-  to different functions if the bundle were ever rebuilt. Keep the two implementations in step; all
-  seven views are expected to export and search identically.
+- `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES modules over
+  `chunks/sv_shared.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
+  search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
+  minified single letters that would resolve to different functions if the bundle were ever
+  rebuilt. Keep the two implementations in step; all nine views are expected to export and search
+  identically.
 - **`background.js`, `inner.js`, `outer.js` and `main.js` are minified vendor output with
   hand-written additions merged in.** Identifiers added by this project are prefixed `IA_`
   (`IA_pool`, `IA_step`, `IA_views`, `IA_screenViews`, …) to keep them clear of the single-letter

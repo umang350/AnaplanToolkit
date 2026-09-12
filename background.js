@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_screens`,`sv_actions`],
+var PAGES=[`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`],
     DATA=PAGES.map(p=>`${p}_data`),
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
