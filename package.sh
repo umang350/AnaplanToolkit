@@ -5,13 +5,14 @@
 # (.bak / .pre-* / .retired), no git history, no packaging script itself - into
 # dist/ (Chrome) and dist-firefox/ (Firefox) and zips each. Run:  sh package.sh
 #
-# The two builds share one manifest.json: Chrome-only ("sidePanel") and
-# Firefox-only ("sidebarAction") keys both sit in it, ignored by the browser
-# that doesn't recognise them (background.service_worker/scripts, side_panel/
-# sidebar_action, browser_specific_settings). The one thing that cannot be left
-# for the other browser to ignore is the "sidePanel" *permission* string, which
-# Firefox's manifest validator rejects outright - so the Firefox build strips
-# it from permissions with jq.
+# The two builds share one manifest.json: most Chrome-only (side_panel) and
+# Firefox-only (sidebar_action, browser_specific_settings) keys sit in it
+# side by side, silently ignored by the browser that doesn't recognise them.
+# Two things aren't silently ignored and have to be stripped for the Firefox
+# build with jq: the "sidePanel" *permission* string (Firefox's manifest
+# validator rejects it outright) and background.service_worker (Firefox
+# doesn't error on it - it just uses background.scripts instead - but AMO's
+# validator warns on its presence).
 set -eu
 
 command -v jq >/dev/null 2>&1 || { echo "jq is required to build the Firefox package (brew install jq)" >&2; exit 1; }
@@ -55,9 +56,11 @@ fi
 echo "built $ZIP  ($(find "$OUT" -type f | wc -l | tr -d ' ') files, $(du -sh "$OUT" | cut -f1))"
 
 # Firefox build: same tree, minus the Chrome-only "sidePanel" permission
-# string that Firefox's manifest validator rejects (see note above).
+# string that Firefox's manifest validator rejects, and minus
+# background.service_worker - Firefox ignores it (it uses background.scripts
+# instead) but still warns on its presence during AMO validation.
 cp -R "$OUT" "$FF_OUT"
-jq '.permissions -= ["sidePanel"]' manifest.json > "$FF_OUT/manifest.json"
+jq '.permissions -= ["sidePanel"] | del(.background.service_worker)' manifest.json > "$FF_OUT/manifest.json"
 
 ( cd "$FF_OUT" && zip -qr "../$FF_ZIP" . )
 echo "built $FF_ZIP  ($(find "$FF_OUT" -type f | wc -l | tr -d ' ') files, $(du -sh "$FF_OUT" | cut -f1))"

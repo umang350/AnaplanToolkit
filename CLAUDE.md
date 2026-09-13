@@ -47,18 +47,26 @@ calling `chrome.*`/`browser.*` directly, or it will silently fail on whichever b
 Chrome and Firefox disagree on how the side panel works, and both accommodations live in
 `background.js`, not behind a build flag:
 - **Manifest.** `manifest.json` carries both browsers' keys side by side — `side_panel` +
-  `sidebar_action`, and `background.service_worker` + `background.scripts` — each ignored by the
-  browser that doesn't recognise it. The one thing that can't coexist is the `sidePanel`
-  *permission string*, which Firefox's manifest validator rejects outright; `package.sh` strips it
-  from `dist-firefox/manifest.json` with `jq`.
+  `sidebar_action`, `browser_specific_settings` — each silently ignored by the browser that
+  doesn't recognise it. Two things aren't silently ignored, so `package.sh` strips them from
+  `dist-firefox/manifest.json` with `jq`: the `sidePanel` *permission string* (Firefox's manifest
+  validator rejects it outright) and `background.service_worker` (Firefox just falls back to
+  `background.scripts`, but AMO's validator warns on the unsupported key's presence).
 - **Opening the panel.** Chrome opens the side panel via `chrome.sidePanel.open()` (wired to the
   toolbar icon with `setPanelBehavior({openPanelOnActionClick:true})`). Firefox has no equivalent
   API — `openPanel()` in `background.js` falls back to `api.sidebarAction.open()`, and `main()`
   wires the toolbar icon to `api.sidebarAction.toggle()` directly since there is no
   `openPanelOnActionClick` there.
 - **`world: "MAIN"` content scripts** (used by `main.js` to reach Anaplan's in-page model cache)
-  need Firefox 128+, hence `browser_specific_settings.gecko.strict_min_version: "128.0"` in the
-  manifest.
+  need Firefox 128+ — but see below, the effective floor is higher.
+- **Data collection disclosure.** AMO has required `gecko.data_collection_permissions` on every
+  new extension since November 2025 — omitting it is a hard validation failure, not a warning.
+  This extension talks to Anaplan only and stores nothing anywhere else, so it's set to
+  `{"required": ["none"]}`. If that ever stops being true (e.g. an analytics call is added), this
+  key must be updated to match or AMO will reject the submission on the mismatch. That key itself
+  needs a newer Firefox than `world: "MAIN"` does, so it - not the content script world - sets the
+  actual floor: `strict_min_version: "140.0"` under `gecko`, `strict_min_version: "142.0"` under
+  `gecko_android`. Bump both together if this key's own minimum version ever changes.
 
 ## Architecture
 

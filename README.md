@@ -52,8 +52,9 @@ named and is not listed. Both caveats are also shown on the page itself.
 4. Open an Anaplan model, then click the toolbar icon to open the sidebar
 
 A temporary add-on is removed when Firefox restarts, so you'll need to reload it each session
-during development. Firefox 128+ is required (the extension reads Anaplan's in-page data via a
-`world: "MAIN"` content script, which older Firefox versions don't support).
+during development. Firefox 140+ is required (AMO's mandatory data-collection disclosure key,
+`data_collection_permissions`, needs 140+; the `world: "MAIN"` content script used to read
+Anaplan's in-page data only needs 128+).
 
 ## Keyboard shortcuts
 
