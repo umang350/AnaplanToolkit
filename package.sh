@@ -1,15 +1,27 @@
 #!/bin/sh
-# Build a clean, shippable copy of the extension.
+# Build clean, shippable copies of the extension for Chrome and Firefox.
 #
 # Copies only the files the manifest actually needs - no development snapshots
 # (.bak / .pre-* / .retired), no git history, no packaging script itself - into
-# dist/ and zips it. Run:  sh package.sh
+# dist/ (Chrome) and dist-firefox/ (Firefox) and zips each. Run:  sh package.sh
+#
+# The two builds share one manifest.json: Chrome-only ("sidePanel") and
+# Firefox-only ("sidebarAction") keys both sit in it, ignored by the browser
+# that doesn't recognise them (background.service_worker/scripts, side_panel/
+# sidebar_action, browser_specific_settings). The one thing that cannot be left
+# for the other browser to ignore is the "sidePanel" *permission* string, which
+# Firefox's manifest validator rejects outright - so the Firefox build strips
+# it from permissions with jq.
 set -eu
+
+command -v jq >/dev/null 2>&1 || { echo "jq is required to build the Firefox package (brew install jq)" >&2; exit 1; }
 
 OUT=dist
 ZIP=anaplan-toolkit.zip
+FF_OUT=dist-firefox
+FF_ZIP=anaplan-toolkit-firefox.zip
 
-rm -rf "$OUT" "$ZIP"
+rm -rf "$OUT" "$ZIP" "$FF_OUT" "$FF_ZIP"
 mkdir -p "$OUT"
 
 # Everything the extension loads at runtime, plus the licence documents.
@@ -41,3 +53,11 @@ fi
 
 ( cd "$OUT" && zip -qr "../$ZIP" . )
 echo "built $ZIP  ($(find "$OUT" -type f | wc -l | tr -d ' ') files, $(du -sh "$OUT" | cut -f1))"
+
+# Firefox build: same tree, minus the Chrome-only "sidePanel" permission
+# string that Firefox's manifest validator rejects (see note above).
+cp -R "$OUT" "$FF_OUT"
+jq '.permissions -= ["sidePanel"]' manifest.json > "$FF_OUT/manifest.json"
+
+( cd "$FF_OUT" && zip -qr "../$FF_ZIP" . )
+echo "built $FF_ZIP  ($(find "$FF_OUT" -type f | wc -l | tr -d ' ') files, $(du -sh "$FF_OUT" | cut -f1))"

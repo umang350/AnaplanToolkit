@@ -111,11 +111,21 @@ function rememberKey(key){
 }
 
 // One panel per window, so the same document stays put while tabs change.
+// Chrome exposes this as a per-tab/per-window side panel; Firefox has no
+// equivalent API and offers sidebarAction (per-window only) instead.
 async function openPanel(sender){
-  if(!api.sidePanel)throw Error(`The side panel is not available in this browser.`);
-  let windowId=sender?.tab?.windowId,tabId=sender?.tab?.id;
-  try{await api.sidePanel.open(windowId!=null?{windowId}:{tabId})}
-  catch(e){if(!sawShell)throw Error(`Could not open the side panel - click the extension icon.`)}
+  if(api.sidePanel){
+    let windowId=sender?.tab?.windowId,tabId=sender?.tab?.id;
+    try{await api.sidePanel.open(windowId!=null?{windowId}:{tabId})}
+    catch(e){if(!sawShell)throw Error(`Could not open the side panel - click the extension icon.`)}
+    return
+  }
+  if(api.sidebarAction){
+    try{await api.sidebarAction.open()}
+    catch(e){if(!sawShell)throw Error(`Could not open the sidebar - click the extension icon.`)}
+    return
+  }
+  throw Error(`The side panel is not available in this browser.`)
 }
 
 function setBusy(page,on){
@@ -258,6 +268,9 @@ function onMessage(msg,sender,respond){
 var main=wxt(()=>{
   // Clicking the toolbar icon opens the panel directly - there is no popup.
   api.sidePanel?.setPanelBehavior?.({openPanelOnActionClick:!0})?.catch?.(()=>{});
+  // Firefox has no openPanelOnActionClick equivalent: wire the toolbar icon
+  // to the sidebar directly. (No-op on Chrome, which already opened above.)
+  if(!api.sidePanel&&api.sidebarAction)api.action?.onClicked?.addListener(()=>{try{api.sidebarAction.toggle()}catch(e){}});
   api.runtime.onMessage.addListener(onMessage);
   api.tabs.onRemoved.addListener(id=>{keyByTab.delete(id),route?.tabId===id&&(route=null)})
 });

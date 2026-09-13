@@ -1,6 +1,6 @@
 # Anaplan Toolkit
 
-Chrome extension for analysing Anaplan models. Not affiliated with, endorsed by, or
+Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
 **Author:** Umang Chauhan
@@ -37,10 +37,23 @@ named and is not listed. Both caveats are also shown on the page itself.
 
 ## Install
 
+**Chrome / Edge / other Chromium browsers**
+
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
-3. **Load unpacked** → select this folder
+3. **Load unpacked** → select this folder (or `dist/` after running `sh package.sh`)
 4. Open an Anaplan model, then click the toolbar icon to open the side panel
+
+**Firefox**
+
+1. Run `sh package.sh` to build `dist-firefox/`
+2. Open `about:debugging#/runtime/this-firefox`
+3. **Load Temporary Add-on** → select any file inside `dist-firefox/` (e.g. `manifest.json`)
+4. Open an Anaplan model, then click the toolbar icon to open the sidebar
+
+A temporary add-on is removed when Firefox restarts, so you'll need to reload it each session
+during development. Firefox 128+ is required (the extension reads Anaplan's in-page data via a
+`world: "MAIN"` content script, which older Firefox versions don't support).
 
 ## Keyboard shortcuts
 
@@ -60,21 +73,23 @@ The extension talks to **no server other than Anaplan itself**. There is no
 analytics, no telemetry and no auto-update endpoint. The only network calls are
 to `<your-anaplan-host>/a/springboard-definition-service/...` and
 `<your-anaplan-host>/jsonrpc`, using your existing session. Results are held in
-`chrome.storage.session` and are dropped when the browser closes.
+`storage.session` (falling back to `storage.local` if unavailable) and are
+dropped when the browser closes.
 
 Permissions requested:
 
 | Permission | Why |
 |---|---|
 | `host_permissions: https://*.anaplan.com/*` | read model metadata from the tab you have open |
-| `sidePanel` | render the UI |
+| `sidePanel` (Chrome only — Firefox's sidebar needs no permission) | render the UI |
 | `storage` | cache results for the session |
 
 ## Layout
 
 ```
-manifest.json          extension manifest
-background.js          service worker: routing, caching, progress
+manifest.json          extension manifest (shared; carries both Chrome's and
+                        Firefox's browser-specific keys side by side)
+background.js          background script: routing, caching, progress
 sidepanel.{html,js,css}  side panel shell that hosts the seven report pages
 content-scripts/
   outer.js             keyboard shortcuts in the modelling UI frame

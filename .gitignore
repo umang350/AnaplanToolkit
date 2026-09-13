@@ -1,3 +1,5 @@
 .DS_Store
 dist/
 anaplan-toolkit.zip
+dist-firefox/
+anaplan-toolkit-firefox.zip

@@ -20,7 +20,8 @@
     "storage"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
   },
   "action": {
     "default_title": "Anaplan Toolkit",
@@ -33,6 +34,22 @@
   },
   "side_panel": {
     "default_path": "sidepanel.html"
+  },
+  "sidebar_action": {
+    "default_title": "Anaplan Toolkit",
+    "default_panel": "sidepanel.html",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{a2c1d9f0-6e8b-4b3c-9a7d-3f5e0c4d2b91}",
+      "strict_min_version": "128.0"
+    }
   },
   "content_scripts": [
     {

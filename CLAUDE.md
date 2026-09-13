@@ -4,30 +4,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Manifest V3 Chrome extension ("Anaplan Toolkit") that reports on the structure of the
-Anaplan model open in the active tab. Nine read-only views, each gathered on demand, cached, and
-exportable to CSV. Proprietary internal tool — see `LICENSE.txt` and `NOTICE.txt` (parts derive
-from valantic's "Improved Anaplan"; confirm redistribution rights before shipping anywhere).
+A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
+the structure of the Anaplan model open in the active tab. Nine read-only views, each gathered on
+demand, cached, and exportable to CSV. Proprietary internal tool — see `LICENSE.txt` and
+`NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
+shipping anywhere).
 
 ## Commands
 
 There is **no npm project, no bundler, no test suite, and no lint step** — the repository *is* the
-extension. Everything shipped is plain JS loaded directly by Chrome.
+extension. Everything shipped is plain JS loaded directly by the browser. `package.sh` needs `jq`
+on `PATH` (only for the Firefox manifest tweak below).
 
 ```sh
-sh package.sh          # copy the manifest-referenced files into dist/ and zip to anaplan-toolkit.zip
+sh package.sh          # copy the manifest-referenced files into dist/ (Chrome) and
+                        # dist-firefox/ (Firefox), zipped to anaplan-toolkit.zip and
+                        # anaplan-toolkit-firefox.zip
 ```
 
-To run it: `chrome://extensions` → Developer mode → **Load unpacked** → this folder. After editing
-a content script you must reload the extension **and** reload the Anaplan tab — an extension reload
-orphans content scripts in already-open frames, and `background.js` reports that condition with a
-dedicated error message rather than retrying.
+To run it in Chrome: `chrome://extensions` → Developer mode → **Load unpacked** → this folder (or
+`dist/`). In Firefox: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** → any file
+in `dist-firefox/` (a temporary add-on is unloaded on browser restart; there is no unpacked-folder
+loader in Firefox the way there is in Chrome). After editing a content script you must reload the
+extension **and** reload the Anaplan tab — an extension reload orphans content scripts in
+already-open frames, and `background.js` reports that condition with a dedicated error message
+rather than retrying.
 
-`dist/` and `anaplan-toolkit.zip` are committed build output. `package.sh` deletes and
-regenerates both, so re-run it after any change to a shipped file or the two will drift from source.
-`package.sh` maintains an explicit allowlist of top-level files — **a new top-level HTML/JS/CSS file
-must be added to that list or it will be missing from the package** (the script hard-fails only on
-files that are listed but absent, not on files present but unlisted).
+`dist/`, `dist-firefox/` and the two zips are committed build output. `package.sh` deletes and
+regenerates all four, so re-run it after any change to a shipped file or they will drift from
+source. `package.sh` maintains an explicit allowlist of top-level files — **a new top-level
+HTML/JS/CSS file must be added to that list or it will be missing from the package** (the script
+hard-fails only on files that are listed but absent, not on files present but unlisted).
+
+## Cross-browser support
+
+`background.js`, `sidepanel.js` and every content script resolve the extension API with
+`globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome` before doing anything
+else (Firefox exposes the promise-based `browser.*` namespace; Chrome only has the
+callback/promise-hybrid `chrome.*`). Keep new code going through that resolved object rather than
+calling `chrome.*`/`browser.*` directly, or it will silently fail on whichever browser it skipped.
+
+Chrome and Firefox disagree on how the side panel works, and both accommodations live in
+`background.js`, not behind a build flag:
+- **Manifest.** `manifest.json` carries both browsers' keys side by side — `side_panel` +
+  `sidebar_action`, and `background.service_worker` + `background.scripts` — each ignored by the
+  browser that doesn't recognise it. The one thing that can't coexist is the `sidePanel`
+  *permission string*, which Firefox's manifest validator rejects outright; `package.sh` strips it
+  from `dist-firefox/manifest.json` with `jq`.
+- **Opening the panel.** Chrome opens the side panel via `chrome.sidePanel.open()` (wired to the
+  toolbar icon with `setPanelBehavior({openPanelOnActionClick:true})`). Firefox has no equivalent
+  API — `openPanel()` in `background.js` falls back to `api.sidebarAction.open()`, and `main()`
+  wires the toolbar icon to `api.sidebarAction.toggle()` directly since there is no
+  `openPanelOnActionClick` there.
+- **`world: "MAIN"` content scripts** (used by `main.js` to reach Anaplan's in-page model cache)
+  need Firefox 128+, hence `browser_specific_settings.gecko.strict_min_version: "128.0"` in the
+  manifest.
 
 ## Architecture
 
