@@ -214,6 +214,18 @@ async function handle(msg,sender){
   // Live step/loop reporting from whichever gather is running.
   if(msg.type===`ia_progress`)return void(msg.page&&progAdd(msg.page,msg));
 
+  // TEMPORARY DIAGNOSTIC (branch: filters-conditional-formatting-settings).
+  // Bounded samples of the raw filter / conditional-formatting rule objects that
+  // inner.js currently reads identifiers out of and discards the rest of. Logged
+  // here rather than in the content script so they land in the service worker
+  // console (chrome://extensions -> Anaplan Toolkit -> "service worker"), which
+  // needs no frame picking. Remove with the IA_dump block in inner.js.
+  if(msg.type===`ia_dump`){
+    console.log(`[IA dump] ${msg.page} - expand to inspect:`,msg.samples);
+    console.log(`[IA dump] ${msg.page} - copy the JSON below:\n`+JSON.stringify(msg.samples,null,2));
+    return
+  }
+
   // A keyboard shortcut started a run: show the panel on that view right away.
   if(PAGES.includes(msg.type)){
     route={tabId:tabId??route?.tabId,windowId:sender?.tab?.windowId??route?.windowId};
