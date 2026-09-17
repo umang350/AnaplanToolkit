@@ -223,6 +223,9 @@ async function handle(msg,sender){
   if(msg.type===`ia_dump`){
     console.log(`[IA dump] ${msg.page} - expand to inspect:`,msg.samples);
     console.log(`[IA dump] ${msg.page} - copy the JSON below:\n`+JSON.stringify(msg.samples,null,2));
+    // Also parked in storage, so a console opened after the run can still get at it.
+    try{await store.set({[`ia:dump:${msg.page}`]:msg.samples})}catch(e){}
+    console.log(`[IA dump] saved. To print it again later, paste this in here:\n  chrome.storage.session.get(null,o=>console.log(JSON.stringify(Object.fromEntries(Object.entries(o).filter(([k])=>k.startsWith("ia:dump:"))),null,2)))`);
     return
   }
 
