@@ -28,6 +28,8 @@ mkdir -p "$OUT"
 # Everything the extension loads at runtime, plus the licence documents.
 # popup.html / chunks/popup-* are deliberately excluded: the manifest has no
 # default_popup, so the side panel is the only UI and they are dead code.
+# chunks/sv_filter_items-* is excluded for the same reason: that view is now the
+# hand-written chunks/sv_filter_items.js and nothing loads the compiled one.
 for f in manifest.json background.js \
          sidepanel.html sidepanel.js sidepanel.css views.css \
          actions.html action_usages.html pages.html filter_items.html sv_filter_items.html \
@@ -43,7 +45,7 @@ for d in chunks content-scripts assets fonts; do
   mkdir -p "$OUT/$d"
   find "$d" -type f \
     ! -name '*.bak' ! -name '*.pre-*' ! -name '*.retired' ! -name '.DS_Store' \
-    ! -name 'popup-*' \
+    ! -name 'popup-*' ! -name 'sv_filter_items-*' \
     -exec cp {} "$OUT/$d/" \;
 done
 

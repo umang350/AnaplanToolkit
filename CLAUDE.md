@@ -116,11 +116,11 @@ No other server is ever contacted.
 
 ## Editing constraints
 
-- **Five of the nine view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
-  are committed Svelte build output (actions, action_usages, pages, filter_items, sv_filter_items).
+- **Four of the nine view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
+  are committed Svelte build output (actions, action_usages, pages, filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
-- `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES modules over
+- `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions` and `sv_filter_items` are hand-written ES modules over
   `chunks/sv_shared.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
