@@ -111,7 +111,10 @@ would leave the spinner up forever. `background.js` arms `FIRST_SIGN` (15s) on t
 **Anaplan endpoints.** Only two, both using the existing session cookie: the springboard definition
 service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
 per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions, batched
-100 views at a time. `IA_pool()` caps concurrency (8 for page definitions, 6 for view batches).
+50 views at a time. `IA_pool()` caps concurrency at 8 for page definitions. View batches go
+strictly one at a time, are never retried, and the first timeout aborts the run — Anaplan
+serialises work per model, so parallel or retried batches pile up server-side and leave the model
+busy for minutes after the client has given up.
 No other server is ever contacted.
 
 ## Editing constraints

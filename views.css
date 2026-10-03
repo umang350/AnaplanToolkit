@@ -17,3 +17,34 @@
 
 /* The badge is inline; let it wrap with the text rather than stay rigid. */
 [class*="grid-cols-"] .font-mono { white-space: normal; }
+
+/* Item counts on the Actions view's tabs (chunks/actions_counts.js). The
+   badges make the tab bar wider than a narrow side panel, and it must stay one
+   row (wrapping would push the list down), so the tabs tighten up and, if it
+   still doesn't fit, the bar scrolls sideways instead of clipping "Files"/"All". */
+.ia-count {
+  margin-left: 0.25rem;
+  padding: 0 0.3rem;
+  border-radius: 9999px;
+  font-size: 0.7em;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  opacity: 0.85;
+}
+
+/* justify-content must be flex-start: the bar is centred by default, and
+   centred content that overflows spills off the left edge where it can never
+   be scrolled back to - "Processes" was cut off and unreachable. */
+[role="tablist"]:has(.ia-count) {
+  justify-content: flex-start;
+  max-width: calc(100vw - 2rem);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+[role="tablist"]:has(.ia-count)::-webkit-scrollbar { display: none; }
+
+[role="tablist"]:has(.ia-count) [role="tab"] {
+  flex-shrink: 0;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
