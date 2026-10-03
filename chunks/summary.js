@@ -33,7 +33,9 @@ var REPORTS = [
   { page: 'sv_screens', name: 'SV Screens', unit: 'rows' },
   { page: 'sv_actions', name: 'SV Actions', unit: 'imports' },
   { page: 'sv_filter_items', name: 'SV Filters', unit: 'rows', off: true },
-  { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true }
+  { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true },
+  { page: 'workspace', name: 'Workspace', unit: 'models', key: 'models' },
+  { page: 'workspace_all', name: 'All Workspaces', unit: 'workspaces', key: 'workspaces' }
 ];
 var ACTION_LISTS = [['processes', 'processes'], ['imports', 'imports'], ['exports', 'exports'],
                     ['actions', 'actions'], ['files', 'files']];
@@ -94,6 +96,7 @@ function ago(ts) {
 function sizeText(r, size) {
   if (size == null) return '';
   if (typeof size === 'number') return num(size) + ' ' + r.unit;
+  if (r.key) return typeof size[r.key] === 'number' ? num(size[r.key]) + ' ' + r.unit : '';
   return ACTION_LISTS
     .filter(function (a) { return typeof size[a[0]] === 'number'; })
     .map(function (a) { return num(size[a[0]]) + ' ' + a[1]; })

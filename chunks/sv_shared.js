@@ -3,7 +3,7 @@
  * Author: Umang Chauhan
  */
 /*
- * Shared shell for the hand-written report pages (Filters, SV List, SV Items, SV Screens, SV Actions).
+ * Shared shell for the hand-written report pages (Workspace, Filters, SV List, SV Items, SV Screens, SV Actions).
  *
  * The other five views are compiled Svelte (chunks/<page>-<hash>.js) and there
  * is no Svelte source in this repository - the chunks are committed build
@@ -236,7 +236,8 @@ function noMatchState() {
    opts = {
      page        message-type prefix, e.g. 'sv_screens' -> listens for sv_screens_data
      heading     <h1> text
-     note        optional muted line under the heading, for scope caveats
+     note        optional muted line under the heading, for scope caveats - a
+                 string, or data -> string when it depends on the data
      placeholder search box placeholder
      cols        grid template class shared by the header row and the data rows
      headers     [{label, cls}]
@@ -245,7 +246,9 @@ function noMatchState() {
      csvRow      row -> a flat object; its keys become the CSV header
      csv         optional rows -> [flat object], for when one row exports as several
      filename    CSV file name
-     tabs        optional [{label, rows: data -> [row], heading, note, placeholder,
+     top         optional data -> Node, shown under the heading, above the note and
+                 table (Workspace's storage meter); not searched or exported
+     tabs        optional [{label, rows: data -> [row], heading, note, top, placeholder,
                  cols, headers, key, cells, csvRow | csv, filename}] - one table
                  per tab, under a tab bar, with a row count beside the heading.
                  Without it the page is a single table over the data array,
@@ -433,7 +436,9 @@ export function renderPage(opts) {
     title.appendChild(el('h1', 'text-lg font-semibold', tab.heading));
     if (chip) title.appendChild(chip);
     section.appendChild(title);
-    if (tab.note) section.appendChild(el('p', 'text-xs text-muted-foreground', tab.note));
+    if (tab.top) { var top = tab.top(data); if (top) section.appendChild(top); }
+    var note = typeof tab.note === 'function' ? tab.note(data) : tab.note;
+    if (note) section.appendChild(el('p', 'text-xs text-muted-foreground', note));
 
     body.appendChild(rows.length ? buildTable(rows) : noMatchState());
     section.appendChild(body);

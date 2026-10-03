@@ -77,7 +77,17 @@
       off: 'Disabled: too slow to run on large models',
       desc: 'Which Line Items are selected to display inside each Saved View.',
       heading: 'Line Items in Saved Views', search: 'Search by module, saved view or line item...',
-      cols: ['Module', 'Saved View', 'Line Item'] }
+      cols: ['Module', 'Saved View', 'Line Item'] },
+    { page: 'workspace', tab: 'Workspace', group: 'Workspace', sub: 'Current', title: 'Workspace Models & Storage',
+      desc: 'Every model in this workspace with its size and state, and how much of the workspace allowance is used.',
+      preview: ['Active', 'Archived'],
+      heading: 'Active Models', search: 'Search by model, state or ID...', cols: ['Model', 'State', 'Size', 'Cells'] },
+    /* Gathered apart from Current: a workspace on another Anaplan server can
+       take a minute or more to answer, and Current shouldn't wait on it. */
+    { page: 'workspace_all', tab: 'All Workspaces', group: 'Workspace', sub: 'All', title: 'All Workspaces',
+      desc: 'Storage in use for every workspace you can access, and every active model across them.',
+      preview: ['Workspaces', 'Models'],
+      heading: 'Workspaces', search: 'Search by workspace or ID...', cols: ['Workspace', 'In use', 'Allowance', 'Full', 'Active models'] }
   ];
 
   var bar = document.getElementById('tabs'),

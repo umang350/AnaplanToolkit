@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Nine read-only report views, each
+the structure of the Anaplan model open in the active tab. Ten read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -123,9 +123,11 @@ would leave the spinner up forever. `background.js` arms `FIRST_SIGN` (15s) on t
 `STALL` (240s, above the content script's 90s + one retry ceiling) on every progress tick; the saved-view loader ticks every second while batches are out, so its longer 5 min cap never trips it.
 `ia_busy`/`ia_progress` carry a monotonic `seq` so the panel drops out-of-order pushes.
 
-**Anaplan endpoints.** Only two, both using the existing session cookie: the springboard definition
-service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
-per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions, batched
+**Anaplan endpoints.** Only three, all using the existing session cookie: the springboard platform
+gateway's model list (`/a/springboard-platform-gateway-service/customer/…/models?limit=50000`, the
+list behind Anaplan's Models menu - Workspace's All Workspaces tab), the
+springboard definition service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
+per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions (and, for Workspace, model summaries), batched
 10 views at a time (`IA_VB`), 4 batches in flight (`IA_VW`). `IA_pool()` caps concurrency at 8 for
 page definitions. Opening a saved view makes Anaplan evaluate its filters, and a few views on large
 modules cost a minute or more however little is requested — small parallel batches keep the cheap
@@ -140,16 +142,34 @@ No other server is ever contacted.
   are committed Svelte build output (actions, action_usages, pages, sv_filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
-- `filter_items`, `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES
+- `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES
   modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all nine views are expected to export and search
+  rebuilt. Keep the two implementations in step; all ten views are expected to export and search
   identically.
-- `summary` (`chunks/summary.js`) is the tenth view and the odd one out: no CSV or search, gathered
+- **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
+  `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
+  workspace's models (Active / Archived tabs) under an in-use-vs-allowance meter (`renderPage`'s `top`
+  option); `workspace_all` (All - `chunks/workspace_all.js`, `IA_gwsa()`) has a Workspaces tab (storage
+  per workspace + totals) and a Models tab (every active model, with its workspace). They are separate
+  gathers because a workspace on another server can take minutes and Current must not wait on it.
+  "In use" is `contractualWorkspaceSize` - what Anaplan's Model Management dialog shows, the sum of
+  non-archived models' sizes - **not** `workspaceSize`. Each workspace is one `/jsonrpc` call shaped
+  like Anaplan's own Workspace Summary page: `workspaceId`, **no `modelId`**,
+  `fetchAllModelSummaries:true`, so `modelInfo` comes back null instead of the whole model
+  definition. All finds the workspaces through the platform gateway's model list and calls them **one
+  at a time** (4 in parallel failed where the same calls in sequence succeeded), each one attempt
+  capped at `IA_VTMO` with a 1s progress ticker (no retry - see the saved-view loader). A workspace
+  hosted on another server answers this frame's jsonrpc with only `{redirectUrl:
+  "https://…/coreNNNN/anaplan/framework.jsp?…"}`; `IA_wsInfo` re-sends once to the jsonrpc beside that
+  framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
+  call still fails falls back to its rows from the model list (no sizes) and the view names it with
+  the reason.
+- `summary` (`chunks/summary.js`) is the eleventh view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. It and the Actions tab counts

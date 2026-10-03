@@ -159,3 +159,32 @@
 /* Hex codes stay on one line: the swatch carries the colour, the code is for copying. */
 .ia-peg-c { font-family: var(--font-mono, monospace); font-size: .6875rem; color: var(--muted-foreground); white-space: nowrap; }
 [class*="grid-cols-"] .ia-peg-c { overflow-wrap: normal; }
+
+/* --- Workspace view (workspace.html / chunks/workspace.js) ----------------- */
+
+.ia-span-4 { grid-column: span 4 / span 4; }
+/* State names ("Production maintenance") wrap at spaces, never mid-word. */
+[class*="grid-cols-"] .ia-words p { overflow-wrap: normal; }
+.ia-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.ia-ws-list { display: flex; flex-direction: column; gap: .75rem; padding: .25rem 0 .5rem; }
+.ia-ws {
+  padding: .75rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px);
+  display: flex; flex-direction: column; gap: .375rem;
+}
+.ia-ws-head { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+.ia-ws-name { font-size: .875rem; font-weight: 600; color: var(--foreground); overflow-wrap: anywhere; }
+.ia-ws-pct { font-size: .875rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--foreground); }
+.ia-ws-line { font-size: .75rem; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.ia-meter { height: .5rem; border-radius: 9999px; background: var(--muted); overflow: hidden; }
+.ia-meter i { display: block; height: 100%; border-radius: inherit; background: #16a34a; }
+.ia-meter i[data-level="warn"] { background: #f59e0b; }
+.ia-meter i[data-level="high"] { background: #dc2626; }
+
+.ia-tag {
+  display: inline-block; margin-left: .375rem; padding: 0 .375rem; border-radius: 9999px;
+  font-size: .6875rem; font-weight: 500; vertical-align: 1px; white-space: nowrap;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.ia-meter-sm { height: .25rem; margin-top: .25rem; }
