@@ -3,8 +3,8 @@
   "name": "Anaplan Toolkit",
   "short_name": "Anaplan Toolkit",
   "description": "Analyze the structure of an Anaplan model: actions, usages, modules, filters, and saved views. Not affiliated with Anaplan, Inc.",
-  "version": "2.4.0",
-  "version_name": "2.4.0",
+  "version": "2.5.0",
+  "version_name": "2.5.0",
   "author": "Umang Chauhan",
   "icons": {
     "16": "icon-16.png",
