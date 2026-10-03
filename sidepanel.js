@@ -38,23 +38,36 @@
       desc: 'Model name, IDs, size and structure, and which reports are loaded.' },
     { page: 'actions', tab: 'Actions', group: 'Actions', sub: 'IDs', title: 'Actions & File IDs',
       desc: 'Internal IDs for Processes, Imports and Files, to help with API integrations.',
-      preview: ['All', 'Processes', 'Imports', 'Exports', 'Actions', 'Files'] },
+      preview: ['All', 'Processes', 'Imports', 'Exports', 'Actions', 'Files'],
+      heading: 'Processes', search: 'Search...', cols: ['Name', 'Identifier'] },
     { page: 'action_usages', tab: 'Usages', group: 'Actions', sub: 'Usages', title: 'Action Usages',
-      desc: 'Where your Actions are used across Apps and Pages.' },
-    { page: 'pages', tab: 'Modules', title: 'Linked Pages',
-      desc: 'Which Apps and Pages use your modules, to track lineage from backend to frontend.' },
-    { page: 'filter_items', tab: 'Filters', title: 'Page Filters & Conditional Formatting',
-      desc: 'Line Items used as filters or for conditional formatting in your App Pages.' },
-    { page: 'sv_filter_items', tab: 'SV Filters', title: 'Saved View Filters',
-      desc: 'Line Items used as filters in your Saved Views.' },
-    { page: 'sv_views', tab: 'SV List', title: 'All Saved Views',
-      desc: 'Every Saved View defined in your model, grouped by Module.' },
-    { page: 'sv_line_items', tab: 'SV Items', title: 'Line Items in Saved Views',
-      desc: 'Which Line Items are selected to display inside each Saved View.' },
-    { page: 'sv_screens', tab: 'SV Screens', title: 'Saved Views in Screens',
-      desc: 'Which Saved Views each App Page widget reads from.' },
-    { page: 'sv_actions', tab: 'SV Actions', title: 'Saved Views in Actions',
-      desc: 'Imports whose source is a Saved View. Exports and processes are not scanned.' }
+      desc: 'Where your Actions are used across Apps and Pages.',
+      heading: 'Action Dependencies', search: 'Search Line Items...', cols: ['App', 'Page', 'Widget', 'Actions'] },
+    { page: 'pages', tab: 'Modules', group: 'Pages', sub: 'Modules', title: 'Linked Pages',
+      desc: 'Which Apps and Pages use your modules, to track lineage from backend to frontend.',
+      heading: 'Module Usage in Pages', search: 'Search Modules...', cols: ['Module', 'Used in Pages'] },
+    { page: 'filter_items', tab: 'Filters', group: 'Pages', sub: 'Filters', title: 'Page Filters & Conditional Formatting',
+      desc: 'Line Items used as filters or for conditional formatting in your App Pages.',
+      preview: ['Filters', 'Conditional Formatting', 'All'],
+      heading: 'Filter Line Items', search: 'Search...', cols: ['App', 'Page', 'Widget', 'Filter Line Items'] },
+    { page: 'sv_filter_items', tab: 'SV Filters', group: 'Saved View', sub: 'Filters', title: 'Saved View Filters',
+      desc: 'Line Items used as filters in your Saved Views.',
+      heading: 'Saved Views Filter Items', search: 'Search Items...', cols: ['Module', 'Saved View', 'Item Type', 'Item'] },
+    { page: 'sv_views', tab: 'SV List', group: 'Saved View', sub: 'List', title: 'All Saved Views',
+      desc: 'Every Saved View defined in your model, grouped by Module.',
+      heading: 'Saved Views', search: 'Search by module or saved view...', cols: ['Module', 'Saved View'] },
+    { page: 'sv_line_items', tab: 'SV Items', group: 'Saved View', sub: 'Items', title: 'Line Items in Saved Views',
+      desc: 'Which Line Items are selected to display inside each Saved View.',
+      heading: 'Line Items in Saved Views', search: 'Search by module, saved view or line item...',
+      cols: ['Module', 'Saved View', 'Line Item'] },
+    { page: 'sv_screens', tab: 'SV Screens', group: 'Saved View', sub: 'Screens', title: 'Saved Views in Screens',
+      desc: 'Which Saved Views each App Page widget reads from.',
+      heading: 'Saved Views in Screens', search: 'Search by app, page, widget or saved view...',
+      cols: ['App', 'Page', 'Widget', 'Saved View'] },
+    { page: 'sv_actions', tab: 'SV Actions', group: 'Saved View', sub: 'Actions', title: 'Saved Views in Actions',
+      desc: 'Imports whose source is a Saved View. Exports and processes are not scanned.',
+      heading: 'Saved Views in Actions', search: 'Search by import, module or saved view...',
+      cols: ['Import', 'Module', 'Saved View'] }
   ];
 
   var bar = document.getElementById('tabs'),
@@ -67,6 +80,10 @@
       emptyLoad = document.getElementById('empty-load'),
       emptyNote = document.getElementById('empty-note'),
       emptyPreview = document.getElementById('empty-preview'),
+      skPlaceholder = document.getElementById('sk-placeholder'),
+      skHeading = document.getElementById('sk-heading'),
+      skHead = document.getElementById('sk-head'),
+      skRows = document.getElementById('sk-rows'),
       progress = document.getElementById('progress'),
       progressHead = document.getElementById('progress-head'),
       stepList = document.getElementById('steps');
@@ -75,9 +92,10 @@
   var state = {}, byPage = {}, active = VIEWS[0].page, hasTab = true;
 
   /* Views sharing a `group` get one button in the top bar plus a second row
-     of sub-tabs (Actions: IDs | Usages). Each is still its own page, gather
-     and iframe - only the navigation is merged. `last` remembers which
-     member the group button returns to. */
+     of sub-tabs (Actions: IDs | Usages; Pages: Modules | Filters;
+     Saved View: Filters | List | Items | Screens | Actions). Each is still
+     its own page, gather and iframe - only the navigation is merged. `last`
+     remembers which member the group button returns to. */
   var groups = {};
 
   function tabButton(label, title, onClick) {
@@ -192,22 +210,50 @@
     });
   }
 
-  /* A view whose layout isn't obvious from its description shows a static
-     sketch of it on the Get data screen - for IDs, the category bar the
-     compiled view only draws once data arrives - so it is clear what Get data
-     will produce before committing to a gather. Not interactive. */
+  /* Before Get data, the view shows a static sketch of itself - its own tab
+     bar (VIEWS[].preview, which the compiled views only draw once data
+     arrives), the Export and search row, its heading and the table's real
+     column headers over a few placeholder rows - so it is clear what Get data
+     will produce before committing to a gather. Not interactive. The headings,
+     placeholders and columns are copied from the renderers; keep them in step. */
+  var SK_ROWS = 7, SK_WIDTHS = [72, 55, 84, 46, 64, 78, 50, 68, 40, 88];
+
   function paintPreview(v) {
-    var want = (v.preview || []).join('|');
-    emptyPreview.hidden = !want;
-    if (emptyPreview.dataset.for === want) return;
-    emptyPreview.dataset.for = want;
+    if (emptyPreview.dataset.for === v.page) return;
+    emptyPreview.dataset.for = v.page;
+
     emptyPreview.textContent = '';
+    emptyPreview.hidden = !v.preview;
     (v.preview || []).forEach(function (label, ix) {
       var c = document.createElement('span');
       c.className = 'chip' + (ix === 0 ? ' on' : '');
       c.textContent = label;
       emptyPreview.appendChild(c);
     });
+
+    var cols = v.cols || [],
+        grid = 'repeat(' + Math.max(cols.length, 1) + ', minmax(0, 1fr))';
+    skPlaceholder.textContent = v.search || 'Search...';
+    skHeading.textContent = v.heading || v.title;
+    skHead.style.gridTemplateColumns = grid;
+    skHead.textContent = '';
+    cols.forEach(function (label) {
+      var h = document.createElement('span');
+      h.textContent = label;
+      skHead.appendChild(h);
+    });
+    skRows.textContent = '';
+    for (var r = 0; r < SK_ROWS; r++) {
+      var row = document.createElement('div');
+      row.className = 'sk-row';
+      row.style.gridTemplateColumns = grid;
+      cols.forEach(function (_, c) {
+        var bar = document.createElement('i');
+        bar.style.width = SK_WIDTHS[(r * 3 + c * 7) % SK_WIDTHS.length] + '%';
+        row.appendChild(bar);
+      });
+      skRows.appendChild(row);
+    }
   }
 
   function render() {

@@ -16,7 +16,7 @@ body {
   background: var(--background);
 }
 
-/* Second row for a grouped tab (Actions: IDs | Usages). */
+/* Second row for a grouped tab (Actions, Pages, Saved View). */
 #subtabs {
   flex: none; display: flex; gap: .125rem; padding: .25rem .5rem;
   border-bottom: 1px solid var(--border); background: var(--background);
@@ -82,35 +82,79 @@ body {
 #views iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 #views iframe[hidden] { display: none; }
 
+/* Before Get data: a static sketch of the view as it will look - its tab bar,
+   the logo + Export row, the search box, the heading and the table's real
+   column headers - with placeholder rows and the Get data call to action in
+   place of the list. Sizes mirror the compiled views (p-4, h-8, text-sm). */
 #empty {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: .5rem;
-  padding: 1.5rem 1.25rem; text-align: center;
+  position: absolute; inset: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1rem; padding: 1rem;
 }
 #empty[hidden] { display: none; }
-#empty h1 { margin: 0; font-size: .9375rem; font-weight: 600; }
-/* Static sketch of the view's own tab bar (VIEWS[].preview in sidepanel.js),
-   shaped like the compiled view's segmented control. */
+
 #empty-preview {
-  display: flex; flex-wrap: wrap; justify-content: center; gap: .125rem;
-  margin-bottom: .75rem; padding: .1875rem; max-width: 100%;
+  display: flex; align-self: flex-start; gap: .125rem; max-width: 100%;
+  padding: .1875rem; overflow: hidden;
   border-radius: calc(var(--radius) - .125rem); background: var(--muted);
   pointer-events: none; user-select: none;
 }
 #empty-preview[hidden] { display: none; }
 #empty-preview .chip {
-  padding: .25rem .625rem; border-radius: calc(var(--radius) - .25rem);
-  font-size: .75rem; font-weight: 500; color: var(--muted-foreground);
+  flex: none; padding: .25rem .625rem; border-radius: calc(var(--radius) - .25rem);
+  font-size: .8125rem; font-weight: 500; color: var(--muted-foreground);
 }
 #empty-preview .chip.on {
   color: var(--foreground); background: var(--background);
   box-shadow: 0 1px 2px rgb(0 0 0 / .08);
 }
-#empty p { margin: 0; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); max-width: 32ch; }
+
+.sk-bar, .sk-search, #sk-heading, #sk-head { user-select: none; }
+.sk-bar { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.sk-logo { display: inline-flex; align-items: center; gap: .375rem; }
+.sk-logo b {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; border-radius: .3rem;
+  background: #E60012; color: #fff; font-size: .6875rem; font-weight: 700;
+}
+.sk-logo > span { display: flex; flex-direction: column; line-height: 1.1; }
+.sk-logo strong { font-size: .6875rem; font-weight: 700; }
+.sk-logo small { font-size: .5625rem; color: var(--muted-foreground); }
+.sk-export {
+  display: inline-flex; align-items: center; gap: .375rem; height: 2rem; padding: 0 .625rem;
+  border: 1px solid var(--border); border-radius: calc(var(--radius) - .125rem);
+  font-size: .875rem; font-weight: 500; opacity: .5;
+}
+.sk-search {
+  display: flex; align-items: center; gap: .5rem; height: 2rem; padding: 0 .75rem;
+  border: 1px solid var(--input, var(--border)); border-radius: calc(var(--radius) - .125rem);
+  font-size: .75rem; color: var(--muted-foreground);
+}
+#sk-heading { margin: 0; font-size: 1.125rem; font-weight: 600; }
+
+.sk-card { position: relative; border: 1px solid var(--border); border-radius: calc(var(--radius) - .125rem); }
+.sk-row { display: grid; gap: .5rem; padding: .375rem .5rem; align-items: center; }
+#sk-head { padding: .75rem .5rem; border-bottom: 1px solid var(--border); }
+#sk-head span { font-size: .875rem; font-weight: 600; }
+#sk-rows .sk-row + .sk-row { border-top: 1px solid var(--border); }
+#sk-rows i {
+  display: block; height: .5rem; margin: .5rem 0; border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted-foreground) 18%, transparent);
+}
+
+/* The call to action sits over the placeholder rows, which fade out under it. */
+#empty-cta {
+  position: absolute; inset: 0; top: 2.75rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: .5rem; padding: 1rem; text-align: center;
+  background: radial-gradient(closest-side, var(--background) 55%, color-mix(in srgb, var(--background) 40%, transparent));
+  border-radius: 0 0 calc(var(--radius) - .125rem) calc(var(--radius) - .125rem);
+}
+#empty h1 { margin: 0; font-size: .9375rem; font-weight: 600; }
+#empty p { margin: 0; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); max-width: 34ch; }
 #empty-note:empty { display: none; }
 #empty-note { color: var(--destructive); font-weight: 600; }
 #empty-load {
-  margin-top: .5rem; padding: .4375rem .875rem; border-radius: calc(var(--radius) - .25rem);
+  margin-top: .25rem; padding: .4375rem .875rem; border-radius: calc(var(--radius) - .25rem);
   font: inherit; font-size: .75rem; font-weight: 500;
   color: var(--primary-foreground); background: var(--primary);
   border: 0; cursor: pointer; transition: opacity .15s;

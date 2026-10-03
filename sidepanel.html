@@ -19,14 +19,31 @@
                 <svg class="stop" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
             </button>
         </header>
-        <nav id="subtabs" role="tablist" aria-label="Actions views" hidden></nav>
+        <nav id="subtabs" role="tablist" aria-label="Grouped views" hidden></nav>
         <main id="views">
             <section id="empty" hidden>
+                <!-- Static sketch of the view's own layout, so it is clear what
+                     Get data will produce. Filled per view by paintPreview(). -->
                 <div id="empty-preview" aria-hidden="true" hidden></div>
-                <h1 id="empty-title"></h1>
-                <p id="empty-desc"></p>
-                <button id="empty-load" type="button"></button>
-                <p id="empty-note"></p>
+                <div class="sk-bar" aria-hidden="true">
+                    <span class="sk-logo"><b>AA</b><span><strong>Advanced</strong><small>Anaplan Tool</small></span></span>
+                    <span class="sk-export"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>Export to CSV</span>
+                </div>
+                <div class="sk-search" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                    <span id="sk-placeholder"></span>
+                </div>
+                <h2 id="sk-heading" aria-hidden="true"></h2>
+                <div class="sk-card">
+                    <div id="sk-head" class="sk-row" aria-hidden="true"></div>
+                    <div id="sk-rows" aria-hidden="true"></div>
+                    <div id="empty-cta">
+                        <h1 id="empty-title"></h1>
+                        <p id="empty-desc"></p>
+                        <button id="empty-load" type="button"></button>
+                        <p id="empty-note"></p>
+                    </div>
+                </div>
             </section>
             <section id="progress" hidden>
                 <p id="progress-head"></p>
