@@ -40,6 +40,14 @@ its definition's `objectId` names the saved view it reads. Only data sources
 from the model you have open are resolved, so an import reading a view in
 *another* model cannot be named and is not listed. Both caveats are also shown on the page itself.
 
+## Screenshots
+
+| Summary | Actions & File IDs |
+|---|---|
+| ![Model Summary: IDs, size, structure counts and which reports are loaded](screenshots/summary.png) | ![Actions & File IDs view, before gathering](screenshots/actions-ids.png) |
+| **Page Filters & Conditional Formatting** | **All Saved Views** |
+| ![Page Filters & Conditional Formatting view, before gathering](screenshots/pages-filters.png) | ![All Saved Views view, before gathering](screenshots/saved-views-list.png) |
+
 ## Install
 
 **Chrome / Edge / other Chromium browsers**
