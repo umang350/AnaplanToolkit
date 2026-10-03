@@ -84,8 +84,8 @@ content-scripts/
 
 **Why three content scripts.** Anaplan's model metadata lives in page JS (`anaplan.data.
 ModelContentCache._modelInfo`), reachable only from the MAIN world. `main.js` reads it and answers
-`REQUEST_ANAPLAN_DATA` over `window.postMessage`; `inner.js` (`P()`) asks and re-pings on a
-1.5s/5s/15s schedule before failing at 45s, because `main.js`'s listener may not be registered when
+`REQUEST_ANAPLAN_DATA` over `window.postMessage`; `inner.js` (`P()`) asks and re-pings every
+1s before failing at 45s (8s for Summary, which the panel retries itself), because `main.js`'s listener may not be registered when
 `inner.js` first asks. `main.js` **always** replies — an error payload rather than silence — since a
 missing reply used to hang the spinner forever. `outer.js` runs on a different Anaplan URL
 (`modeling-ui`) than the other two (`framework.jsp`) and only relays keyboard shortcuts.

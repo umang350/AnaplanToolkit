@@ -11,6 +11,11 @@
  * and decorates the tab triggers once they exist. The tab bar is only rendered
  * after data arrives, so a MutationObserver re-applies the badges whenever the
  * DOM changes. Counts are totals; the search box filters the list, not these.
+ *
+ * The same pass moves "All" to the front of the bar and opens it the first
+ * time the bar appears (the compiled view puts it last and opens Processes).
+ * It is moved with CSS `order` rather than in the DOM, since Svelte keeps its
+ * own references to those nodes.
  */
 
 var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
@@ -26,7 +31,21 @@ function tabKey(el) {
   return clone.textContent.trim().toLowerCase();
 }
 
+var allOpened = false;
+
+function allFirst() {
+  document.querySelectorAll('[role="tab"]').forEach(function (tab) {
+    if (tabKey(tab) !== 'all') return;
+    if (tab.style.order !== '-1') tab.style.order = '-1';
+    if (!allOpened) {
+      allOpened = true;
+      tab.click();
+    }
+  });
+}
+
 function apply() {
+  allFirst();
   if (!counts) return;
   document.querySelectorAll('[role="tab"]').forEach(function (tab) {
     var key = tabKey(tab);

@@ -11,6 +11,7 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
+    QUIET_SIGN=5e3,       // ...or this long for Summary, which the panel retries itself
     STALL=24e4;           // ...and this long between progress ticks once it is under way
 
 // Results are cached per page *and* per model, so switching model never shows stale data.
@@ -253,7 +254,8 @@ async function handle(msg,sender){
     // orphans the script in frames that were already open, and only a page
     // reload re-injects it. Say that, rather than sending them tab-hunting.
     if(gone){let m=`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`;if(quiet)return setBusy(msg.page,!1),{error:m};throw setBusy(msg.page,!1),Error(m)}
-    return armWait(msg.page,FIRST_SIGN,`The Anaplan tab did not respond. Reload the Anaplan model tab, then try again.`),{ok:!0}
+    // Summary is retried by the panel, so a miss should come back fast.
+    return armWait(msg.page,quiet?QUIET_SIGN:FIRST_SIGN,`The Anaplan tab did not respond. Reload the Anaplan model tab, then try again.`),{ok:!0}
   }
 
   // --- from the content script ---

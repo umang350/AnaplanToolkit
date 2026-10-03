@@ -35,9 +35,9 @@
   var VIEWS = [
     { page: 'summary', tab: 'Summary', title: 'Model Summary',
       desc: 'Model name, IDs, size and structure, and which reports are loaded.' },
-    { page: 'actions', tab: 'Actions', title: 'Actions & File IDs',
+    { page: 'actions', tab: 'Actions', group: 'Actions', sub: 'IDs', title: 'Actions & File IDs',
       desc: 'Internal IDs for Processes, Imports and Files, to help with API integrations.' },
-    { page: 'action_usages', tab: 'Usages', title: 'Action Usages',
+    { page: 'action_usages', tab: 'Usages', group: 'Actions', sub: 'Usages', title: 'Action Usages',
       desc: 'Where your Actions are used across Apps and Pages.' },
     { page: 'pages', tab: 'Modules', title: 'Linked Pages',
       desc: 'Which Apps and Pages use your modules, to track lineage from backend to frontend.' },
@@ -56,6 +56,7 @@
   ];
 
   var bar = document.getElementById('tabs'),
+      subBar = document.getElementById('subtabs'),
       refreshBtn = document.getElementById('refresh'),
       views = document.getElementById('views'),
       empty = document.getElementById('empty'),
@@ -70,21 +71,48 @@
   // page -> {ts, busy, frame, loaded, served, note, steps, seq}
   var state = {}, byPage = {}, active = VIEWS[0].page, hasTab = true;
 
+  /* Views sharing a `group` get one button in the top bar plus a second row
+     of sub-tabs (Actions: IDs | Usages). Each is still its own page, gather
+     and iframe - only the navigation is merged. `last` remembers which
+     member the group button returns to. */
+  var groups = {};
+
+  function tabButton(label, title, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.title = title;
+    b.innerHTML = '<span class="dot"></span>';
+    b.appendChild(document.createTextNode(label));
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
   VIEWS.forEach(function (v) {
     byPage[v.page] = v;
     state[v.page] = { ts: 0, busy: false, frame: null, loaded: false, served: 0,
                       note: '', steps: [], seq: 0 };
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.setAttribute('role', 'tab');
-    b.dataset.page = v.page;
-    b.title = v.title;
-    b.innerHTML = '<span class="dot"></span>';
-    b.appendChild(document.createTextNode(v.tab));
-    b.addEventListener('click', function () { select(v.page); });
-    bar.appendChild(b);
-    v.btn = b;
+    if (!v.group) {
+      v.btn = tabButton(v.tab, v.title, function () { select(v.page); });
+      bar.appendChild(v.btn);
+      return;
+    }
+    var g = groups[v.group];
+    if (!g) {
+      g = groups[v.group] = { members: [], last: v.page };
+      g.btn = tabButton(v.group, v.group, function () { select(g.last); });
+      bar.appendChild(g.btn);
+    }
+    g.members.push(v);
+    v.sbtn = tabButton(v.sub, v.title, function () { select(v.page); });
+    subBar.appendChild(v.sbtn);
   });
+
+  function paintTab(b, selected, pages) {
+    b.setAttribute('aria-selected', selected ? 'true' : 'false');
+    b.dataset.has = pages.every(function (p) { return state[p].ts; }) ? '1' : '0';
+    b.dataset.busy = pages.some(function (p) { return state[p].busy; }) ? '1' : '0';
+  }
 
   function ago(ts) {
     var s = Math.max(0, Math.round((Date.now() - ts) / 1000));
@@ -97,6 +125,7 @@
   function select(page) {
     if (!byPage[page]) return;
     active = page;
+    if (byPage[page].group) groups[byPage[page].group].last = page;
     render();
   }
 
@@ -165,11 +194,15 @@
 
     VIEWS.forEach(function (x) {
       var s = state[x.page];
-      x.btn.setAttribute('aria-selected', x.page === active ? 'true' : 'false');
-      x.btn.dataset.has = s.ts ? '1' : '0';
-      x.btn.dataset.busy = s.busy ? '1' : '0';
+      paintTab(x.sbtn || x.btn, x.page === active, [x.page]);
       if (s.frame) s.frame.hidden = x.page !== active;
     });
+    Object.keys(groups).forEach(function (name) {
+      var g = groups[name];
+      paintTab(g.btn, v.group === name, g.members.map(function (x) { return x.page; }));
+      g.members.forEach(function (x) { x.sbtn.hidden = v.group !== name; });
+    });
+    subBar.hidden = !v.group;
 
     // The iframe exists as soon as there is data, or a gather is under way -
     // the result page renders its own loading and error states.
@@ -199,9 +232,12 @@
   /* Summary auto-runs on open, which is often while the model is still
      loading: the report engine isn't in the frame yet, or the model cache
      isn't built. Rather than show an error, keep retrying quietly until the
-     model is ready (or SUMMARY_WAIT runs out), telling the page meanwhile. */
-  var SUMMARY_WAIT = 5 * 60e3, SUMMARY_RETRY = 3e3,
-      summary = { deadline: 0, timer: 0, status: null };
+     model is ready (or SUMMARY_WAIT runs out), telling the page meanwhile.
+     After SUMMARY_QUIET the real reason is shown alongside: a tab whose
+     content script was orphaned by an extension reload never finishes
+     "loading", and used to sit on the waiting line for the full five minutes. */
+  var SUMMARY_WAIT = 5 * 60e3, SUMMARY_RETRY = 2e3, SUMMARY_QUIET = 15e3,
+      summary = { deadline: 0, since: 0, timer: 0, status: null };
 
   function tellSummary() {
     var f = state.summary.frame;
@@ -217,7 +253,8 @@
   function startSummary() {
     clearTimeout(summary.timer);
     summary.timer = 0;
-    summary.deadline = Date.now() + SUMMARY_WAIT;
+    summary.since = Date.now();
+    summary.deadline = summary.since + SUMMARY_WAIT;
     summaryStatus(null);
     start('summary', true);
   }
@@ -240,7 +277,9 @@
       st.busy = false;
       st.steps = [];
       if (summary.deadline && Date.now() < summary.deadline) {
-        summaryStatus({ text: 'Waiting for the model to finish loading…' });
+        summaryStatus({ text: message && Date.now() - summary.since > SUMMARY_QUIET
+          ? 'Still waiting for the model. ' + message
+          : 'Waiting for the model to finish loading…' });
         clearTimeout(summary.timer);
         summary.timer = setTimeout(function () {
           summary.timer = 0;
