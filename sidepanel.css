@@ -53,7 +53,19 @@ body {
 }
 #refresh:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
 #refresh:disabled { opacity: .5; cursor: default; }
-#refresh[data-busy="1"] svg { animation: ia-spin .8s linear infinite; }
+/* While the open view is gathering, the button is a Stop button: a square
+   inside a spinning ring, so it still reads as "working". */
+#refresh { position: relative; }
+#refresh .stop { display: none; }
+#refresh[data-busy="1"] .spin { display: none; }
+#refresh[data-busy="1"] .stop { display: block; }
+#refresh[data-busy="1"] { color: var(--foreground); }
+#refresh[data-busy="1"]::after {
+  content: ''; position: absolute; inset: 3px; border-radius: 9999px;
+  border: 1.5px solid transparent; border-top-color: currentColor; border-right-color: currentColor;
+  animation: ia-spin .8s linear infinite;
+}
+#refresh[data-busy="1"]:hover { color: #dc2626; }
 
 @keyframes ia-spin { to { transform: rotate(360deg); } }
 

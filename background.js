@@ -26,6 +26,7 @@ var store=api.storage?.session||api.storage?.local,
     waits=new Map(),      // page -> watchdog for a run that never reports back
     seqN=0,               // monotonic, so the panel can drop an out-of-order push
     pendingSelect=null,   // view to select when the panel finishes loading
+    stopped=new Set(),    // pages whose run was stopped - late results/progress are dropped
     sawShell=!1;          // the shell has talked to us, so a failed open() is harmless
 
 // Item count of a cached report: an array's length, or for an object of
@@ -152,9 +153,18 @@ function armWait(page,ms,why){
   waits.set(page,setTimeout(()=>{
     waits.delete(page);
     if(!busy.has(page))return;
-    setBusy(page,!1),
-    push({type:`error`,message:why})
+    failPage(page,why)
   },ms))
+}
+
+// Summary runs unattended (on panel open, retried while the model loads), so
+// its failures go to the panel alone as ia_page_error. A plain `error` is
+// broadcast to every view, and a report already on screen would swap its
+// results for an error page each time a retry missed.
+var QUIET=new Set([`summary`]);
+function failPage(page,message){
+  setBusy(page,!1),
+  push(QUIET.has(page)?{type:`ia_page_error`,page,message}:{type:`error`,message},page)
 }
 function clearWait(page){let id=waits.get(page);id&&clearTimeout(id),waits.delete(page)}
 
@@ -163,6 +173,7 @@ function clearWait(page){let id=waits.get(page);id&&clearTimeout(id),waits.delet
 // spinner up with nothing able to clear it. STALL sits above the content
 // script's own request ceiling (90s, one retry) so only a dead run trips it.
 function progAdd(page,m){
+  if(!busy.has(page))return;   // a stopped run still ticking until its request aborts
   armWait(page,STALL,`The gather stopped responding. Reload the Anaplan model tab, then try again.`);
   let ls=prog.get(page)||[],cur=ls[ls.length-1];
   cur&&cur.step===m.step
@@ -208,11 +219,25 @@ async function handle(msg,sender){
     return push({type:`${msg.page}_data`,data:hit.data,ts:hit.ts,cached:!0},msg.page),{hit:!0,ts:hit.ts}
   }
 
+  // Stop button: end every gather under way. The worker clears the busy state
+  // itself rather than waiting on the content script, so the panel frees up
+  // even if the tab never answers; whatever the stopped runs send later is dropped.
+  if(msg.type===`ia_cancel`){
+    sawShell=!0;
+    let was=[...busy];
+    for(let p of was)stopped.add(p),setBusy(p,!1);
+    let tab=await anaplanTab();
+    tab!=null&&await api.tabs.sendMessage(tab,{type:`ia_cancel`}).catch(()=>{});
+    return{stopped:was}
+  }
+
   // "Get data" / refresh icon. ia_load uses the cache, ia_refresh bypasses it.
   if(msg.type===`ia_load`||msg.type===`ia_refresh`){
     sawShell=!0;
-    let tab=await anaplanTab();
-    if(tab==null)throw Error(`Open an Anaplan model tab, then try again.`);
+    stopped.delete(msg.page);
+    let quiet=QUIET.has(msg.page),
+        tab=await anaplanTab();
+    if(tab==null){let m=`Open an Anaplan model tab, then try again.`;if(quiet)return{error:m};throw Error(m)}
     setBusy(msg.page,!0);
     let trigger={type:`trigger_${msg.page}`,force:msg.type===`ia_refresh`},
         gone=await deliver(tab,trigger);
@@ -227,7 +252,7 @@ async function handle(msg,sender){
     // The tab is right but the report engine is not in it: an extension reload
     // orphans the script in frames that were already open, and only a page
     // reload re-injects it. Say that, rather than sending them tab-hunting.
-    if(gone)throw setBusy(msg.page,!1),Error(`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`);
+    if(gone){let m=`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`;if(quiet)return setBusy(msg.page,!1),{error:m};throw setBusy(msg.page,!1),Error(m)}
     return armWait(msg.page,FIRST_SIGN,`The Anaplan tab did not respond. Reload the Anaplan model tab, then try again.`),{ok:!0}
   }
 
@@ -238,8 +263,12 @@ async function handle(msg,sender){
 
   // A keyboard shortcut started a run: show the panel on that view right away.
   if(PAGES.includes(msg.type)){
+    // Summary's runs are started by the panel itself (and retried while the
+    // model loads) - selecting it each time would yank the user back to it.
+    if(QUIET.has(msg.type))return void(busy.has(msg.type)||setBusy(msg.type,!0));
     route={tabId:tabId??route?.tabId,windowId:sender?.tab?.windowId??route?.windowId};
     pendingSelect=msg.type;
+    stopped.delete(msg.type);
     setBusy(msg.type,!0);
     await openPanel(sender);
     return void push({type:`ia_select`,page:msg.type})
@@ -256,9 +285,16 @@ async function handle(msg,sender){
   // Freshly gathered results.
   if(DATA.includes(msg.type)){
     let page=msg.type.slice(0,-5);
+    if(stopped.has(page))return;
     tabId!=null&&keyByTab.set(tabId,msg.key||``),rememberKey(msg.key||``);
     let hit=await cacheSet(page,msg.key,msg.data);
     return setBusy(page,!1),void push({type:`ia_state`,page,ts:hit.ts},page)
+  }
+
+  // A quiet page's own failure, reported by the content script.
+  if(msg.type===`ia_page_error`){
+    if(msg.page&&!stopped.has(msg.page)&&busy.has(msg.page))failPage(msg.page,msg.message);
+    return
   }
 
   if(msg.type===`error`){

@@ -17,11 +17,13 @@
  *   -> ia_refresh {page}                re-gather, bypassing the cache
  *   -> ia_serve   {page}                <- {hit,ts}; pushes <page>_data at the iframe
  *   -> ia_overview {}                   <- {pages:{page:{ts,busy,size}}} (sent by summary.html)
+ *   -> ia_cancel  {}                    stop every gather under way (the Stop button)
  *   <- ia_select  {page}                a keyboard shortcut picked a view
  *   <- ia_state   {page, ts}            data is cached as of ts
  *   <- ia_busy    {page, busy, seq}     gathering started / finished
  *   <- ia_progress{page, steps, seq}    live overview of the steps being executed
  *   <- error      {message}
+ *   <- ia_page_error {page, message}    a Summary failure, for the panel only (see QUIET in background.js)
  *
  * The worker never pushes data unsolicited: runtime.sendMessage resolves as soon
  * as *any* extension page listens, so a push sent before the iframe exists would
@@ -104,7 +106,11 @@
     var f = document.createElement('iframe');
     f.title = byPage[page].title;
     f.hidden = page !== active;
-    f.addEventListener('load', function () { st.loaded = true; maybeServe(page); });
+    f.addEventListener('load', function () {
+      st.loaded = true;
+      maybeServe(page);
+      if (page === 'summary') tellSummary();
+    });
     f.src = '/' + page + '.html';
     views.appendChild(f);
     st.frame = f;
@@ -123,8 +129,10 @@
   // The worker hands us the whole step list every time, so this is a plain redraw.
   function paintProgress() {
     var st = state[active];
-    progress.hidden = !st.busy;
-    if (!st.busy) return;
+    // Summary is near-instant and shows its own status line; the overlay would
+    // only sit on top of it.
+    progress.hidden = !st.busy || active === 'summary';
+    if (progress.hidden) return;
     progress.classList.toggle('compact', !!st.ts);
     progressHead.textContent = (st.ts ? 'Refreshing ' : 'Gathering ') + byPage[active].title;
 
@@ -165,13 +173,16 @@
 
     // The iframe exists as soon as there is data, or a gather is under way -
     // the result page renders its own loading and error states.
-    if (st.ts || st.busy) ensureFrame(active);
+    if (st.ts || st.busy || active === 'summary') ensureFrame(active);
 
+    // While this view gathers, the refresh button becomes Stop (all gathers).
+    var running = VIEWS.filter(function (x) { return state[x.page].busy; }).length;
     refreshBtn.hidden = !st.frame;
-    refreshBtn.disabled = !!st.busy;
+    refreshBtn.disabled = false;
     refreshBtn.dataset.busy = st.busy ? '1' : '0';
-    refreshBtn.title = st.busy ? 'Gathering…'
+    refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : 'Stop')
       : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
+    refreshBtn.setAttribute('aria-label', st.busy ? 'Stop' : 'Refresh');
 
     empty.hidden = !!st.frame;
     if (!st.frame) {
@@ -183,6 +194,32 @@
     }
     paintProgress();
     maybeServe(active);
+  }
+
+  /* Summary auto-runs on open, which is often while the model is still
+     loading: the report engine isn't in the frame yet, or the model cache
+     isn't built. Rather than show an error, keep retrying quietly until the
+     model is ready (or SUMMARY_WAIT runs out), telling the page meanwhile. */
+  var SUMMARY_WAIT = 5 * 60e3, SUMMARY_RETRY = 3e3,
+      summary = { deadline: 0, timer: 0, status: null };
+
+  function tellSummary() {
+    var f = state.summary.frame;
+    if (f && state.summary.loaded && f.contentWindow)
+      f.contentWindow.postMessage({ type: 'ia_summary_status', status: summary.status }, location.origin);
+  }
+
+  function summaryStatus(status) {
+    summary.status = status;
+    tellSummary();
+  }
+
+  function startSummary() {
+    clearTimeout(summary.timer);
+    summary.timer = 0;
+    summary.deadline = Date.now() + SUMMARY_WAIT;
+    summaryStatus(null);
+    start('summary', true);
   }
 
   function start(page, force) {
@@ -199,6 +236,22 @@
 
   function fail(page, message) {
     var st = state[page];
+    if (page === 'summary') {
+      st.busy = false;
+      st.steps = [];
+      if (summary.deadline && Date.now() < summary.deadline) {
+        summaryStatus({ text: 'Waiting for the model to finish loading…' });
+        clearTimeout(summary.timer);
+        summary.timer = setTimeout(function () {
+          summary.timer = 0;
+          start('summary', true);
+        }, SUMMARY_RETRY);
+      } else {
+        summaryStatus({ text: message || 'Something went wrong.', error: true });
+      }
+      render();
+      return;
+    }
     st.busy = false;
     st.steps = [];
     st.note = message || 'Something went wrong.';
@@ -214,7 +267,23 @@
   }
 
   emptyLoad.addEventListener('click', function () { start(active, false); });
-  refreshBtn.addEventListener('click', function () { start(active, true); });
+  refreshBtn.addEventListener('click', function () {
+    if (state[active].busy) stop();
+    else if (active === 'summary') startSummary();
+    else start(active, true);
+  });
+
+  // Stop every gather. The worker clears busy for all of them and drops their
+  // late results; a view that had no data yet falls back to its Get data
+  // screen (fail() removes the iframe still showing its loader).
+  function stop() {
+    clearTimeout(summary.timer);
+    summary.timer = 0;
+    summary.deadline = 0;
+    var was = VIEWS.filter(function (x) { return state[x.page].busy; });
+    api.runtime.sendMessage({ type: 'ia_cancel' }).catch(function () {});
+    was.forEach(function (x) { fail(x.page, 'Stopped.'); });
+  }
 
   // Pushes for one page are latest-wins, so ignore anything that arrives late.
   function fresh(page, seq) {
@@ -227,7 +296,9 @@
   api.runtime.onMessage.addListener(function (msg) {
     if (!msg || !msg.type) return;
     if (msg.type === 'ia_select') { select(msg.page); return; }
+    if (msg.type === 'ia_page_error' && state[msg.page]) { fail(msg.page, msg.message); return; }
     if (msg.type === 'ia_state' && state[msg.page]) {
+      if (msg.page === 'summary') { clearTimeout(summary.timer); summary.timer = 0; summary.deadline = 0; summaryStatus(null); }
       state[msg.page].ts = msg.ts || 0;
       state[msg.page].note = '';
       if (state[msg.page].ts) maybeServe(msg.page);
@@ -248,7 +319,7 @@
       return;
     }
     if (msg.type === 'error') {
-      VIEWS.forEach(function (v) { if (state[v.page].busy) fail(v.page, msg.message); });
+      VIEWS.forEach(function (v) { if (v.page !== 'summary' && state[v.page].busy) fail(v.page, msg.message); });
     }
   });
 
@@ -267,7 +338,7 @@
     render();
     // Summary is instant (no Anaplan calls), so gather it on open rather than
     // making the first thing anyone sees a "Get data" button.
-    if (hasTab) start('summary', true);
+    startSummary();
   }, function () { render(); });
 
   render();

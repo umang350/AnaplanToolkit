@@ -46,7 +46,7 @@ var STRUCTURE = [
 ];
 
 var mount = document.getElementById('app'),
-    model = null, error = '', overview = null, asking = false, again = false;
+    model = null, status = null, overview = null, asking = false, again = false;
 
 /* --- formatting ----------------------------------------------------------- */
 
@@ -134,14 +134,13 @@ function section(title) {
 
 function modelCard() {
   var s = section('Model');
-  if (error) {
-    s.appendChild(el('p', 'ia-note ia-error', error));
-    return s;
-  }
   if (!model) {
-    s.appendChild(el('p', 'ia-note', 'Reading model…'));
+    s.appendChild(el('p', 'ia-note' + (status && status.error ? ' ia-error' : ''),
+      status ? status.text : 'Reading model…'));
     return s;
   }
+  // A refresh that failed after an earlier success: keep the old facts.
+  if (status && status.error) s.appendChild(el('p', 'ia-note ia-error', status.text));
   s.appendChild(el('p', 'ia-title', model.modelName || 'Unnamed model'));
   if (model.workspaceName) s.appendChild(el('p', 'ia-sub', model.workspaceName));
 
@@ -228,11 +227,18 @@ function askOverview() {
 try {
   api.runtime.onMessage.addListener(function (msg) {
     if (!msg || !msg.type) return;
-    if (msg.type === 'summary_data') { model = msg.data || {}; error = ''; render(); askOverview(); }
-    else if (msg.type === 'error' && !model) { error = msg.message; render(); }
+    if (msg.type === 'summary_data') { model = msg.data || {}; status = null; render(); askOverview(); }
     else if (msg.type === 'ia_state' || msg.type === 'ia_busy') askOverview();
   });
 } catch (e) { /* not in an extension page */ }
+
+/* Load status comes from the panel shell, not from `error` broadcasts: the
+   panel retries Summary while the model is still loading, and only it knows
+   whether a failure is final (see startSummary() in sidepanel.js). */
+window.addEventListener('message', function (e) {
+  if (e.source !== window.parent || e.origin !== location.origin) return;
+  if (e.data && e.data.type === 'ia_summary_status') { status = e.data.status || null; render(); }
+});
 
 render();
 askOverview();
