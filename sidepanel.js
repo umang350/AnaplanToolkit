@@ -16,6 +16,7 @@
  *   -> ia_load    {page}                start gathering (uses the cache if fresh)
  *   -> ia_refresh {page}                re-gather, bypassing the cache
  *   -> ia_serve   {page}                <- {hit,ts}; pushes <page>_data at the iframe
+ *   -> ia_overview {}                   <- {pages:{page:{ts,busy,size}}} (sent by summary.html)
  *   <- ia_select  {page}                a keyboard shortcut picked a view
  *   <- ia_state   {page, ts}            data is cached as of ts
  *   <- ia_busy    {page, busy, seq}     gathering started / finished
@@ -30,6 +31,8 @@
   var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
   var VIEWS = [
+    { page: 'summary', tab: 'Summary', title: 'Model Summary',
+      desc: 'Model name, IDs, size and structure, and which reports are loaded.' },
     { page: 'actions', tab: 'Actions', title: 'Actions & File IDs',
       desc: 'Internal IDs for Processes, Imports and Files, to help with API integrations.' },
     { page: 'action_usages', tab: 'Usages', title: 'Action Usages',
@@ -262,6 +265,9 @@
     if (r && typeof r.tab === 'boolean') hasTab = r.tab;
     if (r && r.select && byPage[r.select]) active = r.select;
     render();
+    // Summary is instant (no Anaplan calls), so gather it on open rather than
+    // making the first thing anyone sees a "Get data" button.
+    if (hasTab) start('summary', true);
   }, function () { render(); });
 
   render();

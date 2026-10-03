@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`],
     DATA=PAGES.map(p=>`${p}_data`),
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
@@ -27,6 +27,16 @@ var store=api.storage?.session||api.storage?.local,
     seqN=0,               // monotonic, so the panel can drop an out-of-order push
     pendingSelect=null,   // view to select when the panel finishes loading
     sawShell=!1;          // the shell has talked to us, so a failed open() is harmless
+
+// Item count of a cached report: an array's length, or for an object of
+// arrays (the Actions view) the length of each.
+function sizeOf(d){
+  if(Array.isArray(d))return d.length;
+  if(!d||typeof d!=`object`)return null;
+  let o={};
+  for(let k of Object.keys(d))Array.isArray(d[k])&&(o[k]=d[k].length);
+  return o
+}
 
 function cacheId(page,key){return `ia:${page}:${key||`-`}`}
 async function cacheGet(page,key){
@@ -176,6 +186,18 @@ async function handle(msg,sender){
     }
     let select=pendingSelect;
     return pendingSelect=null,{pages,select,tab:tab!=null,key}
+  }
+
+  // Summary view: which reports are cached for this model, how big each is,
+  // and whether one is gathering right now. Sizes only - never the payloads.
+  if(msg.type===`ia_overview`){
+    let key=await modelKey(await anaplanTab()),pages={};
+    for(let p of PAGES){
+      if(p===`summary`)continue;
+      let hit=await cacheGet(p,key);
+      pages[p]={ts:hit?hit.ts:0,busy:busy.has(p),size:hit?sizeOf(hit.data):null}
+    }
+    return{pages}
   }
 
   // The iframe for this view is up: hand it the cached payload.

@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Nine read-only views, each gathered on
-demand, cached, and exportable to CSV. Proprietary internal tool — see `LICENSE.txt` and
+the structure of the Anaplan model open in the active tab. Nine read-only report views, each
+gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
 
@@ -129,12 +129,19 @@ No other server is ever contacted.
   minified single letters that would resolve to different functions if the bundle were ever
   rebuilt. Keep the two implementations in step; all nine views are expected to export and search
   identically.
+- `summary` (`chunks/summary.js`) is the tenth view and the odd one out: no CSV or search, gathered
+  automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
+  `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
+  `sidepanel.js` — keep the two in step. It and the Actions tab counts
+  (`chunks/actions_counts.js`) are styled with `ia-*` classes in `views.css`, because the compiled
+  Tailwind CSS only contains utilities the bundled views already use.
 - **`background.js`, `inner.js`, `outer.js` and `main.js` are minified vendor output with
   hand-written additions merged in.** Identifiers added by this project are prefixed `IA_`
   (`IA_pool`, `IA_step`, `IA_views`, `IA_screenViews`, …) to keep them clear of the single-letter
   minified names — follow that convention, and never reuse a bare single letter at module scope.
   The multi-line `/* … */` comments in these files explain past bugs; preserve them.
 - Adding a view means touching all of: `PAGES` in `background.js`, `VIEWS` in `sidepanel.js`, the
-  trigger map in `inner.js` (`p()`), a new `<page>.html`, a renderer, and `package.sh`.
+  trigger map in `inner.js` (`p()`), a new `<page>.html`, a renderer, `package.sh`, and `REPORTS`
+  in `chunks/summary.js`.
 - `popup.html` and `chunks/popup-*.js` are dead — the manifest has no `default_popup` and
   `package.sh` excludes them.
