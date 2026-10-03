@@ -43,10 +43,20 @@ export function stateText(s) {
   return s ? s[0].toUpperCase() + s.slice(1) : '–';
 }
 
+// "Deleted" is the state, so this says only when it goes for good.
 function purgeText(ts) {
   var d = typeof ts === 'number' ? new Date(ts) : null;
-  return d && !isNaN(d) ? 'Deleted · purged ' + d.toLocaleDateString() : 'Deleted';
+  if (!d || isNaN(d)) return '';
+  return (d > Date.now() ? 'Purged on ' : 'Purge was due ') + d.toLocaleDateString();
 }
+
+/* A deleted model keeps its row (state DELETED, with the date it is purged)
+   until then, but like an archived one it doesn't count toward storage: a
+   workspace "74.38 GB in use" held a 74.37 GB, a 4 MB and a 0.5 MB model,
+   and not its deleted 1.75 GB one. */
+export function isDeleted(r) { return r.state === 'DELETED' || r.deletes != null; }
+export function isArchived(r) { return r.state === 'ARCHIVED' && !isDeleted(r); }
+export function isActive(r) { return r.state !== 'ARCHIVED' && !isDeleted(r); }
 
 export function workspaces(d) { return (d && Array.isArray(d.workspaces)) ? d.workspaces : []; }
 export function allModels(d) { return (d && Array.isArray(d.models)) ? d.models : []; }
@@ -90,7 +100,7 @@ export function stateCell(r, span) {
   var extra = [];
   if (r.open) extra.push('Open');
   if (r.unload) extra.push('Marked for unload');
-  if (r.deletes != null) extra.push(purgeText(r.deletes));
+  if (r.deletes != null && purgeText(r.deletes)) extra.push(purgeText(r.deletes));
   if (extra.length) wrap.appendChild(el('p', 'text-xs text-muted-foreground', extra.join(' · ')));
   return wrap;
 }

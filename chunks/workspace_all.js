@@ -12,7 +12,7 @@ import { nf, bytes, stateText, workspaces, allModels, percent, meterBar,
      Workspaces  one row each: storage in use, allowance, % full, active models
      Models      every active (non-archived) model, one row each with its workspace
 
-   Archived models are left out everywhere here: they don't count toward
+   Archived and deleted models are left out everywhere here: they don't count toward
    storage, and the list that names the workspaces doesn't carry them. A
    workspace whose summary Anaplan refused (`error`) has no storage figures and
    its models come from that list without sizes; the note names it and why. */

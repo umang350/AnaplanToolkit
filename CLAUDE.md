@@ -153,7 +153,8 @@ No other server is ever contacted.
   identically.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
-  workspace's models (Active / Archived tabs) under an in-use-vs-allowance meter (`renderPage`'s `top`
+  workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state
+  `DELETED` with a purge date, until purged; like archived ones it doesn't count toward storage) under an in-use-vs-allowance meter (`renderPage`'s `top`
   option); `workspace_all` (All - `chunks/workspace_all.js`, `IA_gwsa()`) has a Workspaces tab (storage
   per workspace + totals) and a Models tab (every active model, with its workspace). They are separate
   gathers because a workspace on another server can take minutes and Current must not wait on it.

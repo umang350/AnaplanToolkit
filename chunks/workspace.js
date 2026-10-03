@@ -4,10 +4,10 @@
  */
 import { renderPage, el, textCell } from './sv_shared.js';
 import { nf, bytes, count, stateText, workspaces, allModels, percent, meterBar,
-         modelCell, stateCell, csvRow } from './workspace_shared.js';
+         modelCell, stateCell, csvRow, isActive, isArchived, isDeleted } from './workspace_shared.js';
 
 /* Workspace › Current - the models in the workspace this model is in, largest
-   first, split Active / Archived, under the workspace's storage in use against
+   first, split Active / Archived / Deleted, under the workspace's storage in use against
    its allowance. One cheap call (IA_gws in content-scripts/inner.js); the
    other workspaces are Workspace › All (chunks/workspace_all.js), gathered on
    their own because a workspace on another Anaplan server can take a while. */
@@ -22,7 +22,9 @@ function models(d) {
 function meter(w, rows) {
   var box = el('div', 'ia-ws'),
       pct = percent(w),
-      archived = rows.filter(function (m) { return m.state === 'ARCHIVED'; }).length,
+      active = rows.filter(isActive).length,
+      archived = rows.filter(isArchived).length,
+      deleted = rows.filter(isDeleted).length,
       open = rows.filter(function (m) { return m.open; }).length;
 
   var head = el('div', 'ia-ws-head');
@@ -33,7 +35,8 @@ function meter(w, rows) {
   box.appendChild(el('p', 'ia-ws-line', bytes(w.contractual) + ' of ' + bytes(w.allowance) + ' in use'));
   box.appendChild(el('p', 'ia-ws-line',
     nf.format(rows.length) + (rows.length === 1 ? ' model · ' : ' models · ') +
-    nf.format(rows.length - archived) + ' active · ' + nf.format(archived) + ' archived' +
+    nf.format(active) + ' active · ' + nf.format(archived) + ' archived' +
+    (deleted ? ' · ' + nf.format(deleted) + ' deleted' : '') +
     (open ? ' · ' + nf.format(open) + ' open' : '') + (w.engine ? ' · ' + stateText(w.engine) : '')));
   return box;
 }
@@ -77,9 +80,9 @@ renderPage({
   page: 'workspace',
   placeholder: 'Search by model, state or ID...',
   tabs: [
-    table('Active', 'Active Models', 'Active models make up the workspace storage in use.',
-          function (r) { return r.state !== 'ARCHIVED'; }),
-    table('Archived', 'Archived Models', 'Archived models do not count toward workspace storage.',
-          function (r) { return r.state === 'ARCHIVED'; })
+    table('Active', 'Active Models', 'Active models make up the workspace storage in use.', isActive),
+    table('Archived', 'Archived Models', 'Archived models do not count toward workspace storage.', isArchived),
+    table('Deleted', 'Deleted Models',
+          'Deleted models are kept until their purge date and do not count toward workspace storage.', isDeleted)
   ]
 });

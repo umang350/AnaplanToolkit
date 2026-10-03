@@ -80,7 +80,7 @@
       cols: ['Module', 'Saved View', 'Line Item'] },
     { page: 'workspace', tab: 'Workspace', group: 'Workspace', sub: 'Current', title: 'Workspace Models & Storage',
       desc: 'Every model in this workspace with its size and state, and how much of the workspace allowance is used.',
-      preview: ['Active', 'Archived'],
+      preview: ['Active', 'Archived', 'Deleted'],
       heading: 'Active Models', search: 'Search by model, state or ID...', cols: ['Model', 'State', 'Size', 'Cells'] },
     /* Gathered apart from Current: a workspace on another Anaplan server can
        take a minute or more to answer, and Current shouldn't wait on it. */
