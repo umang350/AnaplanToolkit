@@ -19,12 +19,15 @@
  *   -> ia_overview {}                   <- {pages:{page:{ts,busy,size}}} (sent by summary.html)
  *   -> ia_cancel  {}                    stop every gather under way (the Stop button)
  *   <- ia_select  {page}                a keyboard shortcut picked a view
- *   <- ia_state   {page, ts}            data is cached as of ts
+ *   <- ia_state   {page, ts, key}       data is cached as of ts, for model key
  *   <- ia_busy    {page, busy, seq}     gathering started / finished
  *   <- ia_progress{page, steps, seq}    live overview of the steps being executed
  *   <- error      {message}
  *   <- ia_page_error {page, message}    a Summary failure, for the panel only (see QUIET in background.js)
  *   <- ia_context {key}                 the model in front changed - re-sync every view
+ *
+ * Every push carries `to`, the Anaplan tab it is for, and every request carries
+ * `forTab`, the tab this panel belongs to (Chrome only - see send() below).
  *
  * The worker never pushes data unsolicited: runtime.sendMessage resolves as soon
  * as *any* extension page listens, so a push sent before the iframe exists would
@@ -50,22 +53,9 @@
       desc: 'Line Items used as filters or for conditional formatting in your App Pages.',
       preview: ['Filters', 'Conditional Formatting', 'All'],
       heading: 'Filter Line Items', search: 'Search...', cols: ['App', 'Page', 'Widget', 'Line Item', 'Condition'] },
-    /* `off`: shown but disabled. Both open every saved view, and Anaplan
-       evaluates each view's filters before answering - tens of minutes on a
-       large model. The gathers are still in inner.js; the worker refuses them
-       (OFF in background.js). */
-    { page: 'sv_filter_items', tab: 'SV Filters', group: 'Saved View', sub: 'Filters', title: 'Saved View Filters',
-      off: 'Disabled: too slow to run on large models',
-      desc: 'Line Items used as filters in your Saved Views.',
-      heading: 'Saved Views Filter Items', search: 'Search Items...', cols: ['Module', 'Saved View', 'Item Type', 'Item'] },
     { page: 'sv_views', tab: 'SV List', group: 'Saved View', sub: 'List', title: 'All Saved Views',
       desc: 'Every Saved View defined in your model, grouped by Module.',
       heading: 'Saved Views', search: 'Search by module or saved view...', cols: ['Module', 'Saved View'] },
-    { page: 'sv_line_items', tab: 'SV Items', group: 'Saved View', sub: 'Items', title: 'Line Items in Saved Views',
-      off: 'Disabled: too slow to run on large models',
-      desc: 'Which Line Items are selected to display inside each Saved View.',
-      heading: 'Line Items in Saved Views', search: 'Search by module, saved view or line item...',
-      cols: ['Module', 'Saved View', 'Line Item'] },
     { page: 'sv_screens', tab: 'SV Screens', group: 'Saved View', sub: 'Screens', title: 'Saved Views in Screens',
       desc: 'Which Saved Views each App Page widget reads from.',
       heading: 'Saved Views in Screens', search: 'Search by app, page, widget or saved view...',
@@ -73,7 +63,21 @@
     { page: 'sv_actions', tab: 'SV Actions', group: 'Saved View', sub: 'Actions', title: 'Saved Views in Actions',
       desc: 'Imports whose source is a Saved View. Exports and processes are not scanned.',
       heading: 'Saved Views in Actions', search: 'Search by import, module or saved view...',
-      cols: ['Import', 'Module', 'Saved View'] }
+      cols: ['Import', 'Module', 'Saved View'] },
+    /* `off`: shown but disabled. Both open every saved view, and Anaplan
+       evaluates each view's filters before answering - tens of minutes on a
+       large model. The gathers are still in inner.js; the worker refuses them
+       (OFF in background.js). They sit last in the group,
+       after the reports that can actually be run. */
+    { page: 'sv_filter_items', tab: 'SV Filters', group: 'Saved View', sub: 'Filters', title: 'Saved View Filters',
+      off: 'Disabled: too slow to run on large models',
+      desc: 'Line Items used as filters in your Saved Views.',
+      heading: 'Saved Views Filter Items', search: 'Search Items...', cols: ['Module', 'Saved View', 'Item Type', 'Item'] },
+    { page: 'sv_line_items', tab: 'SV Items', group: 'Saved View', sub: 'Items', title: 'Line Items in Saved Views',
+      off: 'Disabled: too slow to run on large models',
+      desc: 'Which Line Items are selected to display inside each Saved View.',
+      heading: 'Line Items in Saved Views', search: 'Search by module, saved view or line item...',
+      cols: ['Module', 'Saved View', 'Line Item'] }
   ];
 
   var bar = document.getElementById('tabs'),
@@ -96,6 +100,28 @@
 
   // page -> {ts, busy, frame, loaded, served, note, steps, seq}
   var state = {}, byPage = {}, active = VIEWS[0].page, hasTab = true;
+
+  /* On Chrome the panel belongs to one tab (panelFor in background.js): it is
+     only seen while that tab is in front, but its document lives on while
+     other tabs are. It used to follow every model change - another model's tab
+     coming to the front rebuilt this hidden panel, and coming back rebuilt it
+     again. Worse, a run failing in one tab put its error over this panel's
+     report. So the panel names its tab on every request (forTab), ignores
+     pushes addressed to another tab (to), and hands the tab to its views as
+     ?t= for chunks/view_tab.js to do the same there. Nothing is drawn until
+     the tab is known. Firefox's sidebar is per window, so there it follows
+     the window's tab and hears everything. */
+  var myTab = null, myKey = null;
+  var ready = api.sidePanel
+    ? api.tabs.query({ active: true, currentWindow: true }).then(function (t) {
+        if (t && t[0]) myTab = t[0].id;
+      }, function () {})
+    : Promise.resolve();
+
+  function send(msg) {
+    if (myTab != null) msg.forTab = myTab;
+    return api.runtime.sendMessage(msg);
+  }
 
   /* Views sharing a `group` get one button in the top bar plus a second row
      of sub-tabs (Actions: IDs | Usages; Pages: Modules | Filters;
@@ -177,7 +203,7 @@
       maybeServe(page);
       if (page === 'summary') tellSummary();
     });
-    f.src = '/' + page + '.html';
+    f.src = '/' + page + '.html' + (myTab != null ? '?t=' + myTab : '');
     views.appendChild(f);
     st.frame = f;
   }
@@ -187,7 +213,7 @@
     var st = state[page];
     if (!st.frame || !st.loaded || !st.ts || st.served === st.ts) return;
     st.served = st.ts;
-    api.runtime.sendMessage({ type: 'ia_serve', page: page }).catch(function () {
+    send({ type: 'ia_serve', page: page }).catch(function () {
       st.served = 0;
     });
   }
@@ -350,7 +376,7 @@
     st.note = '';
     st.steps = [];
     render();
-    api.runtime.sendMessage({ type: force ? 'ia_refresh' : 'ia_load', page: page })
+    send({ type: force ? 'ia_refresh' : 'ia_load', page: page })
       .then(function (r) { if (r && r.error) fail(page, r.error); },
             function (e) { fail(page, e && e.message); });
   }
@@ -404,7 +430,7 @@
     summary.timer = 0;
     summary.deadline = 0;
     var was = VIEWS.filter(function (x) { return state[x.page].busy; });
-    api.runtime.sendMessage({ type: 'ia_cancel' }).catch(function () {});
+    send({ type: 'ia_cancel' }).catch(function () {});
     was.forEach(function (x) { fail(x.page, 'Stopped.'); });
   }
 
@@ -418,9 +444,11 @@
 
   api.runtime.onMessage.addListener(function (msg) {
     if (!msg || !msg.type) return;
+    if (myTab != null && msg.to != null && msg.to !== myTab) return;
     if (msg.type === 'ia_select') { select(msg.page); return; }
     if (msg.type === 'ia_page_error' && state[msg.page]) { fail(msg.page, msg.message); return; }
     if (msg.type === 'ia_state' && state[msg.page]) {
+      if (msg.key != null && myKey != null && msg.key !== myKey) return;
       if (msg.page === 'summary') { clearTimeout(summary.timer); summary.timer = 0; summary.deadline = 0; summaryStatus(null); }
       state[msg.page].ts = msg.ts || 0;
       state[msg.page].note = '';
@@ -444,7 +472,11 @@
     if (msg.type === 'error') {
       VIEWS.forEach(function (v) { if (v.page !== 'summary' && state[v.page].busy) fail(v.page, msg.message); });
     }
-    if (msg.type === 'ia_context') switchModel();
+    if (msg.type === 'ia_context') {
+      if (msg.key === myKey) { catchUp(); return; }
+      myKey = msg.key;
+      switchModel();
+    }
   });
 
   /* The model in front changed (another tab, window or model). Every view was
@@ -472,8 +504,26 @@
     sync(false);
   }
 
+  /* Our tab is back in front with the model we already show. Nothing to drop,
+     but a run that finished while another model was in front was not announced
+     (ia_state goes to the model in front only), so pick up what changed and
+     serve just those views - the rest stay exactly as they are. */
+  function catchUp() {
+    send({ type: 'ia_status' }).then(function (r) {
+      if (!r || !r.pages) return;
+      VIEWS.forEach(function (v) {
+        var s = r.pages[v.page], st = state[v.page];
+        if (!s) return;
+        st.busy = !!s.busy;
+        st.steps = s.steps || [];
+        if (s.ts && s.ts !== st.ts) { st.ts = s.ts; st.note = ''; maybeServe(v.page); }
+      });
+      render();
+    }, function () {});
+  }
+
   function sync(first) {
-    api.runtime.sendMessage({ type: 'ia_status' }).then(function (r) {
+    send({ type: 'ia_status' }).then(function (r) {
       if (r && r.pages) {
         VIEWS.forEach(function (v) {
           var s = r.pages[v.page];
@@ -484,6 +534,7 @@
         });
       }
       if (r && typeof r.tab === 'boolean') hasTab = r.tab;
+      if (r && typeof r.key === 'string') myKey = r.key;
       if (first && r && r.select && byPage[r.select] && !byPage[r.select].off) active = r.select;
       render();
       // Summary is instant (no Anaplan calls), so gather it on open rather than
@@ -496,8 +547,9 @@
       }
     }, function () { render(); });
   }
-  sync(true);
-
-  render();
+  ready.then(function () {
+    sync(true);
+    render();
+  });
   setInterval(function () { if (!refreshBtn.hidden) render(); }, 30000);
 })();

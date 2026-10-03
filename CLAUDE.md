@@ -101,6 +101,14 @@ the view iframes would render another tab's or model's results directly. The wor
 data unsolicited: `runtime.sendMessage` resolves as soon as *any* extension page listens, so a push
 sent before the iframe exists looks delivered and is lost.
 
+**One panel per tab (Chrome).** The global side panel is disabled; the toolbar icon enables and
+opens a panel for that tab only (`panelFor()`), so several panel documents can be alive at once,
+hidden ones included. Run state in the worker is keyed per tab (`rid(tab,page)`), every push names
+its Anaplan tab in `to`, and panel requests carry `forTab`. The panel drops pushes for other tabs,
+and `chunks/view_tab.js` (loaded first in every view HTML, which gets `?t=<tab>`) does the same for
+the views by wrapping `runtime.onMessage.addListener`/`sendMessage`. Any new push must set `to`, and
+any new view HTML must load `view_tab.js`. Firefox's sidebar is per window: no `forTab`, no filtering.
+
 **Model switching.** The worker watches tab activation, window focus and navigation; when the model in
 front changes it pushes `ia_context` and the panel drops every iframe and re-syncs from `ia_status`
 (each model's results stay cached under their own key).

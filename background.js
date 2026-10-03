@@ -12,6 +12,10 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
     QUIET_SIGN=5e3,       // ...or this long for Summary, which the panel retries itself
     STALL=24e4,           // ...and this long between progress ticks once it is under way
+    UNSURE_TRIES=8,       // re-asks before a tab that cannot name its model is shown as none
+    UNSURE_EVERY=15e2,    // ...this far apart
+    DELIVER_TRIES=6,      // re-sends to the panel's own tab before its script is called missing
+    DELIVER_EVERY=1e3,    // ...this far apart
     // Reports switched off: opening every saved view makes Anaplan evaluate its
     // filters, which takes tens of minutes on a large model. Keep in step with
     // `off` in VIEWS (sidepanel.js) and REPORTS (chunks/summary.js).
@@ -22,17 +26,18 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
 var store=api.storage?.session||api.storage?.local,
     mem=new Map(),        // cacheId -> {data, ts}
     keyByTab=new Map(),   // tabId -> model key, learned from the content script
-    busy=new Set(),       // pages currently gathering
+    busy=new Set(),       // runs (rid: tab|page) currently gathering
     pushes=new Map(),     // tag -> interval id of an in-flight push
     route=null,           // {tabId, windowId} the panel is bound to
     lastKey=null,         // most recent model key, so the cache stays readable with no tab open
-    prog=new Map(),       // page -> [{step,detail,i,n,done}] for the run in flight
-    waits=new Map(),      // page -> watchdog for a run that never reports back
+    prog=new Map(),       // rid -> [{step,detail,i,n,done}] for the run in flight
+    waits=new Map(),      // rid -> watchdog for a run that never reports back
     seqN=0,               // monotonic, so the panel can drop an out-of-order push
-    pendingSelect=null,   // view to select when the panel finishes loading
-    stopped=new Set(),    // pages whose run was stopped - late results/progress are dropped
+    pendingSelect=null,   // {tab,page}: view to select when that tab's panel finishes loading
+    stopped=new Set(),    // rids whose run was stopped - late results/progress are dropped
     sawShell=!1,          // the shell has talked to us, so a failed open() is harmless
-    shownKey=null,        // model key the panel is currently showing
+    shownKey=null,        // model key last announced for the tab in front
+    shownTab=null,        // ...and that tab
     ctxSeq=0;             // latest context check wins
 
 // Item count of a cached report: an array's length, or for an object of
@@ -66,8 +71,16 @@ function cacheDrop(page,key){
 
 // The side panel and the pages it hosts are extension pages, so they are reached
 // with runtime.sendMessage rather than tabs.sendMessage. Retry until one listens.
+//
+// runtime.sendMessage reaches every extension page, and on Chrome each tab has
+// its own panel (panelFor), alive while hidden. Pushes used to reach them all:
+// a failed run in one tab put its error page over another tab's report, and
+// one tab's data could render in another's views. So every push names the
+// Anaplan tab it is for in `to`, and each panel and view (chunks/view_tab.js)
+// drops what is not for its own tab. A panel says which tab it is in with
+// `forTab` on its requests; Firefox's per-window sidebar sends none and hears all.
 function push(msg,tag){
-  let k=msg.type+(tag||``),prev=pushes.get(k);
+  let k=msg.type+(tag||``)+`@`+(msg.to??``),prev=pushes.get(k);
   prev&&clearInterval(prev);
   let n=0,id=0;
   id=setInterval(()=>{
@@ -141,25 +154,43 @@ function rememberKey(key){
 // switch, a navigation to another model, or a loading tab finally naming its
 // model. The panel then re-syncs from ia_status, so every view shows the new
 // model's cached reports (or Get data) instead of the previous model's.
-async function announce(){
+//
+// A tab that cannot name its model yet (an Anaplan page switch reloads the
+// model frame, so for a moment nothing answers) used to be announced as the
+// empty model, and announced again once the frame came back - every view was
+// dropped and rebuilt twice for a page switch that never changed the model.
+// Keep showing what is on screen and re-ask a few times; only a model that
+// stays unnamed is announced as such.
+var unsure=0;         // timer re-asking a tab that cannot name its model yet
+async function announce(tries){
   if(!sawShell)return;
-  let n=++ctxSeq,key=await modelKey(await anaplanTab());
-  if(n!==ctxSeq||key===shownKey)return;
-  shownKey=key,push({type:`ia_context`,key})
+  clearTimeout(unsure),unsure=0;
+  let n=++ctxSeq,tab=await anaplanTab(),key=await modelKey(tab);
+  if(n!==ctxSeq)return;
+  tries=tries|0;
+  if(key===``&&tab!=null&&tries<UNSURE_TRIES){unsure=setTimeout(()=>announce(tries+1),UNSURE_EVERY);return}
+  if(tab===shownTab&&key===shownKey)return;
+  shownTab=tab,shownKey=key,push({type:`ia_context`,key,to:tab})
 }
 // The content script names a tab's model on every run.
 function learnKey(tabId,key){
   tabId!=null&&keyByTab.set(tabId,key),rememberKey(key);
-  route?.tabId===tabId&&key!==shownKey&&announce()
+  tabId===shownTab&&key!==shownKey&&announce()
 }
 
-// One panel per window, so the same document stays put while tabs change.
-// Chrome exposes this as a per-tab/per-window side panel; Firefox has no
-// equivalent API and offers sidebarAction (per-window only) instead.
+// Chrome: the panel belongs to the tab it was opened on - it hides when
+// another tab comes to the front and is back when this one does. The global
+// panel is disabled in main(); each tab gets its own enabled before open().
+// setOptions() is not awaited: open() must run inside the user gesture.
+// Firefox has no per-tab sidebar visibility (sidebarAction is per window).
+function panelFor(tabId){
+  api.sidePanel.setOptions({tabId,path:`sidepanel.html`,enabled:!0}).catch(()=>{});
+  return api.sidePanel.open({tabId})
+}
 async function openPanel(sender){
   if(api.sidePanel){
-    let windowId=sender?.tab?.windowId,tabId=sender?.tab?.id;
-    try{await api.sidePanel.open(windowId!=null?{windowId}:{tabId})}
+    let tabId=sender?.tab?.id;
+    try{await panelFor(tabId)}
     catch(e){if(!sawShell)throw Error(`Could not open the side panel - click the extension icon.`)}
     return
   }
@@ -171,21 +202,43 @@ async function openPanel(sender){
   throw Error(`The side panel is not available in this browser.`)
 }
 
-function setBusy(page,on){
-  on?(busy.add(page),prog.delete(page)):(busy.delete(page),clearWait(page)),
-  push({type:`ia_busy`,page,busy:on,seq:++seqN},page)
+// A run is one page gathered in one tab: two tabs' panels can each run the
+// same report at once, and neither should see the other's spinner or result.
+function rid(tab,page){return `${tab??``}|${page}`}
+// The runs under way for a tab - or for every tab when none is named (Firefox).
+function runsOf(tab){
+  let out=[];
+  for(let r of busy){
+    let i=r.indexOf(`|`),t=r.slice(0,i)===``?null:+r.slice(0,i);
+    (tab==null||t===tab)&&out.push({tab:t,page:r.slice(i+1)})
+  }
+  return out
+}
+// Where a request's answers go: the panel's own tab when it named one.
+async function tabFor(msg){
+  let t=msg?.forTab;
+  if(t==null)return anaplanTab();
+  try{let x=await api.tabs.get(t);if(ANAPLAN_URL.test(x?.url||``))return t}catch(e){}
+  return null
+}
+
+function setBusy(tab,page,on){
+  let r=rid(tab,page);
+  on?(busy.add(r),prog.delete(r)):(busy.delete(r),clearWait(r)),
+  push({type:`ia_busy`,page,busy:on,seq:++seqN,to:tab},page)
 }
 
 // A tab can carry a content script that never picks the trigger up - the model
 // frame is still loading, or the script is orphaned by an extension reload.
 // Nothing would ever clear the spinner, so give each run a window to prove it
 // started; the first progress tick or result cancels it.
-function armWait(page,ms,why){
-  clearWait(page);
-  waits.set(page,setTimeout(()=>{
-    waits.delete(page);
-    if(!busy.has(page))return;
-    failPage(page,why)
+function armWait(tab,page,ms,why){
+  let r=rid(tab,page);
+  clearWait(r);
+  waits.set(r,setTimeout(()=>{
+    waits.delete(r);
+    if(!busy.has(r))return;
+    failPage(tab,page,why)
   },ms))
 }
 
@@ -194,25 +247,26 @@ function armWait(page,ms,why){
 // broadcast to every view, and a report already on screen would swap its
 // results for an error page each time a retry missed.
 var QUIET=new Set([`summary`]);
-function failPage(page,message){
-  setBusy(page,!1),
-  push(QUIET.has(page)?{type:`ia_page_error`,page,message}:{type:`error`,message},page)
+function failPage(tab,page,message){
+  setBusy(tab,page,!1),
+  push(QUIET.has(page)?{type:`ia_page_error`,page,message,to:tab}:{type:`error`,message,to:tab},page)
 }
-function clearWait(page){let id=waits.get(page);id&&clearTimeout(id),waits.delete(page)}
+function clearWait(r){let id=waits.get(r);id&&clearTimeout(id),waits.delete(r)}
 
 // Re-arm on every tick rather than disarming for good: a run that dies partway
 // through - a stalled request, a frame torn down mid-gather - used to leave the
 // spinner up with nothing able to clear it. STALL sits above the content
 // script's own request ceiling (90s, one retry) so only a dead run trips it.
-function progAdd(page,m){
-  if(!busy.has(page))return;   // a stopped run still ticking until its request aborts
-  armWait(page,STALL,`The gather stopped responding. Reload the Anaplan model tab, then try again.`);
-  let ls=prog.get(page)||[],cur=ls[ls.length-1];
+function progAdd(tab,page,m){
+  let r=rid(tab,page);
+  if(!busy.has(r))return;   // a stopped run still ticking until its request aborts
+  armWait(tab,page,STALL,`The gather stopped responding. Reload the Anaplan model tab, then try again.`);
+  let ls=prog.get(r)||[],cur=ls[ls.length-1];
   cur&&cur.step===m.step
     ?(cur.detail=m.detail,cur.i=m.i,cur.n=m.n)
     :(cur&&(cur.done=!0),ls.push({step:m.step,detail:m.detail,i:m.i,n:m.n,done:!1}));
-  prog.set(page,ls),
-  push({type:`ia_progress`,page,steps:ls,seq:++seqN},page)
+  prog.set(r,ls),
+  push({type:`ia_progress`,page,steps:ls,seq:++seqN,to:tab},page)
 }
 
 async function handle(msg,sender){
@@ -222,23 +276,24 @@ async function handle(msg,sender){
 
   if(msg.type===`ia_status`){
     sawShell=!0;
-    let tab=await anaplanTab(),key=await modelKey(tab),pages={};
+    let tab=await tabFor(msg),key=await modelKey(tab),pages={};
     for(let p of PAGES){
       let hit=await cacheGet(p,key);
-      pages[p]={ts:hit?hit.ts:0,busy:busy.has(p),steps:prog.get(p)||[]}
+      pages[p]={ts:hit?hit.ts:0,busy:busy.has(rid(tab,p)),steps:prog.get(rid(tab,p))||[]}
     }
-    let select=pendingSelect;
-    return shownKey=key,pendingSelect=null,{pages,select,tab:tab!=null,key}
+    let select=null;
+    if(pendingSelect&&(tab==null||pendingSelect.tab==null||pendingSelect.tab===tab))select=pendingSelect.page,pendingSelect=null;
+    return shownTab=tab,shownKey=key,{pages,select,tab:tab!=null,key}
   }
 
   // Summary view: which reports are cached for this model, how big each is,
   // and whether one is gathering right now. Sizes only - never the payloads.
   if(msg.type===`ia_overview`){
-    let key=await modelKey(await anaplanTab()),pages={};
+    let tab=await tabFor(msg),key=await modelKey(tab),pages={};
     for(let p of PAGES){
       if(p===`summary`)continue;
       let hit=await cacheGet(p,key);
-      pages[p]={ts:hit?hit.ts:0,busy:busy.has(p),size:hit?sizeOf(hit.data):null}
+      pages[p]={ts:hit?hit.ts:0,busy:busy.has(rid(tab,p)),size:hit?sizeOf(hit.data):null}
     }
     return{pages}
   }
@@ -246,9 +301,9 @@ async function handle(msg,sender){
   // The iframe for this view is up: hand it the cached payload.
   if(msg.type===`ia_serve`){
     sawShell=!0;
-    let hit=await cacheGet(msg.page,await modelKey(await anaplanTab()));
+    let tab=await tabFor(msg),hit=await cacheGet(msg.page,await modelKey(tab));
     if(!hit)return{hit:!1};
-    return push({type:`${msg.page}_data`,data:hit.data,ts:hit.ts,cached:!0},msg.page),{hit:!0,ts:hit.ts}
+    return push({type:`${msg.page}_data`,data:hit.data,ts:hit.ts,cached:!0,to:msg.forTab??tab},msg.page),{hit:!0,ts:hit.ts}
   }
 
   // Stop button: end every gather under way. The worker clears the busy state
@@ -256,25 +311,33 @@ async function handle(msg,sender){
   // even if the tab never answers; whatever the stopped runs send later is dropped.
   if(msg.type===`ia_cancel`){
     sawShell=!0;
-    let was=[...busy];
-    for(let p of was)stopped.add(p),setBusy(p,!1);
-    let tab=await anaplanTab();
-    tab!=null&&await api.tabs.sendMessage(tab,{type:`ia_cancel`}).catch(()=>{});
-    return{stopped:was}
+    let was=runsOf(msg.forTab),tabs=new Set(was.map(w=>w.tab));
+    for(let w of was)stopped.add(rid(w.tab,w.page)),setBusy(w.tab,w.page,!1);
+    if(!tabs.size){let t=await tabFor(msg);t!=null&&tabs.add(t)}
+    for(let t of tabs)t!=null&&await api.tabs.sendMessage(t,{type:`ia_cancel`}).catch(()=>{});
+    return{stopped:was.map(w=>w.page)}
   }
 
   // "Get data" / refresh icon. ia_load uses the cache, ia_refresh bypasses it.
   if(msg.type===`ia_load`||msg.type===`ia_refresh`){
     sawShell=!0;
     if(OFF.has(msg.page))return{error:`This report is disabled - it is too slow to run on large models.`};
-    stopped.delete(msg.page);
-    let quiet=QUIET.has(msg.page),
-        tab=await anaplanTab(),
-        front=!!route?.front;
+    let page=msg.page,
+        quiet=QUIET.has(page),
+        tab=await tabFor(msg),
+        front=msg.forTab!=null||!!route?.front;
     if(tab==null){let m=`Open an Anaplan model tab, then try again.`;if(quiet)return{error:m};throw Error(m)}
-    setBusy(msg.page,!0);
-    let trigger={type:`trigger_${msg.page}`,force:msg.type===`ia_refresh`},
+    stopped.delete(rid(tab,page));
+    setBusy(tab,page,!0);
+    let trigger={type:`trigger_${page}`,force:msg.type===`ia_refresh`},
         gone=await deliver(tab,trigger);
+    // A tab opened moments ago has no report engine until its model frame has
+    // loaded. Give it a few seconds before calling the script missing - the
+    // first click in a fresh tab used to fail with "reload the page". (Summary
+    // is retried by the panel itself.)
+    for(let i=0;gone&&front&&!quiet&&i<DELIVER_TRIES&&busy.has(rid(tab,page));i++)
+      await new Promise(r=>setTimeout(r,DELIVER_EVERY)),gone=await deliver(tab,trigger);
+    if(!busy.has(rid(tab,page)))return{ok:!0};   // stopped while waiting
     // Nothing was triggered, so the tab we picked may simply have been the
     // wrong one. Drop it, resolve a different Anaplan tab and try once more
     // before giving up - a single click should heal a bad route.
@@ -285,32 +348,34 @@ async function handle(msg,sender){
     if(gone&&!front){
       route=null;
       let alt=await anaplanTab(tab);
-      if(alt!=null)gone=await deliver(alt,trigger)
+      if(alt!=null&&!(gone=await deliver(alt,trigger))){
+        busy.delete(rid(tab,page)),busy.add(rid(alt,page)),tab=alt
+      }
     }
     // The tab is right but the report engine is not in it: an extension reload
     // orphans the script in frames that were already open, and only a page
     // reload re-injects it. Say that, rather than sending them tab-hunting.
-    if(gone){let m=`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`;if(quiet)return setBusy(msg.page,!1),{error:m};throw setBusy(msg.page,!1),Error(m)}
+    if(gone){let m=`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`;if(quiet)return setBusy(tab,page,!1),{error:m};throw setBusy(tab,page,!1),Error(m)}
     // Summary is retried by the panel, so a miss should come back fast.
-    return armWait(msg.page,quiet?QUIET_SIGN:FIRST_SIGN,`The Anaplan tab did not respond. Reload the Anaplan model tab, then try again.`),{ok:!0}
+    return armWait(tab,page,quiet?QUIET_SIGN:FIRST_SIGN,`The Anaplan tab did not respond. Reload the Anaplan model tab, then try again.`),{ok:!0}
   }
 
   // --- from the content script ---
 
   // Live step/loop reporting from whichever gather is running.
-  if(msg.type===`ia_progress`)return void(msg.page&&progAdd(msg.page,msg));
+  if(msg.type===`ia_progress`)return void(msg.page&&progAdd(tabId,msg.page,msg));
 
   // A keyboard shortcut started a run: show the panel on that view right away.
   if(PAGES.includes(msg.type)){
     // Summary's runs are started by the panel itself (and retried while the
     // model loads) - selecting it each time would yank the user back to it.
-    if(QUIET.has(msg.type))return void(busy.has(msg.type)||setBusy(msg.type,!0));
+    if(QUIET.has(msg.type))return void(busy.has(rid(tabId,msg.type))||setBusy(tabId,msg.type,!0));
     route={tabId:tabId??route?.tabId,windowId:sender?.tab?.windowId??route?.windowId};
-    pendingSelect=msg.type;
-    stopped.delete(msg.type);
-    setBusy(msg.type,!0);
+    pendingSelect={tab:tabId,page:msg.type};
+    stopped.delete(rid(tabId,msg.type));
+    setBusy(tabId,msg.type,!0);
     await openPanel(sender);
-    return void push({type:`ia_select`,page:msg.type})
+    return void push({type:`ia_select`,page:msg.type,to:tabId})
   }
 
   // Cache probe. On a hit the content script skips the (expensive) Anaplan calls.
@@ -318,8 +383,10 @@ async function handle(msg,sender){
     learnKey(tabId,msg.key||``);
     let hit=await cacheGet(msg.page,msg.key);
     if(!hit)return{hit:!1};
-    setBusy(msg.page,!1);
-    (msg.key||``)===shownKey&&push({type:`ia_state`,page:msg.page,ts:hit.ts},msg.page);
+    setBusy(tabId,msg.page,!1);
+    // The panel checks `key` against the model it shows: a late hit for the
+    // model this tab held before must not mark the current one's view loaded.
+    push({type:`ia_state`,page:msg.page,ts:hit.ts,key:msg.key||``,to:tabId},msg.page);
     return{hit:!0,ts:hit.ts}
   }
 
@@ -330,24 +397,26 @@ async function handle(msg,sender){
   // panel fetches the payload with ia_serve once it knows the model matches.
   if(msg.type===`ia_result`&&PAGES.includes(msg.page)){
     let page=msg.page;
-    if(stopped.has(page))return;
+    if(stopped.has(rid(tabId,page)))return;
     learnKey(tabId,msg.key||``);
     let hit=await cacheSet(page,msg.key,msg.data);
-    // A run for a model no longer in front is cached under its own key, but
-    // not announced - the panel would mark the current model's view as loaded.
-    setBusy(page,!1);
-    return void((msg.key||``)===shownKey&&push({type:`ia_state`,page,ts:hit.ts},page))
+    // Cached under its own model's key. The panel drops the ia_state if that is
+    // not the model it shows - it would mark the current model's view as loaded.
+    setBusy(tabId,page,!1);
+    return void push({type:`ia_state`,page,ts:hit.ts,key:msg.key||``,to:tabId},page)
   }
 
   // A quiet page's own failure, reported by the content script.
   if(msg.type===`ia_page_error`){
-    if(msg.page&&!stopped.has(msg.page)&&busy.has(msg.page))failPage(msg.page,msg.message);
+    if(msg.page&&!stopped.has(rid(tabId,msg.page))&&busy.has(rid(tabId,msg.page)))failPage(tabId,msg.page,msg.message);
     return
   }
 
+  // From a content script, or from a view (which names its tab in forTab).
   if(msg.type===`error`){
-    for(let p of[...busy])setBusy(p,!1);
-    push(msg);
+    let t=tabId??msg.forTab;
+    for(let w of runsOf(t))setBusy(w.tab,w.page,!1);
+    push({type:`error`,message:msg.message,to:t});
     return void(tabId!=null&&api.tabs.sendMessage(tabId,msg).catch(()=>{}))
   }
 
@@ -355,30 +424,40 @@ async function handle(msg,sender){
   if(tabId!=null)await api.tabs.sendMessage(tabId,msg)
 }
 
-function report(e,sender){
-  let message=e?.message||String(e);
-  for(let p of[...busy])setBusy(p,!1);
-  push({type:`error`,message});
-  let id=sender?.tab?.id;
+function report(e,sender,msg){
+  let message=e?.message||String(e),id=sender?.tab?.id,t=id??msg?.forTab;
+  for(let w of runsOf(t))setBusy(w.tab,w.page,!1);
+  push({type:`error`,message,to:t});
   id!=null&&api.tabs.sendMessage(id,{type:`error`,message}).catch(()=>{})
 }
 
 function onMessage(msg,sender,respond){
   handle(msg,sender).then(
     r=>{try{respond(r)}catch(e){}},
-    e=>{try{respond({error:e?.message})}catch(e2){}report(e,sender)}
+    e=>{try{respond({error:e?.message})}catch(e2){}report(e,sender,msg)}
   );
   return !0   // keep the channel open for the async respond()
 }
 
 var main=wxt(()=>{
   // Clicking the toolbar icon opens the panel directly - there is no popup.
-  api.sidePanel?.setPanelBehavior?.({openPanelOnActionClick:!0})?.catch?.(()=>{});
+  // On Chrome it opens for that tab only (see panelFor), so the browser's own
+  // openPanelOnActionClick - which opens the global panel - is turned off.
+  if(api.sidePanel){
+    api.sidePanel.setPanelBehavior?.({openPanelOnActionClick:!1})?.catch?.(()=>{});
+    api.sidePanel.setOptions({enabled:!1}).catch(()=>{});
+    api.action?.onClicked?.addListener(t=>{t?.id!=null&&panelFor(t.id).catch(()=>{})})
+  }
   // Firefox has no openPanelOnActionClick equivalent: wire the toolbar icon
   // to the sidebar directly. (No-op on Chrome, which already opened above.)
   if(!api.sidePanel&&api.sidebarAction)api.action?.onClicked?.addListener(()=>{try{api.sidebarAction.toggle()}catch(e){}});
   api.runtime.onMessage.addListener(onMessage);
-  api.tabs.onRemoved.addListener(id=>{keyByTab.delete(id),route?.tabId===id&&(route=null),announce()});
+  api.tabs.onRemoved.addListener(id=>{
+    keyByTab.delete(id),route?.tabId===id&&(route=null);
+    // Its panel went with it: forget its runs without telling anyone.
+    for(let w of runsOf(id)){let r=rid(id,w.page);busy.delete(r),clearWait(r),prog.delete(r),stopped.delete(r)}
+    announce()
+  });
   // A tab that navigates may now hold a different model: forget what it held.
   api.tabs.onUpdated.addListener((id,ch)=>{
     if(ch.url)keyByTab.delete(id);

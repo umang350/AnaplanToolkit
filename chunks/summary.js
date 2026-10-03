@@ -29,11 +29,11 @@ var REPORTS = [
   { page: 'action_usages', name: 'Usages', unit: 'usages' },
   { page: 'pages', name: 'Modules', unit: 'modules' },
   { page: 'filter_items', name: 'Filters', unit: 'rows' },
-  { page: 'sv_filter_items', name: 'SV Filters', unit: 'rows', off: true },
   { page: 'sv_views', name: 'SV List', unit: 'saved views' },
-  { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true },
   { page: 'sv_screens', name: 'SV Screens', unit: 'rows' },
-  { page: 'sv_actions', name: 'SV Actions', unit: 'imports' }
+  { page: 'sv_actions', name: 'SV Actions', unit: 'imports' },
+  { page: 'sv_filter_items', name: 'SV Filters', unit: 'rows', off: true },
+  { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true }
 ];
 var ACTION_LISTS = [['processes', 'processes'], ['imports', 'imports'], ['exports', 'exports'],
                     ['actions', 'actions'], ['files', 'files']];
