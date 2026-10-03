@@ -89,6 +89,23 @@ body {
 }
 #empty[hidden] { display: none; }
 #empty h1 { margin: 0; font-size: .9375rem; font-weight: 600; }
+/* Static sketch of the view's own tab bar (VIEWS[].preview in sidepanel.js),
+   shaped like the compiled view's segmented control. */
+#empty-preview {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: .125rem;
+  margin-bottom: .75rem; padding: .1875rem; max-width: 100%;
+  border-radius: calc(var(--radius) - .125rem); background: var(--muted);
+  pointer-events: none; user-select: none;
+}
+#empty-preview[hidden] { display: none; }
+#empty-preview .chip {
+  padding: .25rem .625rem; border-radius: calc(var(--radius) - .25rem);
+  font-size: .75rem; font-weight: 500; color: var(--muted-foreground);
+}
+#empty-preview .chip.on {
+  color: var(--foreground); background: var(--background);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .08);
+}
 #empty p { margin: 0; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); max-width: 32ch; }
 #empty-note:empty { display: none; }
 #empty-note { color: var(--destructive); font-weight: 600; }

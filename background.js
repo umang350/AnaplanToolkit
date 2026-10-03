@@ -7,7 +7,6 @@ function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
 var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`],
-    DATA=PAGES.map(p=>`${p}_data`),
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -28,7 +27,9 @@ var store=api.storage?.session||api.storage?.local,
     seqN=0,               // monotonic, so the panel can drop an out-of-order push
     pendingSelect=null,   // view to select when the panel finishes loading
     stopped=new Set(),    // pages whose run was stopped - late results/progress are dropped
-    sawShell=!1;          // the shell has talked to us, so a failed open() is harmless
+    sawShell=!1,          // the shell has talked to us, so a failed open() is harmless
+    shownKey=null,        // model key the panel is currently showing
+    ctxSeq=0;             // latest context check wins
 
 // Item count of a cached report: an array's length, or for an object of
 // arrays (the Actions view) the length of each.
@@ -82,6 +83,13 @@ function push(msg,tag){
 var ANAPLAN_URL=/^https:\/\/[^\/]*\.anaplan\.com\//i;
 async function anaplanTab(skipId){
   if(route?.tabId===skipId)route=null;
+  // The tab in front wins over the remembered one. With several Anaplan tabs
+  // open, the route used to stay on whichever tab was found first, so switching
+  // to another model's tab and pressing refresh still re-read the old model.
+  try{
+    let [t]=await api.tabs.query({active:!0,lastFocusedWindow:!0});
+    if(t&&t.id!==skipId&&ANAPLAN_URL.test(t.url||``))return route={tabId:t.id,windowId:t.windowId,front:!0},t.id
+  }catch(e){}
   if(route?.tabId!=null){
     try{let t=await api.tabs.get(route.tabId);if(ANAPLAN_URL.test(t?.url||``))return route.tabId}catch(e){}
     route=null
@@ -113,13 +121,32 @@ async function modelKey(tabId){
       if(typeof key==`string`)return keyByTab.set(tabId,key),rememberKey(key),key
     }catch(e){}
   }
-  // No reachable tab: fall back to the last model we saw, so results stay readable
-  // after the Anaplan tab is closed.
+  // A tab that cannot name its model yet is still loading one - possibly not the
+  // last model we saw, so falling back to lastKey there showed the previous
+  // model's reports for the new one. Only with no Anaplan tab at all is the
+  // last model the right answer, so results stay readable after it is closed.
+  if(tabId!=null)return ``;
   if(lastKey==null&&store){try{lastKey=(await store.get(`ia:key`))?.[`ia:key`]??null}catch(e){}}
   return lastKey??``
 }
 function rememberKey(key){
   lastKey=key,store&&store.set({[`ia:key`]:key}).catch(()=>{})
+}
+
+// Tell the panel when the model in front changes - a tab switch, a window
+// switch, a navigation to another model, or a loading tab finally naming its
+// model. The panel then re-syncs from ia_status, so every view shows the new
+// model's cached reports (or Get data) instead of the previous model's.
+async function announce(){
+  if(!sawShell)return;
+  let n=++ctxSeq,key=await modelKey(await anaplanTab());
+  if(n!==ctxSeq||key===shownKey)return;
+  shownKey=key,push({type:`ia_context`,key})
+}
+// The content script names a tab's model on every run.
+function learnKey(tabId,key){
+  tabId!=null&&keyByTab.set(tabId,key),rememberKey(key);
+  route?.tabId===tabId&&key!==shownKey&&announce()
 }
 
 // One panel per window, so the same document stays put while tabs change.
@@ -197,7 +224,7 @@ async function handle(msg,sender){
       pages[p]={ts:hit?hit.ts:0,busy:busy.has(p),steps:prog.get(p)||[]}
     }
     let select=pendingSelect;
-    return pendingSelect=null,{pages,select,tab:tab!=null,key}
+    return shownKey=key,pendingSelect=null,{pages,select,tab:tab!=null,key}
   }
 
   // Summary view: which reports are cached for this model, how big each is,
@@ -237,7 +264,8 @@ async function handle(msg,sender){
     sawShell=!0;
     stopped.delete(msg.page);
     let quiet=QUIET.has(msg.page),
-        tab=await anaplanTab();
+        tab=await anaplanTab(),
+        front=!!route?.front;
     if(tab==null){let m=`Open an Anaplan model tab, then try again.`;if(quiet)return{error:m};throw Error(m)}
     setBusy(msg.page,!0);
     let trigger={type:`trigger_${msg.page}`,force:msg.type===`ia_refresh`},
@@ -245,7 +273,11 @@ async function handle(msg,sender){
     // Nothing was triggered, so the tab we picked may simply have been the
     // wrong one. Drop it, resolve a different Anaplan tab and try once more
     // before giving up - a single click should heal a bad route.
-    if(gone){
+    // Not when the tab is the one in front, though: that is the model being
+    // looked at, and a tab whose script was orphaned by an extension reload
+    // used to hand the run to some other Anaplan tab - the panel then showed
+    // that other model's report as if it were this one's.
+    if(gone&&!front){
       route=null;
       let alt=await anaplanTab(tab);
       if(alt!=null)gone=await deliver(alt,trigger)
@@ -278,19 +310,28 @@ async function handle(msg,sender){
 
   // Cache probe. On a hit the content script skips the (expensive) Anaplan calls.
   if(msg.type===`cache_get`){
-    tabId!=null&&keyByTab.set(tabId,msg.key||``),rememberKey(msg.key||``);
+    learnKey(tabId,msg.key||``);
     let hit=await cacheGet(msg.page,msg.key);
     if(!hit)return{hit:!1};
-    return setBusy(msg.page,!1),push({type:`ia_state`,page:msg.page,ts:hit.ts},msg.page),{hit:!0,ts:hit.ts}
+    setBusy(msg.page,!1);
+    (msg.key||``)===shownKey&&push({type:`ia_state`,page:msg.page,ts:hit.ts},msg.page);
+    return{hit:!0,ts:hit.ts}
   }
 
-  // Freshly gathered results.
-  if(DATA.includes(msg.type)){
-    let page=msg.type.slice(0,-5);
+  // Freshly gathered results. These used to be sent as <page>_data, which
+  // runtime.sendMessage also delivered straight to every view iframe - so a
+  // run in another tab, or a late one for the previous model, rendered over
+  // the model in front. As ia_result only the worker hears them, and the
+  // panel fetches the payload with ia_serve once it knows the model matches.
+  if(msg.type===`ia_result`&&PAGES.includes(msg.page)){
+    let page=msg.page;
     if(stopped.has(page))return;
-    tabId!=null&&keyByTab.set(tabId,msg.key||``),rememberKey(msg.key||``);
+    learnKey(tabId,msg.key||``);
     let hit=await cacheSet(page,msg.key,msg.data);
-    return setBusy(page,!1),void push({type:`ia_state`,page,ts:hit.ts},page)
+    // A run for a model no longer in front is cached under its own key, but
+    // not announced - the panel would mark the current model's view as loaded.
+    setBusy(page,!1);
+    return void((msg.key||``)===shownKey&&push({type:`ia_state`,page,ts:hit.ts},page))
   }
 
   // A quiet page's own failure, reported by the content script.
@@ -332,7 +373,14 @@ var main=wxt(()=>{
   // to the sidebar directly. (No-op on Chrome, which already opened above.)
   if(!api.sidePanel&&api.sidebarAction)api.action?.onClicked?.addListener(()=>{try{api.sidebarAction.toggle()}catch(e){}});
   api.runtime.onMessage.addListener(onMessage);
-  api.tabs.onRemoved.addListener(id=>{keyByTab.delete(id),route?.tabId===id&&(route=null)})
+  api.tabs.onRemoved.addListener(id=>{keyByTab.delete(id),route?.tabId===id&&(route=null),announce()});
+  // A tab that navigates may now hold a different model: forget what it held.
+  api.tabs.onUpdated.addListener((id,ch)=>{
+    if(ch.url)keyByTab.delete(id);
+    (ch.url||ch.status===`complete`)&&announce()
+  });
+  api.tabs.onActivated.addListener(()=>announce());
+  api.windows?.onFocusChanged?.addListener(w=>{w!==api.windows.WINDOW_ID_NONE&&announce()})
 });
 
 var log={debug:(...e)=>([...e],void 0),log:(...e)=>([...e],void 0),warn:(...e)=>([...e],void 0),error:(...e)=>([...e],void 0)},res;

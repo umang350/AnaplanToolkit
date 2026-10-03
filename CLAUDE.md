@@ -90,13 +90,20 @@ ModelContentCache._modelInfo`), reachable only from the MAIN world. `main.js` re
 missing reply used to hang the spinner forever. `outer.js` runs on a different Anaplan URL
 (`modeling-ui`) than the other two (`framework.jsp`) and only relays keyboard shortcuts.
 
-**Data flow for one view.** Panel sends `ia_load`/`ia_refresh` → worker resolves an Anaplan tab and
-`tabs.sendMessage`es `trigger_<page>` → `inner.js` acks immediately (`{started:true}`; a gather runs
-for minutes, far longer than the message channel lives), then works and reports via `ia_progress`,
-finishing with `<page>_data` → worker caches it and pushes `ia_state` → the panel asks `ia_serve` →
-worker pushes `<page>_data` at the iframe. The worker **never** pushes data unsolicited:
-`runtime.sendMessage` resolves as soon as *any* extension page listens, so a push sent before the
-iframe exists looks delivered and is lost.
+**Data flow for one view.** Panel sends `ia_load`/`ia_refresh` → worker resolves an Anaplan tab (the
+active tab when it is an Anaplan one, never silently another) and `tabs.sendMessage`es
+`trigger_<page>` → `inner.js` acks immediately (`{started:true}`; a gather runs for minutes, far
+longer than the message channel lives), then works and reports via `ia_progress`, finishing with
+`ia_result {page,data,key}` → worker caches it and, only if `key` is the model the panel is showing,
+pushes `ia_state` → the panel asks `ia_serve` → worker pushes `<page>_data` at the iframe. A content
+script must never send `<page>_data` itself: `runtime.sendMessage` reaches every extension page, so
+the view iframes would render another tab's or model's results directly. The worker **never** pushes
+data unsolicited: `runtime.sendMessage` resolves as soon as *any* extension page listens, so a push
+sent before the iframe exists looks delivered and is lost.
+
+**Model switching.** The worker watches tab activation, window focus and navigation; when the model in
+front changes it pushes `ia_context` and the panel drops every iframe and re-syncs from `ia_status`
+(each model's results stay cached under their own key).
 
 **Caching.** `chrome.storage.session` + an in-memory `Map`, keyed `ia:<page>:<customerId>:<modelId>`
 with a 6h max age, so switching model never shows stale data. `inner.js` probes with `cache_get`

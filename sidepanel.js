@@ -24,6 +24,7 @@
  *   <- ia_progress{page, steps, seq}    live overview of the steps being executed
  *   <- error      {message}
  *   <- ia_page_error {page, message}    a Summary failure, for the panel only (see QUIET in background.js)
+ *   <- ia_context {key}                 the model in front changed - re-sync every view
  *
  * The worker never pushes data unsolicited: runtime.sendMessage resolves as soon
  * as *any* extension page listens, so a push sent before the iframe exists would
@@ -36,7 +37,8 @@
     { page: 'summary', tab: 'Summary', title: 'Model Summary',
       desc: 'Model name, IDs, size and structure, and which reports are loaded.' },
     { page: 'actions', tab: 'Actions', group: 'Actions', sub: 'IDs', title: 'Actions & File IDs',
-      desc: 'Internal IDs for Processes, Imports and Files, to help with API integrations.' },
+      desc: 'Internal IDs for Processes, Imports and Files, to help with API integrations.',
+      preview: ['All', 'Processes', 'Imports', 'Exports', 'Actions', 'Files'] },
     { page: 'action_usages', tab: 'Usages', group: 'Actions', sub: 'Usages', title: 'Action Usages',
       desc: 'Where your Actions are used across Apps and Pages.' },
     { page: 'pages', tab: 'Modules', title: 'Linked Pages',
@@ -64,6 +66,7 @@
       emptyDesc = document.getElementById('empty-desc'),
       emptyLoad = document.getElementById('empty-load'),
       emptyNote = document.getElementById('empty-note'),
+      emptyPreview = document.getElementById('empty-preview'),
       progress = document.getElementById('progress'),
       progressHead = document.getElementById('progress-head'),
       stepList = document.getElementById('steps');
@@ -189,6 +192,24 @@
     });
   }
 
+  /* A view whose layout isn't obvious from its description shows a static
+     sketch of it on the Get data screen - for IDs, the category bar the
+     compiled view only draws once data arrives - so it is clear what Get data
+     will produce before committing to a gather. Not interactive. */
+  function paintPreview(v) {
+    var want = (v.preview || []).join('|');
+    emptyPreview.hidden = !want;
+    if (emptyPreview.dataset.for === want) return;
+    emptyPreview.dataset.for = want;
+    emptyPreview.textContent = '';
+    (v.preview || []).forEach(function (label, ix) {
+      var c = document.createElement('span');
+      c.className = 'chip' + (ix === 0 ? ' on' : '');
+      c.textContent = label;
+      emptyPreview.appendChild(c);
+    });
+  }
+
   function render() {
     var st = state[active], v = byPage[active];
 
@@ -224,6 +245,7 @@
       emptyLoad.textContent = st.busy ? 'Gathering…' : 'Get data';
       emptyLoad.disabled = !!st.busy;
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
+      paintPreview(v);
     }
     paintProgress();
     maybeServe(active);
@@ -360,25 +382,59 @@
     if (msg.type === 'error') {
       VIEWS.forEach(function (v) { if (v.page !== 'summary' && state[v.page].busy) fail(v.page, msg.message); });
     }
+    if (msg.type === 'ia_context') switchModel();
   });
 
-  api.runtime.sendMessage({ type: 'ia_status' }).then(function (r) {
-    if (r && r.pages) {
-      VIEWS.forEach(function (v) {
-        var s = r.pages[v.page];
-        if (!s) return;
-        state[v.page].ts = s.ts || 0;
-        state[v.page].busy = !!s.busy;
-        state[v.page].steps = s.steps || [];
-      });
-    }
-    if (r && typeof r.tab === 'boolean') hasTab = r.tab;
-    if (r && r.select && byPage[r.select]) active = r.select;
-    render();
-    // Summary is instant (no Anaplan calls), so gather it on open rather than
-    // making the first thing anyone sees a "Get data" button.
-    startSummary();
-  }, function () { render(); });
+  /* The model in front changed (another tab, window or model). Every view was
+     showing the previous model, so drop the iframes and re-sync: the worker
+     answers with this model's cache - each model keeps its own entries, so
+     switching back is instant - and anything not gathered for it yet falls
+     back to Get data. Summary is served from cache when it has one rather than
+     re-gathered, so a model that is still loading announces itself once more
+     when ready without the view flickering through a second gather. */
+  function switchModel() {
+    clearTimeout(summary.timer);
+    summary.timer = 0;
+    summary.deadline = 0;
+    summaryStatus(null);
+    VIEWS.forEach(function (v) {
+      var st = state[v.page];
+      if (st.frame) st.frame.remove();
+      st.frame = null;
+      st.loaded = false;
+      st.served = 0;
+      st.ts = 0;
+      st.note = '';
+      st.steps = [];
+    });
+    sync(false);
+  }
+
+  function sync(first) {
+    api.runtime.sendMessage({ type: 'ia_status' }).then(function (r) {
+      if (r && r.pages) {
+        VIEWS.forEach(function (v) {
+          var s = r.pages[v.page];
+          if (!s) return;
+          state[v.page].ts = s.ts || 0;
+          state[v.page].busy = !!s.busy;
+          state[v.page].steps = s.steps || [];
+        });
+      }
+      if (r && typeof r.tab === 'boolean') hasTab = r.tab;
+      if (first && r && r.select && byPage[r.select]) active = r.select;
+      render();
+      // Summary is instant (no Anaplan calls), so gather it on open rather than
+      // making the first thing anyone sees a "Get data" button.
+      if (first || (hasTab && !state.summary.ts)) {
+        state.summary.busy = false;
+        startSummary();
+      } else if (!hasTab && !state.summary.ts) {
+        summaryStatus({ text: 'Open an Anaplan model tab.', error: true });
+      }
+    }, function () { render(); });
+  }
+  sync(true);
 
   render();
   setInterval(function () { if (!refreshBtn.hidden) render(); }, 30000);
