@@ -49,7 +49,7 @@
     { page: 'filter_items', tab: 'Filters', group: 'Pages', sub: 'Filters', title: 'Page Filters & Conditional Formatting',
       desc: 'Line Items used as filters or for conditional formatting in your App Pages.',
       preview: ['Filters', 'Conditional Formatting', 'All'],
-      heading: 'Filter Line Items', search: 'Search...', cols: ['App', 'Page', 'Widget', 'Filter Line Items'] },
+      heading: 'Filter Line Items', search: 'Search...', cols: ['App', 'Page', 'Widget', 'Line Item', 'Condition'] },
     /* `off`: shown but disabled. Both open every saved view, and Anaplan
        evaluates each view's filters before answering - tens of minutes on a
        large model. The gathers are still in inner.js; the worker refuses them

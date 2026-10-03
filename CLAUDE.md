@@ -128,12 +128,15 @@ No other server is ever contacted.
 
 ## Editing constraints
 
-- **Five of the nine view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
-  are committed Svelte build output (actions, action_usages, pages, filter_items, sv_filter_items).
+- **Four of the nine view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
+  are committed Svelte build output (actions, action_usages, pages, sv_filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
-- `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES modules over
-  `chunks/sv_shared.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
+- `filter_items`, `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES
+  modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
+  `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
+  line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
+  option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
   rebuilt. Keep the two implementations in step; all nine views are expected to export and search

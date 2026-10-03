@@ -111,3 +111,51 @@
 .ia-report[data-state="off"]:hover { background: transparent; }
 .ia-report[data-state="busy"] .ia-dot { background: #f59e0b; border-color: #f59e0b; animation: ia-pulse 1s ease-in-out infinite; }
 @keyframes ia-pulse { 50% { opacity: .35; } }
+
+/* Filters view (chunks/filter_items.js). Line Item and Condition share one
+   cell spanning the last six of twelve columns, laid out as pairs so each
+   condition stays level with its line item however either wraps. Colours on
+   conditional formatting rules are swatches beside the source value. The
+   compiled Tailwind CSS has no col-span-6 or swatch utilities, hence these. */
+.ia-fpairs {
+  grid-column: span 6 / span 6;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: .375rem;
+  align-items: baseline;
+}
+.ia-fpairs-4 { grid-column: span 4 / span 4; }
+.ia-fpairs > :nth-child(odd) { padding-right: .5rem; }
+.ia-join {
+  font-family: var(--font-mono, monospace);
+  font-size: .625rem;
+  font-weight: 600;
+  margin-right: .375rem;
+  padding: .0625rem .25rem;
+  border-radius: .25rem;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+.ia-pegs { display: flex; flex-direction: column; gap: .25rem; }
+.ia-rule {
+  align-self: flex-start;
+  font-family: var(--font-mono, monospace);
+  font-size: .625rem;
+  padding: .0625rem .375rem;
+  border-radius: .25rem;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+.ia-peg { display: flex; align-items: center; gap: .375rem; font-size: .75rem; }
+.ia-swatch {
+  width: .875rem;
+  height: .875rem;
+  flex-shrink: 0;
+  border-radius: .1875rem;
+  border: 1px solid var(--border);
+}
+.ia-swatch-none { background: repeating-linear-gradient(45deg, transparent 0 2px, var(--border) 2px 3px); }
+.ia-peg-v { font-variant-numeric: tabular-nums; min-width: 1.5rem; text-align: right; color: var(--foreground); }
+/* Hex codes stay on one line: the swatch carries the colour, the code is for copying. */
+.ia-peg-c { font-family: var(--font-mono, monospace); font-size: .6875rem; color: var(--muted-foreground); white-space: nowrap; }
+[class*="grid-cols-"] .ia-peg-c { overflow-wrap: normal; }

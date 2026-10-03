@@ -3,7 +3,7 @@
  * Author: Umang Chauhan
  */
 /*
- * Shared shell for the hand-written report pages (SV List, SV Items, SV Screens, SV Actions).
+ * Shared shell for the hand-written report pages (Filters, SV List, SV Items, SV Screens, SV Actions).
  *
  * The other five views are compiled Svelte (chunks/<page>-<hash>.js) and there
  * is no Svelte source in this repository - the chunks are committed build
@@ -154,7 +154,8 @@ export function linkCell(text, href) {
   a.href = href;
   a.target = '_blank';
   a.rel = 'noreferrer';
-  a.appendChild(icon('external-link', 'size-3 shrink-0 mt-0.5 stroke-muted-foreground'));
+  // Explicit 12px: the compiled CSS has no size-3, so the class alone left it at 24px.
+  a.appendChild(icon('external-link', 'size-3 shrink-0 mt-0.5 stroke-muted-foreground', 12));
   p.appendChild(a);
   return p;
 }
@@ -242,12 +243,19 @@ function noMatchState() {
      key         row -> the string the search box matches against
      cells       row -> [Node] , one per column
      csvRow      row -> a flat object; its keys become the CSV header
+     csv         optional rows -> [flat object], for when one row exports as several
      filename    CSV file name
+     tabs        optional [{label, rows: data -> [row], heading, note, placeholder,
+                 cols, headers, key, cells, csvRow | csv, filename}] - one table
+                 per tab, under a tab bar, with a row count beside the heading.
+                 Without it the page is a single table over the data array,
+                 described by the fields above.
    }
    --------------------------------------------------------------------------- */
 export function renderPage(opts) {
   var mount = document.getElementById('app'),
-      data = null, error = '', query = '', scrolled = false;
+      data = null, error = '', query = '', scrolled = false,
+      tabs = opts.tabs || [opts], active = 0;
 
   try {
     api.runtime.onMessage.addListener(function (msg) {
@@ -268,23 +276,30 @@ export function renderPage(opts) {
       'z-10 sticky top-0 flex flex-col gap-4 p-4 bg-background' + (scrolled ? ' shadow-md' : '');
   }
 
+  function tabRows(t) {
+    var rows = t.rows ? t.rows(data) : data;
+    return Array.isArray(rows) ? rows : [];
+  }
+
   function matches() {
-    return search(data || [], query, opts.key);
+    var t = tabs[active];
+    return search(tabRows(t), query, t.key);
   }
 
   function buildTable(rows) {
-    var card = el('div', 'rounded-md border border-border'),
-        head = el('div', 'grid ' + opts.cols + ' border-b border-border px-2 py-3');
-    opts.headers.forEach(function (h) {
+    var t = tabs[active],
+        card = el('div', 'rounded-md border border-border'),
+        head = el('div', 'grid ' + t.cols + ' border-b border-border px-2 py-3');
+    t.headers.forEach(function (h) {
       head.appendChild(el('h3', (h.cls ? h.cls + ' ' : '') + 'font-semibold text-sm text-foreground', h.label));
     });
     card.appendChild(head);
 
     var frag = document.createDocumentFragment();
     rows.forEach(function (row) {
-      var line = el('div', 'grid items-center ' + opts.cols +
+      var line = el('div', 'grid items-center ' + t.cols +
         ' px-2 py-1 hover:bg-muted border-border not-last:border-b group');
-      opts.cells(row).forEach(function (c) { line.appendChild(c); });
+      t.cells(row).forEach(function (c) { line.appendChild(c); });
       frag.appendChild(line);
     });
     card.appendChild(frag);
@@ -297,14 +312,42 @@ export function renderPage(opts) {
 
     if (error) { mount.appendChild(errorState(error)); return; }
     if (data === null) { mount.appendChild(loadingState()); return; }
-    if (data.length === 0) { mount.appendChild(nothingState()); return; }
+    if (!tabs.some(function (t) { return tabRows(t).length; })) { mount.appendChild(nothingState()); return; }
 
-    var rows = matches(),
+    var tab = tabs[active],
+        rows = matches(),
         root = el('div', 'size-full'),
         sticky = el('div');
 
     stickyEl = sticky;
     syncShadow();
+
+    // Tab bar - the compiled views' tabs-list / tabs-trigger classes.
+    if (opts.tabs) {
+      var list = el('div', 'bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]');
+      list.setAttribute('role', 'tablist');
+      list.setAttribute('data-slot', 'tabs-list');
+      tabs.forEach(function (t, i) {
+        var b = el('button',
+          'data-[state=active]:bg-background! text-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center ' +
+          'justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap ' +
+          'transition-[color,box-shadow] data-[state=active]:shadow-sm hover:cursor-pointer', t.label);
+        b.type = 'button';
+        b.setAttribute('role', 'tab');
+        b.setAttribute('data-slot', 'tabs-trigger');
+        b.setAttribute('data-state', i === active ? 'active' : 'inactive');
+        b.setAttribute('aria-selected', i === active ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          if (i === active) return;
+          active = i;
+          render();
+        });
+        list.appendChild(b);
+      });
+      var tabWrap = el('div');
+      tabWrap.appendChild(list);
+      sticky.appendChild(tabWrap);
+    }
 
     // Logo + export
     var bar = el('div', 'w-full flex justify-between items-center'),
@@ -325,13 +368,15 @@ export function renderPage(opts) {
     exportBtn.appendChild(icon('download'));
     exportBtn.appendChild(document.createTextNode('Export to CSV'));
     exportBtn.addEventListener('click', function () {
-      csv(matches().map(opts.csvRow), opts.filename);
+      var hit = matches();
+      csv(tab.csv ? tab.csv(hit) : hit.map(tab.csvRow), tab.filename);
     });
     bar.appendChild(exportBtn);
     sticky.appendChild(bar);
 
-    // Declared up front: the search handler below writes to both.
-    var count = el('span'), body = el('div');
+    // Declared up front: the search handler below writes to all three.
+    var count = el('span'), body = el('div'),
+        chip = opts.tabs ? el('span', 'text-sm bg-secondary rounded-md p-1 px-2 font-medium', rows.length) : null;
 
     // Search
     var searchWrap = el('div'),
@@ -357,7 +402,7 @@ export function renderPage(opts) {
       'flex-1 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 outline-none ps-2 pe-2 text-xs');
     input.setAttribute('data-slot', 'input-group-control');
     input.type = 'text';
-    input.placeholder = opts.placeholder;
+    input.placeholder = tab.placeholder || opts.placeholder;
     input.value = query;
     input.addEventListener('input', function () {
       query = input.value;
@@ -365,6 +410,7 @@ export function renderPage(opts) {
       var fresh = matches();
       count.textContent = fresh.length + ' results';
       count.hidden = !query;
+      if (chip) chip.textContent = fresh.length;
       body.replaceChildren(fresh.length ? buildTable(fresh) : noMatchState());
     });
     group.appendChild(input);
@@ -383,8 +429,11 @@ export function renderPage(opts) {
     // Content
     var content = el('div', 'space-y-6 p-4'),
         section = el('div', 'space-y-2');
-    section.appendChild(el('h1', 'text-lg font-semibold', opts.heading));
-    if (opts.note) section.appendChild(el('p', 'text-xs text-muted-foreground', opts.note));
+    var title = el('div', 'flex items-center space-x-2');
+    title.appendChild(el('h1', 'text-lg font-semibold', tab.heading));
+    if (chip) title.appendChild(chip);
+    section.appendChild(title);
+    if (tab.note) section.appendChild(el('p', 'text-xs text-muted-foreground', tab.note));
 
     body.appendChild(rows.length ? buildTable(rows) : noMatchState());
     section.appendChild(body);
