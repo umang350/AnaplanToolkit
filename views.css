@@ -107,5 +107,7 @@
 .ia-report-size { padding-left: 1rem; font-size: .75rem; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .ia-dot { width: .4rem; height: .4rem; border-radius: 9999px; flex-shrink: 0; border: 1px solid var(--muted-foreground); }
 .ia-report[data-state="loaded"] .ia-dot { background: #16a34a; border-color: #16a34a; }
+.ia-report[data-state="off"] { opacity: .5; cursor: not-allowed; }
+.ia-report[data-state="off"]:hover { background: transparent; }
 .ia-report[data-state="busy"] .ia-dot { background: #f59e0b; border-color: #f59e0b; animation: ia-pulse 1s ease-in-out infinite; }
 @keyframes ia-pulse { 50% { opacity: .35; } }

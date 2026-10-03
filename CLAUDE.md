@@ -112,16 +112,18 @@ with a 6h max age, so switching model never shows stale data. `inner.js` probes 
 
 **Watchdogs.** A gather can die silently (frame torn down, orphaned script, stalled request), which
 would leave the spinner up forever. `background.js` arms `FIRST_SIGN` (15s) on trigger and re-arms
-`STALL` (240s, above the content script's 90s + one retry ceiling) on every progress tick.
+`STALL` (240s, above the content script's 90s + one retry ceiling) on every progress tick; the saved-view loader ticks every second while batches are out, so its longer 5 min cap never trips it.
 `ia_busy`/`ia_progress` carry a monotonic `seq` so the panel drops out-of-order pushes.
 
 **Anaplan endpoints.** Only two, both using the existing session cookie: the springboard definition
 service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
 per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions, batched
-50 views at a time. `IA_pool()` caps concurrency at 8 for page definitions. View batches go
-strictly one at a time, are never retried, and the first timeout aborts the run — Anaplan
-serialises work per model, so parallel or retried batches pile up server-side and leave the model
-busy for minutes after the client has given up.
+10 views at a time (`IA_VB`), 4 batches in flight (`IA_VW`). `IA_pool()` caps concurrency at 8 for
+page definitions. Opening a saved view makes Anaplan evaluate its filters, and a few views on large
+modules cost a minute or more however little is requested — small parallel batches keep the cheap
+views flowing past them. View batches get a 5 min cap (`IA_VTMO`) rather than the usual 90s, are
+never retried, and a timeout stops new batches: Anaplan keeps working on an aborted request, so
+aborting or retrying only adds server load and leaves the model busy after the client has given up.
 No other server is ever contacted.
 
 ## Editing constraints
@@ -150,5 +152,11 @@ No other server is ever contacted.
 - Adding a view means touching all of: `PAGES` in `background.js`, `VIEWS` in `sidepanel.js`, the
   trigger map in `inner.js` (`p()`), a new `<page>.html`, a renderer, `package.sh`, and `REPORTS`
   in `chunks/summary.js`.
+- **SV Filters (`sv_filter_items`) and SV Items (`sv_line_items`) are switched off** — shown greyed
+  out and tagged *Slow*, because opening every saved view makes Anaplan evaluate its filters (tens of
+  minutes on a large model). Their gathers and renderers are intact; the switch is `off` in `VIEWS`
+  (`sidepanel.js`), `off` in `REPORTS` (`chunks/summary.js`) and `OFF` in `background.js`, which
+  refuses `ia_load`/`ia_refresh` for them. The `⌘⌥K` shortcut that started SV Filters is removed
+  from `outer.js`/`inner.js`. Re-enabling means undoing all of those.
 - `popup.html` and `chunks/popup-*.js` are dead — the manifest has no `default_popup` and
   `package.sh` excludes them.

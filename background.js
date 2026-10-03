@@ -11,7 +11,11 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
     QUIET_SIGN=5e3,       // ...or this long for Summary, which the panel retries itself
-    STALL=24e4;           // ...and this long between progress ticks once it is under way
+    STALL=24e4,           // ...and this long between progress ticks once it is under way
+    // Reports switched off: opening every saved view makes Anaplan evaluate its
+    // filters, which takes tens of minutes on a large model. Keep in step with
+    // `off` in VIEWS (sidepanel.js) and REPORTS (chunks/summary.js).
+    OFF=new Set([`sv_filter_items`,`sv_line_items`]);
 
 // Results are cached per page *and* per model, so switching model never shows stale data.
 // storage.session survives service-worker restarts and is dropped when the browser closes.
@@ -262,6 +266,7 @@ async function handle(msg,sender){
   // "Get data" / refresh icon. ia_load uses the cache, ia_refresh bypasses it.
   if(msg.type===`ia_load`||msg.type===`ia_refresh`){
     sawShell=!0;
+    if(OFF.has(msg.page))return{error:`This report is disabled - it is too slow to run on large models.`};
     stopped.delete(msg.page);
     let quiet=QUIET.has(msg.page),
         tab=await anaplanTab(),

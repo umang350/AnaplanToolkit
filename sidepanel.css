@@ -41,6 +41,13 @@ body {
 }
 #tabs button:hover, #subtabs button:hover { background: var(--muted); color: var(--foreground); }
 #tabs button[aria-selected="true"], #subtabs button[aria-selected="true"] { background: var(--secondary); color: var(--foreground); }
+/* A report switched off (VIEWS[].off): visible, not clickable, tagged "Slow". */
+#subtabs button[data-off="1"] { opacity: .5; cursor: not-allowed; }
+#subtabs button[data-off="1"]:hover { background: transparent; color: var(--muted-foreground); }
+#subtabs button .off {
+  margin-left: .125rem; padding: .0625rem .3125rem; border-radius: 9999px;
+  font-size: .625rem; font-weight: 500; border: 1px solid var(--border);
+}
 
 /* Marker: hollow = never loaded, filled = cached, spinning = gathering now. */
 #tabs button .dot, #subtabs button .dot {

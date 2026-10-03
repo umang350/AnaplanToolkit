@@ -50,13 +50,19 @@
       desc: 'Line Items used as filters or for conditional formatting in your App Pages.',
       preview: ['Filters', 'Conditional Formatting', 'All'],
       heading: 'Filter Line Items', search: 'Search...', cols: ['App', 'Page', 'Widget', 'Filter Line Items'] },
+    /* `off`: shown but disabled. Both open every saved view, and Anaplan
+       evaluates each view's filters before answering - tens of minutes on a
+       large model. The gathers are still in inner.js; the worker refuses them
+       (OFF in background.js). */
     { page: 'sv_filter_items', tab: 'SV Filters', group: 'Saved View', sub: 'Filters', title: 'Saved View Filters',
+      off: 'Disabled: too slow to run on large models',
       desc: 'Line Items used as filters in your Saved Views.',
       heading: 'Saved Views Filter Items', search: 'Search Items...', cols: ['Module', 'Saved View', 'Item Type', 'Item'] },
     { page: 'sv_views', tab: 'SV List', group: 'Saved View', sub: 'List', title: 'All Saved Views',
       desc: 'Every Saved View defined in your model, grouped by Module.',
       heading: 'Saved Views', search: 'Search by module or saved view...', cols: ['Module', 'Saved View'] },
     { page: 'sv_line_items', tab: 'SV Items', group: 'Saved View', sub: 'Items', title: 'Line Items in Saved Views',
+      off: 'Disabled: too slow to run on large models',
       desc: 'Which Line Items are selected to display inside each Saved View.',
       heading: 'Line Items in Saved Views', search: 'Search by module, saved view or line item...',
       cols: ['Module', 'Saved View', 'Line Item'] },
@@ -120,18 +126,28 @@
     }
     var g = groups[v.group];
     if (!g) {
-      g = groups[v.group] = { members: [], last: v.page };
+      g = groups[v.group] = { members: [], last: null };
       g.btn = tabButton(v.group, v.group, function () { select(g.last); });
       bar.appendChild(g.btn);
     }
     g.members.push(v);
-    v.sbtn = tabButton(v.sub, v.title, function () { select(v.page); });
+    if (!g.last && !v.off) g.last = v.page;
+    v.sbtn = tabButton(v.sub, v.off ? v.title + ' - ' + v.off : v.title, function () { select(v.page); });
+    if (v.off) {
+      v.sbtn.disabled = true;
+      v.sbtn.dataset.off = '1';
+      var tag = document.createElement('span');
+      tag.className = 'off';
+      tag.textContent = 'Slow';
+      v.sbtn.appendChild(tag);
+    }
     subBar.appendChild(v.sbtn);
   });
 
   function paintTab(b, selected, pages) {
+    pages = pages.filter(function (p) { return !byPage[p].off; });
     b.setAttribute('aria-selected', selected ? 'true' : 'false');
-    b.dataset.has = pages.every(function (p) { return state[p].ts; }) ? '1' : '0';
+    b.dataset.has = pages.length && pages.every(function (p) { return state[p].ts; }) ? '1' : '0';
     b.dataset.busy = pages.some(function (p) { return state[p].busy; }) ? '1' : '0';
   }
 
@@ -144,7 +160,7 @@
   }
 
   function select(page) {
-    if (!byPage[page]) return;
+    if (!byPage[page] || byPage[page].off) return;
     active = page;
     if (byPage[page].group) groups[byPage[page].group].last = page;
     render();
@@ -329,7 +345,7 @@
 
   function start(page, force) {
     var st = state[page];
-    if (st.busy) return;
+    if (st.busy || byPage[page].off) return;
     st.busy = true;
     st.note = '';
     st.steps = [];
@@ -468,7 +484,7 @@
         });
       }
       if (r && typeof r.tab === 'boolean') hasTab = r.tab;
-      if (first && r && r.select && byPage[r.select]) active = r.select;
+      if (first && r && r.select && byPage[r.select] && !byPage[r.select].off) active = r.select;
       render();
       // Summary is instant (no Anaplan calls), so gather it on open rather than
       // making the first thing anyone sees a "Get data" button.

@@ -21,19 +21,24 @@ model in the active tab:
 | **Usages** | Where Actions are used across Apps and Pages |
 | **Modules** | Which Apps and Pages consume each module (backend → frontend lineage) |
 | **Filters** | Line Items used as page filters or for conditional formatting |
-| **SV Filters** | Line Items used as filters in Saved Views, with the owning module |
+| **SV Filters** | *Disabled* — Line Items used as filters in Saved Views (too slow on large models, see below) |
 | **SV Screens** | Which Saved View each App Page widget reads from |
 | **SV Actions** | Imports whose source is a Saved View — see the caveats below |
 
 Every view exports to CSV and has a search box. Results are cached per model
 for 6 hours; the refresh icon re-gathers.
 
+**SV Filters and SV Items are disabled** (shown greyed out, tagged *Slow*). Both have to open
+every saved view, and Anaplan evaluates each view's filters before it answers — a few views on
+large modules take a minute or more each, so a full run on a large model takes tens of minutes.
+
 **SV Actions caveats.** Only imports are scanned, via `importDefinition.source`
 — the one action source field whose shape is confirmed (the **Actions** view
 already renders it as "Source Identifier"). Exports and processes are not
-scanned. A source is resolved by matching it against the saved views of the
-model you have open, so an import reading a view in *another* model cannot be
-named and is not listed. Both caveats are also shown on the page itself.
+scanned. That source is an import data source (`_113…_`), not the view itself;
+its definition's `objectId` names the saved view it reads. Only data sources
+from the model you have open are resolved, so an import reading a view in
+*another* model cannot be named and is not listed. Both caveats are also shown on the page itself.
 
 ## Install
 
@@ -66,7 +71,6 @@ Inside the Anaplan modelling UI (`⌘⌥` on macOS, `Ctrl+Alt` on Windows/Linux)
 | `⌘⌥O` | Actions | Action Usages |
 | `⌘⌥I` | Modules | Linked Pages |
 | `⌘⌥O` | Modules | Page Filters & Conditional Formatting |
-| `⌘⌥K` | Modules | Saved View Filters |
 
 ## Privacy
 

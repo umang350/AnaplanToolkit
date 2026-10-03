@@ -29,9 +29,9 @@ var REPORTS = [
   { page: 'action_usages', name: 'Usages', unit: 'usages' },
   { page: 'pages', name: 'Modules', unit: 'modules' },
   { page: 'filter_items', name: 'Filters', unit: 'rows' },
-  { page: 'sv_filter_items', name: 'SV Filters', unit: 'rows' },
+  { page: 'sv_filter_items', name: 'SV Filters', unit: 'rows', off: true },
   { page: 'sv_views', name: 'SV List', unit: 'saved views' },
-  { page: 'sv_line_items', name: 'SV Items', unit: 'rows' },
+  { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true },
   { page: 'sv_screens', name: 'SV Screens', unit: 'rows' },
   { page: 'sv_actions', name: 'SV Actions', unit: 'imports' }
 ];
@@ -170,24 +170,26 @@ function structureCard() {
 
 function reportsCard() {
   var s = section('Reports'), pages = overview && overview.pages || {};
-  var loaded = REPORTS.filter(function (r) { return pages[r.page] && pages[r.page].ts; }).length;
-  s.querySelector('h2').appendChild(el('span', 'ia-h-count', loaded + ' / ' + REPORTS.length + ' loaded'));
+  var on = REPORTS.filter(function (r) { return !r.off; });
+  var loaded = on.filter(function (r) { return pages[r.page] && pages[r.page].ts; }).length;
+  s.querySelector('h2').appendChild(el('span', 'ia-h-count', loaded + ' / ' + on.length + ' loaded'));
 
   var list = el('ul', 'ia-reports');
   REPORTS.forEach(function (r) {
     var p = pages[r.page] || {}, li = el('li'), b = el('button', 'ia-report');
     b.type = 'button';
-    b.dataset.state = p.busy ? 'busy' : p.ts ? 'loaded' : 'empty';
-    b.addEventListener('click', function () {
+    b.dataset.state = r.off ? 'off' : p.busy ? 'busy' : p.ts ? 'loaded' : 'empty';
+    if (r.off) b.disabled = true;
+    else b.addEventListener('click', function () {
       api.runtime.sendMessage({ type: 'ia_select', page: r.page }).catch(function () {});
     });
     var head = el('span', 'ia-report-head');
     head.appendChild(el('span', 'ia-dot'));
     head.appendChild(el('span', 'ia-report-name', r.name));
     head.appendChild(el('span', 'ia-report-when',
-      p.busy ? 'Loading…' : p.ts ? ago(p.ts) : 'Not loaded'));
+      r.off ? 'Disabled - too slow' : p.busy ? 'Loading…' : p.ts ? ago(p.ts) : 'Not loaded'));
     b.appendChild(head);
-    var size = p.ts ? sizeText(r, p.size) : '';
+    var size = p.ts && !r.off ? sizeText(r, p.size) : '';
     if (size) b.appendChild(el('span', 'ia-report-size', size));
     li.appendChild(b);
     list.appendChild(li);
