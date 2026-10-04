@@ -80,6 +80,7 @@ content-scripts/
   outer.js              ISOLATED world on the modeling-ui frame — keyboard shortcuts only
   inner.js              ISOLATED world on framework.jsp — the report engine
   main.js               MAIN world on framework.jsp — reads Anaplan's in-page model cache
+  busy.js               ISOLATED world on every Anaplan frame — Lock Monitor's banner reader
 ```
 
 **Why three content scripts.** Anaplan's model metadata lives in page JS (`anaplan.data.
@@ -220,8 +221,14 @@ No other server is ever contacted.
   `*MAINTENANCE*`), `modelManagerState`, `markedForUnload`, plus any other field whose name suggests a
   lock or task (`IA_lkExtra` - Anaplan has no documented "Model is busy" field; the row's keys are
   saved for the view's fields disclosure). It also records reply time (>= `IA_LKSLOW` = "Slow reply"),
-  HTTP 423/424 (the Integration API's locked/offline) and Anaplan's busy banner if drawn in this
-  frame (`IA_lkBanner`). Its progress goes to its own page (`IA_lkTick`), not `IA_step`, since it
+  HTTP 423/424 (the Integration API's locked/offline) and Anaplan's "Model is busy" banner. That
+  banner is drawn by the page in front (new modelling UI, App pages), **not** the framework.jsp frame
+  - the first live run read Available under it, with the summary call still saying Unlocked in
+  under a second. So each check also sends `ia_lk_scan`; the worker relays `ia_lk_frame` to every
+  frame of the tab, and `content-scripts/busy.js` (all Anaplan frames, idle until asked) answers
+  only if it saw the banner since the last check (a MutationObserver, started by the first ask and
+  stopped 10s after the last, catches one that flashed between checks). `IA_lkBanner` still reads
+  the engine's own frame. Its progress goes to its own page (`IA_lkTick`), not `IA_step`, since it
   runs beside other gathers. **Stop is how it ends:** `ia_cancel` sets `IA_halt`, the loop sends the
   checks so far as `ia_result`, and the worker keeps that result (`LIVE` in `background.js`) where it
   drops every other stopped run's. It also ends itself after `IA_LKMAX` (1h) or `IA_LKERRS` failed

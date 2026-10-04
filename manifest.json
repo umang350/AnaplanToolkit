@@ -81,6 +81,16 @@
     },
     {
       "matches": [
+        "https://*.anaplan.com/*"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle",
+      "js": [
+        "content-scripts/busy.js"
+      ]
+    },
+    {
+      "matches": [
         "https://*.anaplan.com/*modeling-ui*"
       ],
       "all_frames": true,

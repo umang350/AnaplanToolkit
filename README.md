@@ -51,7 +51,8 @@ demand, grouped as in the panel's tab bar:
   uses). A check never starts while the last one is still out, so a busy model is not loaded
   with extra requests.
 - **Locked** or **Offline** comes from the model's state (Lock or Take offline in Model
-  Management). **Busy** means Anaplan's own busy banner or flag was seen. **Slow reply** means a
+  Management). **Busy** means Anaplan's own "Model is busy" banner was on screen (in any part of
+  the Anaplan page, including one that flashed between checks) or a busy flag was in the reply. **Slow reply** means a
   check took 3 seconds or more, which usually means a process, import, export or large
   calculation is holding the model. Anaplan has no documented field for "Model is busy", so treat
   Slow reply as a strong hint, not proof.

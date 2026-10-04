@@ -480,6 +480,16 @@ async function handle(msg,sender){
     return void(tabId!=null&&api.tabs.sendMessage(tabId,msg).catch(()=>{}))
   }
 
+  // Lock Monitor: is Anaplan's own "Model is busy" banner up in any frame of
+  // this tab? It is drawn by the page in front (new modelling UI, App pages),
+  // not the framework.jsp frame the monitor runs in, so each check asks every
+  // frame (content-scripts/busy.js) - only a frame that saw it answers.
+  if(msg.type===`ia_lk_scan`){
+    if(tabId==null)return{text:``};
+    let r=await Promise.race([api.tabs.sendMessage(tabId,{type:`ia_lk_frame`}).catch(()=>null),new Promise(z=>setTimeout(()=>z(null),15e2))]);
+    return{text:r&&typeof r.text==`string`?r.text:``}
+  }
+
   // Anything else is the outer.js -> inner.js relay within one tab.
   if(tabId!=null)await api.tabs.sendMessage(tabId,msg)
 }
