@@ -80,7 +80,7 @@ content-scripts/
   outer.js              ISOLATED world on the modeling-ui frame — keyboard shortcuts only
   inner.js              ISOLATED world on framework.jsp — the report engine
   main.js               MAIN world on framework.jsp — reads Anaplan's in-page model cache
-  busy.js               ISOLATED world on every Anaplan frame — Lock Monitor's banner reader
+  api.js                ISOLATED world, top frame of any Anaplan tab — Lock Monitor's API relay
 ```
 
 **Why three content scripts.** Anaplan's model metadata lives in page JS (`anaplan.data.
@@ -217,29 +217,35 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   "User added revision". "Current": the tag's `metadataId` equals the reply's, i.e. the model's
   definition is unchanged since. Two tabs - Revision Tags and Applied To.
 - **Lock Monitor** (`lock_monitor`, `chunks/lock_monitor.js`) is the one report that runs until
-  stopped, and the one gathered **in the worker** (`lkStart`/`lkLoop`/`lkProbe` in `background.js`),
-  not in a content script: a busy model is exactly when the model page may never load. Workspace and
-  model IDs come from the tab URL (`lkIds`). Once a second, never two at once, it calls the
-  Integration API's model status, `POST https://api.anaplan.com/2/0/workspaces/{w}/models/{m}/status`;
-  `requestStatus.currentStep` is "Open" when idle and names the running step otherwise, with
-  `progress`, `tooltip`, `taskId`. HTTP 423/424 = locked/offline. Two page-based attempts failed on a
-  live model and were removed: Workspace's summary call said Unlocked in <1s while the model was busy,
-  and reading the "Model is busy" banner needs the page up and went back to Available with the banner
-  still showing. **Login:** the browser's cookies are tried first; on 401/403 (or a login page) the run
-  stops with `ia_page_error` and the panel's login form (`#empty-token`, Lock tab only) takes either an
-  AnaplanAuthToken or a user ID + password, which `lkLogin` swaps for a token at
-  `auth.anaplan.com/token/authenticate` (Basic auth; the password is used for that one request and
-  never kept - SSO users need to be exception users). Sent with `ia_load`; the token is held in
-  `lkToken` only - never stored - and renewed via
-  `auth.anaplan.com/token/refresh` every 25 min (tokens last 35). Stop is how it ends: `ia_cancel`
-  aborts its request and the worker caches what it gathered (`LIVE`) where other stopped runs are
-  dropped. It also ends after `LK_MAX` (1h), `LK_ERRS` failed checks, or a refused login mid-run.
-  `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded count. Whether the API
-  accepts the browser session is **not confirmed**. api.anaplan.com answers **401** for a missing or
-  bad token (checked) and **403** for a valid token it won't serve - a live run with a fresh token
-  got 403 on model status, likely a workspace-admin-only call. On a first-check refusal with a token,
-  `lkDiagnose` asks `auth.anaplan.com/token/validate` and `GET /2/0/users/me` to say which part was
-  refused, and keeps a token that is still valid.
+  stopped, and is driven **from the worker** (`lkStart`/`lkLoop`/`lkProbe` in `background.js`), not
+  from the report engine: a busy model is exactly when the model page may never load. Workspace and
+  model IDs come from the tab URL (`lkIds`). Once a second, never two at once, it reads the
+  Integration API's model status, **`GET`** `https://api.anaplan.com/2/0/workspaces/{w}/models/{m}/status`
+  (confirmed live: POST answers 415/405). The reply is `{requestStatus: {currentStep, progress,
+  tooltip, taskId, creationTime, exportTaskType, peakMemoryUsage*}}`: `currentStep` "Open." when idle,
+  "Processing ..." with e.g. tooltip "The system is currently processing an Export: … started by … at
+  06:59 (UTC)" when busy. HTTP 423/424 = locked/offline.
+  **The API refuses extension origins** (confirmed with a valid token: `Origin: chrome-extension://` or
+  `moz-extension://` -> empty 403; `Origin: https://us1a.app.anaplan.com` -> 200; its preflight allows
+  GET + `Authorization` + credentials from any Anaplan page origin). So every API call goes through
+  `content-scripts/api.js` in the tab's top frame (`lkFetch` -> `ia_lk_fetch`, `frameId: 0`; Stop sends
+  `ia_lk_abort`), which only does GETs to `api.anaplan.com/2/0/` for the extension itself, using
+  `content.fetch` on Firefox so the request is the page's. It runs at `document_start` in the Anaplan
+  shell, which is up even while the model is busy. A missing or bad token is **401** (checked).
+  Two page-reading attempts failed live and were removed: Workspace's summary call said Unlocked while
+  busy, and the "Model is busy" banner needs the page up and dropped back to Available while shown.
+  **Login:** the page's own cookies first (the API allows credentials from Anaplan origins - whether it
+  honours the session is **not confirmed**); on 401/403 the run stops with `ia_page_error` and the
+  panel's login form (`#empty-token`, Lock tab only) takes an AnaplanAuthToken or a user ID +
+  password, which `lkLogin` swaps for a token at `auth.anaplan.com/token/authenticate` from the worker
+  (auth.anaplan.com accepts the extension origin; the password is used once and never kept - SSO
+  users need to be exception users). The token is held in `lkToken` only - never stored - and renewed
+  via `auth.anaplan.com/token/refresh` every 25 min (tokens last 35). On a refused first check with a
+  token, `lkDiagnose` checks `token/validate` and `GET /2/0/users/me` to say which part was refused.
+  Stop is how it ends: `ia_cancel` stops the run and the worker caches what it gathered (`LIVE`)
+  where other stopped runs are dropped. It also ends after `LK_MAX` (1h), `LK_ERRS` failed checks, or
+  a refused login mid-run. `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded
+  count.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state

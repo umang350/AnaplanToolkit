@@ -48,9 +48,11 @@ demand, grouped as in the panel's tab bar:
 - **Start monitoring** asks Anaplan once a second what the model is doing and shows it live. Press
   **Stop** to end it and save the report. It stops on its own after an hour, and Get all data
   skips it.
-- It uses Anaplan's Integration API model status, the same status Anaplan uses for "Model is
-  busy", and runs inside the extension rather than the page. It keeps working when the model
-  page is stuck loading.
+- It uses Anaplan's Integration API model status, the same status behind "Model is busy". When
+  the model is busy it shows what is running, for example "The system is currently processing an
+  Export … started by … at 06:59 (UTC)". It doesn't read the model page, so it keeps working when
+  the model is stuck loading. Anaplan's API only accepts calls from Anaplan's own pages, so each
+  check is sent from the Anaplan tab.
 - **Available**: Anaplan reports the model open with nothing running. **Busy**: Anaplan names a
   running step (a process, import, export or other task), with its progress and task where given.
   **Locked** / **Offline**: the API refused the model as locked or offline.
@@ -135,8 +137,8 @@ telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
 - `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
-- `api.anaplan.com` (Integration API model status) and `auth.anaplan.com` (sign-in with user ID
-  and password, token renewal): the Lock Monitor only
+- `api.anaplan.com` (Integration API model status, sent from the Anaplan tab) and
+  `auth.anaplan.com` (sign-in with user ID and password, token renewal): the Lock Monitor only
 
 All of these calls only read. Results are kept in `storage.session`, compressed when large, and
 are dropped when the browser closes. Nothing is sent anywhere else.
