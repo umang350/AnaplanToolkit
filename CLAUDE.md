@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Fifteen read-only report views, each
+the structure of the Anaplan model open in the active tab. Sixteen read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -135,7 +135,7 @@ gateway's model list (`/a/springboard-platform-gateway-service/customer/…/mode
 list behind Anaplan's Models menu - Workspace's All Workspaces tab), the
 springboard definition service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
 per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions (and, for Workspace, model summaries;
-for Revisions, the read-only `GET_MODEL_REVISIONS` system action), batched
+for Revisions, the read-only `GET_MODEL_REVISIONS` system action; the Lock Monitor repeats Workspace's summary call once a second), batched
 10 views at a time (`IA_VB`), 4 batches in flight (`IA_VW`). `IA_pool()` caps concurrency at 8 for
 page definitions. Opening a saved view makes Anaplan evaluate its filters, and a few views on large
 modules cost a minute or more however little is requested — small parallel batches keep the cheap
@@ -151,13 +151,13 @@ No other server is ever contacted.
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
 - `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
-  `modules`, `line_items` and `lists` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
+  `modules`, `line_items`, `lists`, `revisions` and `lock_monitor` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all fifteen views are expected to export and search
+  rebuilt. Keep the two implementations in step; all sixteen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Every table sorts by clicking a column header (ascending, descending, back to original order).
@@ -214,6 +214,18 @@ No other server is ever contacted.
   how). "Synced" mirrors that page's icon: this model is a target by sync/import/copy rather than
   "User added revision". "Current": the tag's `metadataId` equals the reply's, i.e. the model's
   definition is unchanged since. Two tabs - Revision Tags and Applied To.
+- **Lock Monitor** (`lock_monitor`, `IA_glock`, `chunks/lock_monitor.js`) is the one report that runs
+  until stopped. It repeats Workspace's summary call (`IA_wsReq`, no `modelId`) once a second
+  (`IA_LKEVERY`), never two at once, and reads this model's row: `activeState` (`LOCKED`,
+  `*MAINTENANCE*`), `modelManagerState`, `markedForUnload`, plus any other field whose name suggests a
+  lock or task (`IA_lkExtra` - Anaplan has no documented "Model is busy" field; the row's keys are
+  saved for the view's fields disclosure). It also records reply time (>= `IA_LKSLOW` = "Slow reply"),
+  HTTP 423/424 (the Integration API's locked/offline) and Anaplan's busy banner if drawn in this
+  frame (`IA_lkBanner`). Its progress goes to its own page (`IA_lkTick`), not `IA_step`, since it
+  runs beside other gathers. **Stop is how it ends:** `ia_cancel` sets `IA_halt`, the loop sends the
+  checks so far as `ia_result`, and the worker keeps that result (`LIVE` in `background.js`) where it
+  drops every other stopped run's. It also ends itself after `IA_LKMAX` (1h) or `IA_LKERRS` failed
+  checks in a row. `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded count.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state
@@ -233,7 +245,7 @@ No other server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the sixteenth view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the seventeenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button

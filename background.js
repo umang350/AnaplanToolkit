@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`],
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -19,7 +19,10 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     // Reports switched off: opening every saved view makes Anaplan evaluate its
     // filters, which takes tens of minutes on a large model. Keep in step with
     // `off` in VIEWS (sidepanel.js) and REPORTS (chunks/summary.js).
-    OFF=new Set([`sv_filter_items`,`sv_line_items`]);
+    OFF=new Set([`sv_filter_items`,`sv_line_items`]),
+    // Runs that go on until stopped (the Lock Monitor): Stop is how they end,
+    // so their result after an ia_cancel is the report, not a late leftover.
+    LIVE=new Set([`lock_monitor`]);
 
 // Results are cached per page *and* per model, so switching model never shows stale data.
 // storage.session survives service-worker restarts and is dropped when the browser closes.
@@ -364,10 +367,12 @@ async function handle(msg,sender){
   // Stop button: end every gather under way. The worker clears the busy state
   // itself rather than waiting on the content script, so the panel frees up
   // even if the tab never answers; whatever the stopped runs send later is dropped.
+  // A LIVE run is the exception: it sends what it has gathered when told to
+  // stop, and that result is cached as usual.
   if(msg.type===`ia_cancel`){
     sawShell=!0;
     let was=runsOf(msg.forTab),tabs=new Set(was.map(w=>w.tab));
-    for(let w of was)stopped.add(rid(w.tab,w.page)),setBusy(w.tab,w.page,!1);
+    for(let w of was)LIVE.has(w.page)||stopped.add(rid(w.tab,w.page)),setBusy(w.tab,w.page,!1);
     if(!tabs.size){let t=await tabFor(msg);t!=null&&tabs.add(t)}
     for(let t of tabs)t!=null&&await api.tabs.sendMessage(t,{type:`ia_cancel`}).catch(()=>{});
     return{stopped:was.map(w=>w.page)}

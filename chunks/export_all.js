@@ -21,7 +21,7 @@ import { csvText } from './sv_shared.js';
  */
 
 var HAND = ['filter_items', 'sv_views', 'sv_line_items', 'sv_screens', 'sv_actions', 'process_steps',
-            'modules', 'line_items', 'lists', 'revisions', 'workspace', 'workspace_all'];
+            'modules', 'line_items', 'lists', 'revisions', 'lock_monitor', 'workspace', 'workspace_all'];
 
 function nameId(x) { return { Name: x.label, Id: x.entityLongId }; }
 

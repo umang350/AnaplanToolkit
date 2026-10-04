@@ -31,6 +31,7 @@ demand, grouped as in the panel's tab bar:
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
+| **Lock** | | Checks once a second whether the model is available, busy, locked or offline, until you press Stop; then shows the timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
 | | All | Storage for every workspace you can access, and every active model across them |
 
@@ -41,6 +42,21 @@ demand, grouped as in the panel's tab bar:
 - **Export to CSV** writes the rows in the order you've sorted them.
 - **Refresh** with the icon at the top right to gather a report again. Results are cached per model
   for 6 hours.
+
+**Lock Monitor:**
+
+- **Start monitoring** checks the model once a second and shows its status live. Press **Stop**
+  to end it and save the report. It stops on its own after an hour, and Get all data skips it.
+- Each check is one small read-only request (the workspace summary Anaplan's Workspace page
+  uses). A check never starts while the last one is still out, so a busy model is not loaded
+  with extra requests.
+- **Locked** or **Offline** comes from the model's state (Lock or Take offline in Model
+  Management). **Busy** means Anaplan's own busy banner or flag was seen. **Slow reply** means a
+  check took 3 seconds or more, which usually means a process, import, export or large
+  calculation is holding the model. Anaplan has no documented field for "Model is busy", so treat
+  Slow reply as a strong hint, not proof.
+- **Timeline** merges checks in a row with the same status into periods. **Checks** lists every
+  check.
 
 **On Summary:**
 
@@ -114,7 +130,7 @@ session:
 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
-- `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
+- `/jsonrpc`: saved views, action definitions, workspace storage (also the Lock Monitor's checks) and revision tags
 
 All of these calls only read. Results are kept in `storage.session`, compressed when large, and
 are dropped when the browser closes. Nothing is sent anywhere else.

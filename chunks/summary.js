@@ -40,6 +40,8 @@ var REPORTS = [
   { page: 'line_items', name: 'Line Items', unit: 'line items', key: 'lineItems' },
   { page: 'lists', name: 'Lists', keys: [['lists', 'lists'], ['properties', 'properties']] },
   { page: 'revisions', name: 'Revision Tags', keys: [['revisions', 'tags'], ['applied', 'models applied to']] },
+  // live: runs until stopped, so it is not counted in "loaded" or run by Get all data.
+  { page: 'lock_monitor', name: 'Lock Monitor', unit: 'checks', key: 'samples', live: true },
   { page: 'workspace', name: 'Workspace', unit: 'models', key: 'models' },
   { page: 'workspace_all', name: 'All Workspaces', unit: 'workspaces', key: 'workspaces' }
 ];
@@ -180,8 +182,9 @@ function structureCard() {
 
 function reportsCard() {
   var s = section('Reports'), pages = overview && overview.pages || {};
-  var on = REPORTS.filter(function (r) { return !r.off; });
-  var loaded = on.filter(function (r) { return pages[r.page] && pages[r.page].ts; }).length;
+  var on = REPORTS.filter(function (r) { return !r.off && !r.live; });
+  var has = function (r) { return pages[r.page] && pages[r.page].ts; };
+  var loaded = on.filter(has).length;
   s.querySelector('h2').appendChild(el('span', 'ia-h-count', loaded + ' / ' + on.length + ' loaded'));
 
   var list = el('ul', 'ia-reports');
@@ -197,7 +200,8 @@ function reportsCard() {
     head.appendChild(el('span', 'ia-dot'));
     head.appendChild(el('span', 'ia-report-name', r.name));
     head.appendChild(el('span', 'ia-report-when',
-      r.off ? 'Disabled - too slow' : p.busy ? 'Loading…' : p.ts ? ago(p.ts) : 'Not loaded'));
+      r.off ? 'Disabled - too slow' : p.busy ? (r.live ? 'Monitoring…' : 'Loading…') : p.ts ? ago(p.ts)
+        : r.live ? 'Not run' : 'Not loaded'));
     b.appendChild(head);
     var size = p.ts && !r.off ? sizeText(r, p.size) : '';
     if (size) b.appendChild(el('span', 'ia-report-size', size));
@@ -206,14 +210,14 @@ function reportsCard() {
   });
   s.appendChild(list);
   if (!overview) s.appendChild(el('p', 'ia-note', 'Checking…'));
-  s.appendChild(actions(loaded, on.length));
+  s.appendChild(actions(loaded, on.length, REPORTS.filter(has).length));
   return s;
 }
 
 /* Get all data + Download all, side by side. Get all data is run by the
    panel shell (getAll in sidepanel.js), one report after another; it tells
    us how far along it is (ia_getall_status), and the button becomes Stop. */
-function actions(loaded, total) {
+function actions(loaded, total, any) {
   var row = el('div', 'ia-dl'),
       g = el('button', 'ia-dl-btn', getAll.running ? 'Stop' : 'Get all data');
   g.type = 'button';
@@ -224,7 +228,7 @@ function actions(loaded, total) {
     window.parent.postMessage({ type: getAll.running ? 'ia_getall_stop' : 'ia_getall' }, location.origin);
   });
   row.appendChild(g);
-  downloadAll(row, loaded);
+  downloadAll(row, any);
   if (getAll.running)
     row.appendChild(el('span', 'ia-note', 'Getting ' + (getAll.done + 1) + ' of ' + getAll.total +
                        (getAll.current ? ': ' + getAll.current : '') + '…'));

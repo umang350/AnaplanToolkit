@@ -104,6 +104,13 @@
       preview: ['Revision Tags', 'Applied To'],
       heading: 'Revision Tags', search: 'Search by title, description, user or model...',
       cols: ['Title', 'Created by', 'Created on', 'Created in'] },
+    /* `live`: runs until Stop (or an hour), then saves what it saw - so it
+       is left out of Get all data, and Stop is labelled as saving. */
+    { page: 'lock_monitor', tab: 'Lock', title: 'Model Lock Monitor', live: true,
+      desc: 'Checks once a second whether the model is available, busy, locked or offline. Press Stop to save the timeline as a report.',
+      preview: ['Timeline', 'Checks'],
+      heading: 'Timeline', search: 'Search by status or model state...',
+      cols: ['From', 'Duration', 'Status', 'Model state'] },
     { page: 'workspace', tab: 'Workspace', group: 'Workspace', sub: 'Current', title: 'Workspace Models & Storage',
       desc: 'Every model in this workspace with its size and state, and how much of the workspace allowance is used.',
       preview: ['Active', 'Archived', 'Deleted'],
@@ -277,7 +284,8 @@
     progress.hidden = !st.busy || active === 'summary';
     if (progress.hidden) return;
     progress.classList.toggle('compact', !!st.ts);
-    progressHead.textContent = (st.ts ? 'Refreshing ' : 'Gathering ') + byPage[active].title;
+    progressHead.textContent = byPage[active].live ? 'Monitoring · press Stop to save the report'
+      : (st.ts ? 'Refreshing ' : 'Gathering ') + byPage[active].title;
 
     var steps = st.steps || [];
     if (!steps.length) steps = [{ step: 'Starting…', detail: '', i: null, n: null, done: false }];
@@ -373,15 +381,15 @@
     refreshBtn.hidden = !st.frame;
     refreshBtn.disabled = false;
     refreshBtn.dataset.busy = st.busy ? '1' : '0';
-    refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : 'Stop')
-      : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
+    refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : v.live ? 'Stop and save' : 'Stop')
+      : v.live ? 'Monitor again' : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
     refreshBtn.setAttribute('aria-label', st.busy ? 'Stop' : 'Refresh');
 
     empty.hidden = !!st.frame;
     if (!st.frame) {
       emptyTitle.textContent = v.title;
       emptyDesc.textContent = v.desc;
-      emptyLoad.textContent = st.busy ? 'Gathering…' : 'Get data';
+      emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring' : 'Get data';
       emptyLoad.disabled = !!st.busy;
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
       paintPreview(v);
@@ -496,7 +504,7 @@
   function getAll() {
     if (queue.current) return;
     queue.pages = VIEWS.filter(function (v) {
-      return v.page !== 'summary' && !v.off && !state[v.page].ts && !state[v.page].busy;
+      return v.page !== 'summary' && !v.off && !v.live && !state[v.page].ts && !state[v.page].busy;
     }).map(function (v) { return v.page; });
     queue.total = queue.pages.length;
     pump();

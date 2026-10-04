@@ -241,3 +241,19 @@
 .ia-sortable:hover { text-decoration: underline; text-underline-offset: 2px; }
 .ia-sortable:focus-visible { outline: 2px solid var(--ring, currentColor); outline-offset: 2px; border-radius: 2px; }
 .ia-sort-mark { font-size: .65em; color: var(--muted-foreground); }
+
+/* Lock Monitor (chunks/lock_monitor.js): status pills and the status-over-time strip. */
+.ia-lk {
+  display: inline-block; padding: 0 .5rem; border-radius: 9999px; white-space: nowrap;
+  font-size: .75rem; font-weight: 500; color: var(--muted-foreground);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.ia-lk[data-lk="ok"] { color: #16a34a; }
+.ia-lk[data-lk="warn"] { color: #d97706; }
+.ia-lk[data-lk="bad"] { color: #dc2626; }
+.ia-ws-pct .ia-lk { vertical-align: 1px; }
+.ia-lk-strip { display: flex; height: .625rem; border-radius: 9999px; overflow: hidden; background: var(--muted); gap: 1px; }
+.ia-lk-strip i { display: block; flex-basis: 0; min-width: 2px; background: #9ca3af; }
+.ia-lk-strip i[data-lk="ok"] { background: #16a34a; }
+.ia-lk-strip i[data-lk="warn"] { background: #f59e0b; }
+.ia-lk-strip i[data-lk="bad"] { background: #dc2626; }
