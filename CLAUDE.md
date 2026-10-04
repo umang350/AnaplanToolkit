@@ -159,8 +159,13 @@ No other server is ever contacted.
   `REQUEST_ANAPLAN_DATA {IA_want:"structure"}` - `P(0, "structure")` in `inner.js`, which keeps
   waiting if a reply meant for another concurrent gather arrives without `IA_struct`. Anaplan's
   cache shape for per-object detail is **not confirmed against a live model**: every field
-  (format, applies-to, formula, summary, time scale, list parent, item count, properties) is
-  probed under several likely key names (`IA_pick`) and left empty when none matches. Names and
+  is probed under several likely key names (`IA_pick`) and left empty when none matches.
+  Confirmed on a live model (a console dump): line item info holds `format` (`dataType`, …),
+  `formula`, `fullAppliesTo` (array of list ids), `isSummary` and `leafPeriodType.entityLabel`
+  (time scale; "Not Applicable" when unset) - there is no summary-method field. A list's info holds
+  `parentHierarchyEntityLongId` (`-1` = none), `itemCount`, and `propertiesLabelPage` +
+  `propertiesInfo` (`{format, formula}` per property, same order). That label page's arrays are
+  **flat** (`labels: [...]`), unlike every other label page (`[[...]]`); `IA_page` reads both. Names and
   IDs come from the label pages the other reports already rely on, so those are solid.
   `IA_shape` carries the keys the cache actually held, and a view with an empty column says so
   with those keys in its note and a "Show the fields Anaplan provided" disclosure
