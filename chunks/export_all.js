@@ -20,8 +20,23 @@ import { csvText } from './sv_shared.js';
  * (ia_dump) and the zip is built here.
  */
 
-var HAND = ['filter_items', 'sv_views', 'sv_line_items', 'sv_screens', 'sv_actions', 'process_steps',
-            'modules', 'line_items', 'lists', 'revisions', 'lock_monitor', 'workspace', 'workspace_all'];
+/* One literal import() per view: AMO's validator rejects import() with a
+   computed path ("Unsafe call to import"). */
+var HAND = [
+  function () { return import('./filter_items.js'); },
+  function () { return import('./sv_views.js'); },
+  function () { return import('./sv_line_items.js'); },
+  function () { return import('./sv_screens.js'); },
+  function () { return import('./sv_actions.js'); },
+  function () { return import('./process_steps.js'); },
+  function () { return import('./modules.js'); },
+  function () { return import('./line_items.js'); },
+  function () { return import('./lists.js'); },
+  function () { return import('./revisions.js'); },
+  function () { return import('./lock_monitor.js'); },
+  function () { return import('./workspace.js'); },
+  function () { return import('./workspace_all.js'); }
+];
 
 function nameId(x) { return { Name: x.label, Id: x.entityLongId }; }
 
@@ -64,7 +79,7 @@ async function viewDefs() {
   globalThis.IA_COLLECT = {};
   try {
     for (var i = 0; i < HAND.length; i++) {
-      try { await import('./' + HAND[i] + '.js'); } catch (e) { /* that view is skipped */ }
+      try { await HAND[i](); } catch (e) { /* that view is skipped */ }
     }
     collected = globalThis.IA_COLLECT;
   } finally {
