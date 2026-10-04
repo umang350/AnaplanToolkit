@@ -30,7 +30,7 @@ model in the active tab:
 | **Structure › Lists** | Every list with its ID and parent, and every list property with its format and formula |
 | **Workspace** | Models and storage in this workspace, and across every workspace you can access |
 
-Every view exports to CSV and has a search box, and Summary has **Get all data** (gathers every
+Every view exports to CSV, has a search box and sorts by any column (click its header), and Summary has **Get all data** (gathers every
 report not loaded yet, one after another) and **Download all as CSV** (zips every loaded report's
 CSV files into one download). The Structure reports read Anaplan's in-page
 model data, so they make no extra requests (Modules also reads the App page list). Fields Anaplan

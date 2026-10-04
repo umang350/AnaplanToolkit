@@ -245,7 +245,10 @@ function noMatchState() {
                  string, or data -> string when it depends on the data
      placeholder search box placeholder
      cols        grid template class shared by the header row and the data rows
-     headers     [{label, cls}]
+     headers     [{label, cls, sort}] - clicking a header sorts by that column
+                 (ascending, descending, then back to the original order).
+                 `sort` is row -> the value to sort on; without it the column
+                 sorts on its cell's text, which suits text but not, say, "1.2 GB".
      key         row -> the string the search box matches against
      cells       row -> [Node] , one per column
      csvRow      row -> a flat object; its keys become the CSV header
@@ -297,9 +300,39 @@ export function renderPage(opts) {
     return Array.isArray(rows) ? rows : [];
   }
 
+  /* Column sort, per tab: {col, dir} with dir 1 / -1. Applied after search,
+     so it orders the matches (search alone orders them by score), and Export
+     to CSV writes them in the same order. Numbers sort as numbers, text
+     naturally ("Item 2" before "Item 10"), blanks last either way. */
+  var sorts = {}, textOf = {},
+      collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+  function sortValue(t, i, row) {
+    var h = t.headers[i];
+    if (h.sort) return h.sort(row);
+    var k = active + ':' + i, m = textOf[k] || (textOf[k] = new WeakMap());
+    if (!m.has(row)) { var c = t.cells(row)[i]; m.set(row, c ? c.textContent.trim() : ''); }
+    return m.get(row);
+  }
+
+  function blank(v) { return v == null || v === '' || v === '–' || (typeof v === 'number' && isNaN(v)); }
+
+  function sorted(t, rows) {
+    var st = sorts[active];
+    if (!st) return rows;
+    var keyed = rows.map(function (r) { return [sortValue(t, st.col, r), r]; });
+    keyed.sort(function (a, b) {
+      var x = a[0], y = b[0];
+      if (blank(x) || blank(y)) return blank(x) - blank(y);
+      var c = typeof x === 'number' && typeof y === 'number' ? x - y : collator.compare(String(x), String(y));
+      return c * st.dir;
+    });
+    return keyed.map(function (k) { return k[1]; });
+  }
+
   function matches() {
     var t = tabs[active];
-    return search(tabRows(t), query, t.key);
+    return sorted(t, search(tabRows(t), query, t.key));
   }
 
   function buildTable(rows) {
@@ -307,8 +340,25 @@ export function renderPage(opts) {
         lim = t.max ? Math.max(shown, t.max) : rows.length,
         card = el('div', 'rounded-md border border-border'),
         head = el('div', 'grid ' + t.cols + ' border-b border-border px-2 py-3');
-    t.headers.forEach(function (h) {
-      head.appendChild(el('h3', (h.cls ? h.cls + ' ' : '') + 'font-semibold text-sm text-foreground', h.label));
+    var st = sorts[active];
+    t.headers.forEach(function (h, i) {
+      var on = st && st.col === i,
+          h3 = el('h3', (h.cls ? h.cls + ' ' : '') + 'font-semibold text-sm text-foreground ia-sortable', h.label);
+      h3.setAttribute('role', 'button');
+      h3.tabIndex = 0;
+      h3.title = 'Sort by ' + h.label;
+      h3.setAttribute('aria-sort', on ? (st.dir > 0 ? 'ascending' : 'descending') : 'none');
+      h3.appendChild(el('span', 'ia-sort-mark', on ? (st.dir > 0 ? ' ▲' : ' ▼') : ''));
+      var go = function () {
+        var cur = sorts[active];
+        sorts[active] = !cur || cur.col !== i ? { col: i, dir: 1 } : cur.dir > 0 ? { col: i, dir: -1 } : null;
+        shown = 0;
+        var fresh = matches();
+        card.parentNode && (card.closest('.ia-table') || card).replaceWith(buildTable(fresh));
+      };
+      h3.addEventListener('click', go);
+      h3.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      head.appendChild(h3);
     });
     card.appendChild(head);
 
@@ -322,7 +372,7 @@ export function renderPage(opts) {
     card.appendChild(frag);
     if (rows.length <= lim) return card;
 
-    var box = el('div'), rest = rows.length - lim,
+    var box = el('div', 'ia-table'), rest = rows.length - lim,
         more = el('button', 'ia-more', 'Show ' + Math.min(t.max, rest).toLocaleString() + ' more · ' +
                   rest.toLocaleString() + ' not shown');
     more.type = 'button';

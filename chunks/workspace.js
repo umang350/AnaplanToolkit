@@ -59,7 +59,8 @@ function table(label, heading, note, keep) {
     rows: function (d) { return models(d).filter(keep); },
     cols: 'grid-cols-12',
     headers: [{ label: 'Model', cls: 'ia-span-4' }, { label: 'State', cls: 'col-span-3' },
-              { label: 'Size', cls: 'col-span-3' }, { label: 'Cells', cls: 'col-span-2' }],
+              { label: 'Size', cls: 'col-span-3', sort: function (r) { return r.memory; } },
+              { label: 'Cells', cls: 'col-span-2', sort: function (r) { return r.cellCount; } }],
     key: function (r) {
       return r.modelName + ' ' + stateText(r.state) + (r.open ? ' open' : '') + ' ' + r.modelId;
     },

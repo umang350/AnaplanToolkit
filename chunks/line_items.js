@@ -38,9 +38,12 @@ renderPage({
   placeholder: 'Search by module, line item, format or formula...',
   filename: 'line-items.csv',
   cols: 'grid-cols-12',
-  headers: [{ label: 'Module', cls: 'col-span-2' }, { label: 'Line Item', cls: 'col-span-2' },
-            { label: 'Format', cls: 'col-span-2' }, { label: 'Applies To', cls: 'col-span-2' },
-            { label: 'Formula', cls: 'ia-span-4' }],
+  // Explicit sort values: sorting on cell text would draw every row's cells first.
+  headers: [{ label: 'Module', cls: 'col-span-2', sort: function (r) { return r.module; } },
+            { label: 'Line Item', cls: 'col-span-2', sort: function (r) { return r.name; } },
+            { label: 'Format', cls: 'col-span-2', sort: function (r) { return r.format; } },
+            { label: 'Applies To', cls: 'col-span-2', sort: function (r) { return joined(r.appliesTo); } },
+            { label: 'Formula', cls: 'ia-span-4', sort: function (r) { return r.formula; } }],
   key: function (r) {
     return r.module + ' ' + r.name + ' ' + r.id + ' ' + r.format + ' ' + joined(r.appliesTo) + ' ' + r.formula;
   },

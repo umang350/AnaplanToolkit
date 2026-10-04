@@ -51,9 +51,10 @@ function table(label, heading, extra, keep) {
     max: 400,
     placeholder: 'Search by module, ID or dimension...',
     cols: 'grid-cols-12',
-    headers: [{ label: 'Module', cls: 'ia-span-4' }, { label: 'Dimensions', cls: 'col-span-3' },
-              { label: 'Contents', cls: 'col-span-2' },
-              { label: 'Pages', cls: 'col-span-3' }],
+    headers: [{ label: 'Module', cls: 'ia-span-4', sort: function (m) { return m.name; } },
+              { label: 'Dimensions', cls: 'col-span-3', sort: function (m) { return joined(m.dims); } },
+              { label: 'Contents', cls: 'col-span-2', sort: function (m) { return m.lineItems; } },
+              { label: 'Pages', cls: 'col-span-3', sort: function (m) { return (m.pages || []).length; } }],
     key: function (m) {
       return m.name + ' ' + m.id + ' ' + joined(m.dims) + ' ' + (m.area || '');
     },

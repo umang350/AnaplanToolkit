@@ -55,8 +55,10 @@ renderPage({
       max: 400,
       placeholder: 'Search by list, ID or parent...',
       cols: 'grid-cols-12',
-      headers: [{ label: 'List', cls: 'ia-span-4' }, { label: 'Parent', cls: 'col-span-3' },
-                { label: 'Items', cls: 'col-span-2' }, { label: 'Properties', cls: 'col-span-3' }],
+      headers: [{ label: 'List', cls: 'ia-span-4', sort: function (l) { return l.name; } },
+                { label: 'Parent', cls: 'col-span-3', sort: function (l) { return l.parent; } },
+                { label: 'Items', cls: 'col-span-2', sort: function (l) { return l.items; } },
+                { label: 'Properties', cls: 'col-span-3', sort: function (l) { return l.properties; } }],
       key: function (l) { return l.name + ' ' + l.id + ' ' + l.parent; },
       cells: function (l) {
         var name = idCell(l.name, l.id);
@@ -84,8 +86,10 @@ renderPage({
       max: 400,
       placeholder: 'Search by list, property, format or formula...',
       cols: 'grid-cols-12',
-      headers: [{ label: 'List', cls: 'col-span-3' }, { label: 'Property', cls: 'col-span-3' },
-                { label: 'Format', cls: 'col-span-2' }, { label: 'Formula', cls: 'ia-span-4' }],
+      headers: [{ label: 'List', cls: 'col-span-3', sort: function (p) { return p.list; } },
+                { label: 'Property', cls: 'col-span-3', sort: function (p) { return p.name; } },
+                { label: 'Format', cls: 'col-span-2', sort: function (p) { return p.format; } },
+                { label: 'Formula', cls: 'ia-span-4', sort: function (p) { return p.formula; } }],
       key: function (p) { return p.list + ' ' + p.name + ' ' + p.id + ' ' + p.format + ' ' + p.formula; },
       cells: function (p) {
         var name = idCell(p.name, p.id);

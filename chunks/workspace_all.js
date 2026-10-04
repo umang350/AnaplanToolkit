@@ -81,9 +81,11 @@ var WORKSPACES = {
     return workspaces(d).map(function (w) { return Object.assign({ active: n[w.workspaceId] || 0 }, w); }).sort(byWorkspace);
   },
   cols: 'grid-cols-12',
-  headers: [{ label: 'Workspace', cls: 'ia-span-4' }, { label: 'In use', cls: 'col-span-2' },
-            { label: 'Allowance', cls: 'col-span-2' }, { label: 'Full', cls: 'col-span-2' },
-            { label: 'Active models', cls: 'col-span-2' }],
+  headers: [{ label: 'Workspace', cls: 'ia-span-4', sort: function (w) { return w.workspaceName || w.workspaceId; } },
+            { label: 'In use', cls: 'col-span-2', sort: function (w) { return w.contractual; } },
+            { label: 'Allowance', cls: 'col-span-2', sort: function (w) { return w.allowance; } },
+            { label: 'Full', cls: 'col-span-2', sort: percent },
+            { label: 'Active models', cls: 'col-span-2', sort: function (w) { return w.active; } }],
   key: function (w) { return w.workspaceName + ' ' + w.workspaceId; },
   cells: function (w) {
     var name = el('div', 'ia-span-4 min-w-0'),
@@ -133,7 +135,8 @@ var MODELS = {
   },
   cols: 'grid-cols-12',
   headers: [{ label: 'Workspace', cls: 'col-span-3' }, { label: 'Model', cls: 'ia-span-4' },
-            { label: 'State', cls: 'col-span-2' }, { label: 'Size', cls: 'col-span-3' }],
+            { label: 'State', cls: 'col-span-2' },
+            { label: 'Size', cls: 'col-span-3', sort: function (r) { return r.memory; } }],
   key: function (r) {
     return r.workspaceName + ' ' + r.modelName + ' ' + stateText(r.state) + ' ' + r.modelId;
   },

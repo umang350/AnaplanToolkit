@@ -69,9 +69,12 @@ renderPage({
       max: 400,
       placeholder: 'Search by process, action, source or target...',
       cols: 'grid-cols-12',
-      headers: [{ label: 'Process', cls: 'col-span-3' }, { label: '#', cls: 'ia-span-1' },
-                { label: 'Action', cls: 'col-span-3' }, { label: 'Source', cls: 'col-span-3' },
-                { label: 'Target', cls: 'col-span-2' }],
+      // Sorting by process keeps each process's steps in run order (the sort is stable).
+      headers: [{ label: 'Process', cls: 'col-span-3', sort: function (r) { return r.processName; } },
+                { label: '#', cls: 'ia-span-1', sort: function (r) { return r.step || null; } },
+                { label: 'Action', cls: 'col-span-3', sort: function (r) { return r.actionName; } },
+                { label: 'Source', cls: 'col-span-3', sort: function (r) { return r.source; } },
+                { label: 'Target', cls: 'col-span-2', sort: function (r) { return r.target; } }],
       key: function (r) {
         return r.processName + ' ' + r.processId + ' ' + r.actionName + ' ' + r.actionId + ' ' +
                r.actionType + ' ' + r.source + ' ' + r.target;
@@ -104,8 +107,10 @@ renderPage({
       max: 400,
       placeholder: 'Search by action, type, source or target...',
       cols: 'grid-cols-12',
-      headers: [{ label: 'Action', cls: 'ia-span-5' }, { label: 'Type', cls: 'col-span-2' },
-                { label: 'Source', cls: 'col-span-3' }, { label: 'Target', cls: 'col-span-2' }],
+      headers: [{ label: 'Action', cls: 'ia-span-5', sort: function (r) { return r.actionName; } },
+                { label: 'Type', cls: 'col-span-2', sort: function (r) { return r.actionType; } },
+                { label: 'Source', cls: 'col-span-3', sort: function (r) { return r.source; } },
+                { label: 'Target', cls: 'col-span-2', sort: function (r) { return r.target; } }],
       key: function (r) {
         return r.actionName + ' ' + r.actionId + ' ' + r.actionType + ' ' + r.source + ' ' + r.target;
       },

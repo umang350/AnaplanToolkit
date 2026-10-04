@@ -156,6 +156,12 @@ No other server is ever contacted.
   rebuilt. Keep the two implementations in step; all fourteen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
+  Every table sorts by clicking a column header (ascending, descending, back to original order).
+  In `renderPage` the sort applies to the matches before the row cap and to Export to CSV; a
+  header's `sort: row => value` gives the value (needed for numbers shown as text like "1.2 GB",
+  and for big tables, since the fallback reads each cell's text). The four compiled views get it
+  from `chunks/table_sort.js` (loaded in their HTML), which reorders rows with CSS `order` on a
+  flex column - never moving Svelte's nodes - and re-applies through a MutationObserver.
 - **Structure** is a panel group of three reports read off the in-page model cache by
   `IA_structure()` in `main.js`: `modules` (`IA_gmod`), `line_items` (`IA_gli`) and `lists`
   (`IA_glst`, Lists and Properties tabs), sharing `chunks/structure_shared.js`. That detail

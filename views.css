@@ -234,3 +234,10 @@
 }
 .ia-dl-btn:hover:not(:disabled) { background: var(--muted); }
 .ia-dl-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Sortable column headers - renderPage (sv_shared.js) and, for the compiled
+   views, chunks/table_sort.js. */
+.ia-sortable { cursor: pointer; user-select: none; }
+.ia-sortable:hover { text-decoration: underline; text-underline-offset: 2px; }
+.ia-sortable:focus-visible { outline: 2px solid var(--ring, currentColor); outline-offset: 2px; border-radius: 2px; }
+.ia-sort-mark { font-size: .65em; color: var(--muted-foreground); }
