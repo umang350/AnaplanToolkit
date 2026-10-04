@@ -12,44 +12,59 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ## What it does
 
-Opens a side panel of reports, each gathered on demand from the Anaplan
-model in the active tab:
+Opens a side panel of reports on the Anaplan model in the active tab. Each report is gathered on
+demand, grouped as in the panel's tab bar:
 
-| View | What it shows |
-|---|---|
-| **Actions** | Internal IDs for Processes, Imports and Files, for API integrations |
-| **Usages** | Where Actions are used across Apps and Pages |
-| **Steps** | The actions each process runs, in order, with each import's source and target; actions no process runs; a *Copy API call* button (Integration API `curl`) per process and action |
-| **Modules** | Which Apps and Pages consume each module (backend → frontend lineage) |
-| **Filters** | Line Items used as page filters or for conditional formatting |
-| **SV Filters** | *Disabled* — Line Items used as filters in Saved Views (too slow on large models, see below) |
-| **SV Screens** | Which Saved View each App Page widget reads from |
-| **SV Actions** | Imports whose source is a Saved View — see the caveats below |
-| **Structure › Modules** | Every module with its ID, dimensions, line item and saved view counts, and the App pages that use it |
-| **Structure › Line Items** | Every line item with its ID, format, applies-to, time scale, summary and formula — search matches formulas |
-| **Structure › Lists** | Every list with its ID and parent, and every list property with its format and formula |
-| **Revisions** | The model's revision tags (who created each, when, where) and every model each was applied to |
-| **Workspace** | Models and storage in this workspace, and across every workspace you can access |
+| Tab | Report | What it shows |
+|---|---|---|
+| **Summary** | | Model name, IDs, size and structure counts, and which reports are loaded. Opens automatically. |
+| **Actions** | IDs | Internal IDs for processes, imports, exports, actions and files, for API integrations |
+| | Usages | Where actions are used across Apps and Pages |
+| | Steps | The actions each process runs, in order, with each import's source and target, plus the actions no process runs. A *Copy API call* button gives an Integration API `curl` per process and action. |
+| **Pages** | Modules | Which Apps and Pages use each module (backend → frontend lineage) |
+| | Filters | Line items used as page filters or for conditional formatting |
+| **Saved View** | List | Every saved view, grouped by module, with its ID |
+| | Screens | Which saved view each App page widget reads from |
+| | Actions | Imports whose source is a saved view (see the caveats below) |
+| | Filters, Items | *Disabled* (see below) |
+| **Structure** | Modules | Every module with its ID, dimensions, time scale, time range, line item and saved view counts, and the App pages that use it |
+| | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
+| | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
+| **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
+| **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
+| | All | Storage for every workspace you can access, and every active model across them |
 
-Every view exports to CSV, has a search box and sorts by any column (click its header), and Summary has **Get all data** (gathers every
-report not loaded yet, one after another) and **Download all as CSV** (zips every loaded report's
-CSV files into one download). The Structure reports read Anaplan's in-page
-model data, so they make no extra requests (Modules also reads the App page list). Fields Anaplan
-doesn't expose there for a given model show as empty, and the page says which. The *Copy API call*
-buttons only copy a request to the clipboard — the extension never runs a process or action. Results are cached per model
-for 6 hours; the refresh icon re-gathers.
+**In every report:**
+
+- **Search** with the box at the top.
+- **Sort** by clicking a column header: ascending, descending, then back to the original order.
+- **Export to CSV** writes the rows in the order you've sorted them.
+- **Refresh** with the icon at the top right to gather a report again. Results are cached per model
+  for 6 hours.
+
+**On Summary:**
+
+- **Get all data** gathers every report that isn't loaded yet, one after another.
+- **Download all as CSV** saves every loaded report's CSV files in one .zip.
+
+**Notes:**
+
+- The **Structure** reports read Anaplan's in-page model data, so they make no extra requests;
+  Modules also reads the App page list. If Anaplan doesn't hold a field for a given model, that
+  column stays empty and the page says so.
+- **Copy API call** only copies a request to the clipboard. The extension never runs a process or
+  action.
 
 **SV Filters and SV Items are disabled** (shown greyed out, tagged *Slow*). Both have to open
-every saved view, and Anaplan evaluates each view's filters before it answers — a few views on
+every saved view, and Anaplan evaluates each view's filters before it answers. A few views on
 large modules take a minute or more each, so a full run on a large model takes tens of minutes.
 
-**SV Actions caveats.** Only imports are scanned, via `importDefinition.source`
-— the one action source field whose shape is confirmed (the **Actions** view
-already renders it as "Source Identifier"). Exports and processes are not
-scanned. That source is an import data source (`_113…_`), not the view itself;
-its definition's `objectId` names the saved view it reads. Only data sources
-from the model you have open are resolved, so an import reading a view in
-*another* model cannot be named and is not listed. Both caveats are also shown on the page itself.
+**SV Actions caveats.** Only imports are scanned, via `importDefinition.source`. That is the one
+action source field whose shape is confirmed; the **Actions** view already shows it as "Source
+Identifier". Exports and processes are not scanned. The source is an import data source
+(`_113…_`), not the view itself; its definition's `objectId` names the saved view it reads. Only
+data sources from the open model are resolved, so an import reading a view in *another* model
+can't be named and is not listed. Both caveats are also shown on the page itself.
 
 ## Screenshots
 
@@ -93,48 +108,52 @@ Inside the Anaplan modelling UI (`⌘⌥` on macOS, `Ctrl+Alt` on Windows/Linux)
 
 ## Privacy
 
-The extension talks to **no server other than Anaplan itself**. There is no
-analytics, no telemetry and no auto-update endpoint. The only network calls are
-to `<your-anaplan-host>/a/springboard-definition-service/...` and
-`<your-anaplan-host>/jsonrpc`, using your existing session. Results are held in
-`storage.session` (falling back to `storage.local` if unavailable) and are
-dropped when the browser closes.
+The extension talks to **no server other than Anaplan itself**. There is no analytics, no
+telemetry and no auto-update endpoint. Every call goes to your Anaplan host and uses your existing
+session:
+
+- `/a/springboard-definition-service/...`: App page definitions
+- `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
+- `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
+
+All of these calls only read. Results are kept in `storage.session`, compressed when large, and
+are dropped when the browser closes. Nothing is sent anywhere else.
 
 Permissions requested:
 
 | Permission | Why |
 |---|---|
 | `host_permissions: https://*.anaplan.com/*` | read model metadata from the tab you have open |
-| `sidePanel` (Chrome only — Firefox's sidebar needs no permission) | render the UI |
+| `sidePanel` (Chrome only; Firefox's sidebar needs no permission) | render the UI |
 | `storage` | cache results for the session |
 
 ## Layout
 
 ```
-manifest.json          extension manifest (shared; carries both Chrome's and
-                        Firefox's browser-specific keys side by side)
-background.js          background script: routing, caching, progress
-sidepanel.{html,js,css}  side panel shell that hosts the seven report pages
+manifest.json            extension manifest (shared; carries both Chrome's and
+                         Firefox's browser-specific keys side by side)
+background.js            background script: routing, caching, progress
+sidepanel.{html,js,css}  side panel shell that hosts the report pages
 content-scripts/
-  outer.js             keyboard shortcuts in the modelling UI frame
-  inner.js             report engine (fetches and assembles every report)
-  main.js              MAIN-world reader for Anaplan's in-page model cache
-chunks/                compiled report renderers, plus sv_shared.js and the
-                       two hand-written SV Screens / SV Actions renderers
-*.html                 the seven report pages, loaded as side panel iframes
+  outer.js               keyboard shortcuts in the modelling UI frame
+  inner.js               report engine (fetches and assembles every report)
+  main.js                MAIN-world reader for Anaplan's in-page model cache
+chunks/                  report renderers (see below) and shared helpers:
+                         sv_shared.js (table, search, sort, CSV), export_all.js
+                         (Download all), table_sort.js (sorting for compiled views)
+*.html                   one page per report, loaded as side panel iframes
 ```
 
 ## Notes for maintainers
 
-- `popup.html` and `chunks/popup-*.js` are **not referenced by the manifest** —
-  the side panel replaced the popup. They are kept only for reference and can
-  be deleted.
-- Files ending `.bak`, `.pre-*` and `.retired` are development snapshots.
-  Delete them before packaging.
-- Five of the report pages are compiled Svelte (`chunks/<page>-<hash>.js`) and
-  there is no Svelte source in this repository — those chunks are committed
-  build output. `sv_screens` and `sv_actions` are therefore plain ES modules
-  sharing `chunks/sv_shared.js`, which carries its own copies of the CSV
-  writer and the search scorer so all seven views behave identically.
+- Four report pages are compiled Svelte (`chunks/<page>-<hash>.js`): Actions IDs, Usages,
+  Pages › Modules and SV Filters. There is no Svelte source in this repository; those chunks are
+  committed build output. Every other report is a plain ES module on `chunks/sv_shared.js`, which
+  carries its own copies of the CSV writer and the search scorer so all views behave the same.
+- `popup.html` and `chunks/popup-*.js` are **not referenced by the manifest**. The side panel
+  replaced the popup, and `package.sh` leaves them out.
+- Files ending `.bak`, `.pre-*` and `.retired` are development snapshots. `package.sh` leaves them
+  out too.
+- [CLAUDE.md](CLAUDE.md) has the full architecture and the details of each report.
 
 See [NOTICE.txt](NOTICE.txt) for third-party components and provenance.
