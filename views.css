@@ -188,3 +188,56 @@
 }
 
 .ia-meter-sm { height: .25rem; margin-top: .25rem; }
+
+/* --- Structure views and Process Steps (chunks/modules.js, line_items.js,
+   lists.js, process_steps.js) ------------------------------------------------ */
+
+/* Spans the compiled Tailwind CSS lacks (it has only col-span-2 / -3). */
+.ia-span-1 { grid-column: span 1 / span 1; }
+.ia-span-5 { grid-column: span 5 / span 5; }
+
+.ia-formula {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: .6875rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  color: var(--foreground);
+}
+[class*="grid-cols-"] .ia-formula { overflow-wrap: anywhere; }
+.ia-formula.ia-empty::before { content: '–'; color: var(--muted-foreground); }
+
+.ia-api {
+  display: inline-block; margin-top: .125rem; padding: 0; border: 0; background: none; cursor: pointer;
+  font-size: .6875rem; color: var(--muted-foreground);
+}
+.ia-api:hover { color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+.ia-api[data-copied]::after { content: ' · Copied'; }
+
+/* Row cap (renderPage's `max`): draws the next batch. */
+.ia-more {
+  display: block; width: 100%; margin-top: .5rem; padding: .4rem; cursor: pointer;
+  border: 1px dashed var(--border); border-radius: calc(var(--radius) - 2px); background: none;
+  font-size: .75rem; color: var(--muted-foreground);
+}
+.ia-more:hover { background: var(--muted); color: var(--foreground); }
+
+/* Fields Anaplan's in-page model data held (structure_shared.js fieldsBlock). */
+.ia-fields-seen { font-size: .6875rem; color: var(--muted-foreground); }
+.ia-fields-seen summary { cursor: pointer; }
+.ia-fields-seen p { margin-top: .25rem; font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
+
+/* Summary's "Download all" (chunks/summary.js, chunks/export_all.js). */
+.ia-dl { display: flex; align-items: center; gap: .625rem; margin-top: .625rem; flex-wrap: wrap; }
+.ia-dl-btn {
+  padding: .35rem .75rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px);
+  background: var(--background); color: var(--foreground); font-size: .8125rem; font-weight: 500; cursor: pointer;
+}
+.ia-dl-btn:hover:not(:disabled) { background: var(--muted); }
+.ia-dl-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Sortable column headers - renderPage (sv_shared.js) and, for the compiled
+   views, chunks/table_sort.js. */
+.ia-sortable { cursor: pointer; user-select: none; }
+.ia-sortable:hover { text-decoration: underline; text-underline-offset: 2px; }
+.ia-sortable:focus-visible { outline: 2px solid var(--ring, currentColor); outline-offset: 2px; border-radius: 2px; }
+.ia-sort-mark { font-size: .65em; color: var(--muted-foreground); }

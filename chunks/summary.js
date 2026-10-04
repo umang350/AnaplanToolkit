@@ -20,6 +20,7 @@
  * compiled stylesheet only contains the utilities the bundled views use.
  */
 import { LOGO, el } from './sv_shared.js';
+import { buildFiles, zip, save } from './export_all.js';
 
 var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
@@ -27,6 +28,7 @@ var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chro
 var REPORTS = [
   { page: 'actions', name: 'Actions', unit: null },
   { page: 'action_usages', name: 'Usages', unit: 'usages' },
+  { page: 'process_steps', name: 'Process Steps', keys: [['steps', 'steps'], ['loose', 'not in a process']] },
   { page: 'pages', name: 'Modules', unit: 'modules' },
   { page: 'filter_items', name: 'Filters', unit: 'rows' },
   { page: 'sv_views', name: 'SV List', unit: 'saved views' },
@@ -34,6 +36,9 @@ var REPORTS = [
   { page: 'sv_actions', name: 'SV Actions', unit: 'imports' },
   { page: 'sv_filter_items', name: 'SV Filters', unit: 'rows', off: true },
   { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true },
+  { page: 'modules', name: 'Module List', unit: 'modules', key: 'modules' },
+  { page: 'line_items', name: 'Line Items', unit: 'line items', key: 'lineItems' },
+  { page: 'lists', name: 'Lists', keys: [['lists', 'lists'], ['properties', 'properties']] },
   { page: 'workspace', name: 'Workspace', unit: 'models', key: 'models' },
   { page: 'workspace_all', name: 'All Workspaces', unit: 'workspaces', key: 'workspaces' }
 ];
@@ -48,7 +53,8 @@ var STRUCTURE = [
 ];
 
 var mount = document.getElementById('app'),
-    model = null, status = null, overview = null, asking = false, again = false;
+    model = null, status = null, overview = null, asking = false, again = false,
+    dl = { busy: false, note: '' }, getAll = { running: false };
 
 /* --- formatting ----------------------------------------------------------- */
 
@@ -97,7 +103,7 @@ function sizeText(r, size) {
   if (size == null) return '';
   if (typeof size === 'number') return num(size) + ' ' + r.unit;
   if (r.key) return typeof size[r.key] === 'number' ? num(size[r.key]) + ' ' + r.unit : '';
-  return ACTION_LISTS
+  return (r.keys || ACTION_LISTS)
     .filter(function (a) { return typeof size[a[0]] === 'number'; })
     .map(function (a) { return num(size[a[0]]) + ' ' + a[1]; })
     .join(' · ');
@@ -199,7 +205,81 @@ function reportsCard() {
   });
   s.appendChild(list);
   if (!overview) s.appendChild(el('p', 'ia-note', 'Checking…'));
+  s.appendChild(actions(loaded, on.length));
   return s;
+}
+
+/* Get all data + Download all, side by side. Get all data is run by the
+   panel shell (getAll in sidepanel.js), one report after another; it tells
+   us how far along it is (ia_getall_status), and the button becomes Stop. */
+function actions(loaded, total) {
+  var row = el('div', 'ia-dl'),
+      g = el('button', 'ia-dl-btn', getAll.running ? 'Stop' : 'Get all data');
+  g.type = 'button';
+  g.disabled = !getAll.running && (!model || loaded >= total);
+  g.title = getAll.running ? 'Stop getting data' : loaded >= total ? 'Every report is loaded'
+    : 'Gather every report that is not loaded yet, one after another';
+  g.addEventListener('click', function () {
+    window.parent.postMessage({ type: getAll.running ? 'ia_getall_stop' : 'ia_getall' }, location.origin);
+  });
+  row.appendChild(g);
+  downloadAll(row, loaded);
+  if (getAll.running)
+    row.appendChild(el('span', 'ia-note', 'Getting ' + (getAll.done + 1) + ' of ' + getAll.total +
+                       (getAll.current ? ': ' + getAll.current : '') + '…'));
+  return row;
+}
+
+/* "Download all": every loaded report's CSV files in one .zip, plus the model
+   facts above as summary.csv (chunks/export_all.js). */
+function downloadAll(wrap, loaded) {
+  var b = el('button', 'ia-dl-btn', dl.busy ? 'Preparing…' : 'Download all as CSV (.zip)');
+  b.type = 'button';
+  b.disabled = dl.busy || !loaded;
+  b.title = loaded ? 'Every loaded report\'s CSV files, zipped' : 'Load a report first';
+  b.addEventListener('click', downloadAllNow);
+  wrap.appendChild(b);
+  if (dl.note) wrap.appendChild(el('span', 'ia-note' + (dl.error ? ' ia-error' : ''), dl.note));
+}
+
+function summaryRows() {
+  if (!model) return [];
+  var c = model.counts || {}, rows = [
+    { Field: 'Model', Value: model.modelName || '' },
+    { Field: 'Model ID', Value: model.modelId || '' },
+    { Field: 'Workspace', Value: model.workspaceName || '' },
+    { Field: 'Workspace ID', Value: model.workspaceId || '' },
+    { Field: 'Customer ID', Value: model.customerId || '' },
+    { Field: 'Cell count', Value: firstNumber(model.cellCount) ?? '' },
+    { Field: 'Model size (bytes)', Value: firstNumber(model.memory) ?? '' }
+  ];
+  STRUCTURE.forEach(function (x) { rows.push({ Field: x[1], Value: c[x[0]] ?? '' }); });
+  return rows;
+}
+
+function fileStamp() {
+  var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+}
+
+function downloadAllNow() {
+  if (dl.busy) return;
+  dl = { busy: true, note: '' };
+  render();
+  api.runtime.sendMessage({ type: 'ia_dump' }).then(function (r) {
+    if (!r || !r.pages) throw new Error((r && r.error) || 'The cached reports could not be read.');
+    return buildFiles(r.pages, REPORTS.map(function (x) { return x.page; }),
+                      [{ name: 'summary.csv', rows: summaryRows() }]);
+  }).then(function (files) {
+    if (!files.length) throw new Error('No loaded report has any rows to export.');
+    return zip(files).then(function (blob) {
+      var name = String((model && model.modelName) || 'model').replace(/[\\/:*?"<>|]+/g, '_').trim();
+      save(blob, name + ' - Anaplan Toolkit ' + fileStamp() + '.zip');
+      dl = { busy: false, note: files.length + ' files' };
+    });
+  }).catch(function (e) {
+    dl = { busy: false, note: (e && e.message) || 'Download failed.', error: true };
+  }).then(render);
 }
 
 function render() {
@@ -243,6 +323,7 @@ try {
 window.addEventListener('message', function (e) {
   if (e.source !== window.parent || e.origin !== location.origin) return;
   if (e.data && e.data.type === 'ia_summary_status') { status = e.data.status || null; render(); }
+  if (e.data && e.data.type === 'ia_getall_status') { getAll = e.data; render(); }
 });
 
 render();

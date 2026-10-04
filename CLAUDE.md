@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Ten read-only report views, each
+the structure of the Anaplan model open in the active tab. Fourteen read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -74,7 +74,7 @@ Three separate JS worlds cooperate; understanding the split is the key to this c
 
 ```
 sidepanel.html/js/css   side panel shell: tab bar, "Get data" button, progress list,
-  └─ <iframe> ×7        one lazily created iframe per view (actions.html, pages.html, …)
+  └─ <iframe> ×n        one lazily created iframe per view (actions.html, pages.html, …)
 background.js           service worker: message router, per-model cache, watchdogs
 content-scripts/
   outer.js              ISOLATED world on the modeling-ui frame — keyboard shortcuts only
@@ -114,7 +114,11 @@ front changes it pushes `ia_context` and the panel drops every iframe and re-syn
 (each model's results stay cached under their own key).
 
 **Caching.** `chrome.storage.session` + an in-memory `Map`, keyed `ia:<page>:<customerId>:<modelId>`
-with a 6h max age, so switching model never shows stale data. `inner.js` probes with `cache_get`
+with a 6h max age, so switching model never shows stale data. `storage.session` holds 10 MB in all
+and Line Items on a large model is more than that alone, so `cacheSet` stores any result over
+`ZIP_AT` (256 KB of JSON) gzipped as base64 (`pack`/`unpack`), and on a quota error drops other
+models' then older cached reports (`evict`) and retries. A result that only lives in `mem` is lost
+when the worker idles out (~30s) - Summary then shows it "Not loaded". `inner.js` probes with `cache_get`
 *before* making Anaplan calls, so a hit skips the expensive work entirely. Separately, `IA_vc` in
 `inner.js` memoizes the jsonrpc saved-view fetch within a page session (cleared on force-refresh).
 
@@ -138,19 +142,59 @@ No other server is ever contacted.
 
 ## Editing constraints
 
-- **Four of the nine view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
+- **Four of the view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
   are committed Svelte build output (actions, action_usages, pages, sv_filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
-- `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES
-  modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
+- `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
+  `modules`, `line_items` and `lists` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all ten views are expected to export and search
-  identically.
+  rebuilt. Keep the two implementations in step; all fourteen views are expected to export and search
+  identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
+  (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
+  Every table sorts by clicking a column header (ascending, descending, back to original order).
+  In `renderPage` the sort applies to the matches before the row cap and to Export to CSV; a
+  header's `sort: row => value` gives the value (needed for numbers shown as text like "1.2 GB",
+  and for big tables, since the fallback reads each cell's text). The four compiled views get it
+  from `chunks/table_sort.js` (loaded in their HTML), which reorders rows with CSS `order` on a
+  flex column - never moving Svelte's nodes - and re-applies through a MutationObserver.
+- **Structure** is a panel group of three reports read off the in-page model cache by
+  `IA_structure()` in `main.js`: `modules` (`IA_gmod`), `line_items` (`IA_gli`) and `lists`
+  (`IA_glst`, Lists and Properties tabs), sharing `chunks/structure_shared.js`. That detail
+  (formulas especially) is megabytes on a large model, so `main.js` only builds it when asked with
+  `REQUEST_ANAPLAN_DATA {IA_want:"structure"}` - `P(0, "structure")` in `inner.js`, which keeps
+  waiting if a reply meant for another concurrent gather arrives without `IA_struct`. Anaplan's
+  cache shape for per-object detail is **not confirmed against a live model**: every field
+  is probed under several likely key names (`IA_pick`) and left empty when none matches.
+  Confirmed on a live model (a console dump): line item info holds `format` (`dataType`, …),
+  `formula`, `fullAppliesTo` (array of list ids), `isSummary` and `leafPeriodType.entityLabel`
+  (time scale; "Not Applicable" when unset) - there is no summary-method field. A list's info holds
+  `parentHierarchyEntityLongId` (`-1` = none), `itemCount`, and `propertiesLabelPage` +
+  `propertiesInfo` (`{format, formula}` per property, same order). That label page's arrays are
+  **flat** (`labels: [...]`), unlike every other label page (`[[...]]`); `IA_page` reads both. Names and
+  IDs come from the label pages the other reports already rely on, so those are solid.
+  `IA_shape` carries the keys the cache actually held, and a view with an empty column says so
+  with those keys in its note and a "Show the fields Anaplan provided" disclosure
+  (`fieldsBlock`) - that list is what to use to fix a probe. Confirmed on a live model: list
+  names, IDs, parents (`-1` = none) and item counts. Properties were **not** where first guessed
+  (a `propertiesLabelPage` per list), so `IA_listProps`/`IA_topProps` now find them by shape: any
+  key matching `/propert/i` on a list's info or at the top of the model cache that holds a label
+  page (or labelled objects), with a model-wide one split by a parallel list-id array. Line Items and Lists
+  make no Anaplan calls; Modules also reads the `/pages` list (as Linked Pages does) for the App
+  pages each module feeds, and still reports modules if that call fails.
+- **Process Steps** (`process_steps`, Actions group, `IA_gps`/`IA_procSteps`) reuses
+  `IA_actionDefs(ctx, true)`, which then keeps every cell of the process and export rows
+  (`IA_cells`; the Actions views' cache stays small). Which `PROCESS_PROPERTY` column lists a
+  process's actions is not documented either: the row's cells are read in order and the first one
+  naming known action ids (or, failing that, exact action names) is the step list. A process
+  whose steps can't be found gets a "No actions found" row and is counted in the page note. Its
+  "Copy API call" buttons copy an Integration API v2 `curl` (`/processes|imports|exports|actions/
+  <id>/tasks`) for the user to run with their own token - the extension itself never calls
+  `api.anaplan.com` and never runs anything.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state
@@ -170,10 +214,21 @@ No other server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the eleventh view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the fifteenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
-  `sidepanel.js` — keep the two in step. It and the Actions tab counts
+  `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button
+  (`chunks/export_all.js`) asks the worker for every cached payload (`ia_dump`) and zips one CSV
+  per view tab plus `summary.csv`, built entirely in the page (a small ZIP writer, raw DEFLATE via
+  `CompressionStream`). The hand-written views are imported with `globalThis.IA_COLLECT` set, which
+  makes `renderPage` register their options instead of drawing, so their CSV columns are defined
+  once; the four compiled views' columns are mirrored in `COMPILED` there - keep those in step.
+  Beside it, **Get all data** asks the panel (`window.postMessage` `ia_getall` / `ia_getall_stop`)
+  to gather every report not yet loaded **one after another** (`getAll`/`pump` in `sidepanel.js`:
+  `IA_step`'s progress page is one global per frame, and parallel gathers would also all load the
+  model at once). The queue moves on when the running report stops being busy, ignores the
+  `ia_select` each gather sends so the panel stays on Summary, reports back with
+  `ia_getall_status`, and is dropped by Stop and by a model switch. It and the Actions tab counts
   (`chunks/actions_counts.js`) are styled with `ia-*` classes in `views.css`, because the compiled
   Tailwind CSS only contains utilities the bundled views already use.
 - **`background.js`, `inner.js`, `outer.js` and `main.js` are minified vendor output with

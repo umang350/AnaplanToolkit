@@ -3,7 +3,8 @@
  * Author: Umang Chauhan
  */
 /*
- * Shared shell for the hand-written report pages (Workspace, Filters, SV List, SV Items, SV Screens, SV Actions).
+ * Shared shell for the hand-written report pages (Workspace, Filters, SV List, SV Items, SV Screens, SV Actions,
+ * Process Steps, Modules, Line Items, Lists).
  *
  * The other five views are compiled Svelte (chunks/<page>-<hash>.js) and there
  * is no Svelte source in this repository - the chunks are committed build
@@ -37,13 +38,17 @@ function csvCell(v) {
     : s;
 }
 
+// The file's text, BOM included - also what Summary's "Download all" zips up.
+export function csvText(rows) {
+  var cols = Object.keys(rows[0]);
+  return '﻿' + [cols.map(csvCell).join(',')]
+    .concat(rows.map(function (r) { return cols.map(function (c) { return csvCell(r[c]); }).join(','); }))
+    .join('\r\n');
+}
+
 export function csv(rows, filename) {
   if (!rows || !rows.length) return;
-  var cols = Object.keys(rows[0]),
-      body = [cols.map(csvCell).join(',')]
-        .concat(rows.map(function (r) { return cols.map(function (c) { return csvCell(r[c]); }).join(','); }))
-        .join('\r\n'),
-      url = window.URL.createObjectURL(new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' })),
+  var url = window.URL.createObjectURL(new Blob([csvText(rows)], { type: 'text/csv;charset=utf-8;' })),
       a = document.createElement('a');
   a.href = url;
   a.download = filename;
@@ -240,7 +245,10 @@ function noMatchState() {
                  string, or data -> string when it depends on the data
      placeholder search box placeholder
      cols        grid template class shared by the header row and the data rows
-     headers     [{label, cls}]
+     headers     [{label, cls, sort}] - clicking a header sorts by that column
+                 (ascending, descending, then back to the original order).
+                 `sort` is row -> the value to sort on; without it the column
+                 sorts on its cell's text, which suits text but not, say, "1.2 GB".
      key         row -> the string the search box matches against
      cells       row -> [Node] , one per column
      csvRow      row -> a flat object; its keys become the CSV header
@@ -248,22 +256,30 @@ function noMatchState() {
      filename    CSV file name
      top         optional data -> Node, shown under the heading, above the note and
                  table (Workspace's storage meter); not searched or exported
+     rows        optional data -> [row], when the data is not the row array itself
+     max         optional row cap: only this many rows are drawn, with a button to
+                 draw more - for reports that run to tens of thousands of rows.
+                 Search and Export to CSV still cover every row.
      tabs        optional [{label, rows: data -> [row], heading, note, top, placeholder,
-                 cols, headers, key, cells, csvRow | csv, filename}] - one table
+                 cols, headers, key, cells, csvRow | csv, filename, max}] - one table
                  per tab, under a tab bar, with a row count beside the heading.
                  Without it the page is a single table over the data array,
                  described by the fields above.
    }
    --------------------------------------------------------------------------- */
 export function renderPage(opts) {
+  /* Summary's "Download all" (chunks/export_all.js) imports the view modules to
+     reuse their CSV definitions: with IA_COLLECT set, a view hands its options
+     over instead of drawing itself, so each report's columns live in one place. */
+  if (globalThis.IA_COLLECT) { globalThis.IA_COLLECT[opts.page] = opts; return; }
   var mount = document.getElementById('app'),
       data = null, error = '', query = '', scrolled = false,
-      tabs = opts.tabs || [opts], active = 0;
+      tabs = opts.tabs || [opts], active = 0, shown = 0;
 
   try {
     api.runtime.onMessage.addListener(function (msg) {
       if (!msg || !msg.type) return;
-      if (msg.type === opts.page + '_data') { data = msg.data || []; error = ''; render(); }
+      if (msg.type === opts.page + '_data') { data = msg.data || []; error = ''; shown = 0; render(); }
       if (msg.type === 'error') { error = msg.message; render(); }
     });
   } catch (e) { /* not in an extension page; the states below still render */ }
@@ -284,29 +300,89 @@ export function renderPage(opts) {
     return Array.isArray(rows) ? rows : [];
   }
 
+  /* Column sort, per tab: {col, dir} with dir 1 / -1. Applied after search,
+     so it orders the matches (search alone orders them by score), and Export
+     to CSV writes them in the same order. Numbers sort as numbers, text
+     naturally ("Item 2" before "Item 10"), blanks last either way. */
+  var sorts = {}, textOf = {},
+      collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+  function sortValue(t, i, row) {
+    var h = t.headers[i];
+    if (h.sort) return h.sort(row);
+    var k = active + ':' + i, m = textOf[k] || (textOf[k] = new WeakMap());
+    if (!m.has(row)) { var c = t.cells(row)[i]; m.set(row, c ? c.textContent.trim() : ''); }
+    return m.get(row);
+  }
+
+  function blank(v) { return v == null || v === '' || v === '–' || (typeof v === 'number' && isNaN(v)); }
+
+  function sorted(t, rows) {
+    var st = sorts[active];
+    if (!st) return rows;
+    var keyed = rows.map(function (r) { return [sortValue(t, st.col, r), r]; });
+    keyed.sort(function (a, b) {
+      var x = a[0], y = b[0];
+      if (blank(x) || blank(y)) return blank(x) - blank(y);
+      var c = typeof x === 'number' && typeof y === 'number' ? x - y : collator.compare(String(x), String(y));
+      return c * st.dir;
+    });
+    return keyed.map(function (k) { return k[1]; });
+  }
+
   function matches() {
     var t = tabs[active];
-    return search(tabRows(t), query, t.key);
+    return sorted(t, search(tabRows(t), query, t.key));
   }
 
   function buildTable(rows) {
     var t = tabs[active],
+        lim = t.max ? Math.max(shown, t.max) : rows.length,
         card = el('div', 'rounded-md border border-border'),
         head = el('div', 'grid ' + t.cols + ' border-b border-border px-2 py-3');
-    t.headers.forEach(function (h) {
-      head.appendChild(el('h3', (h.cls ? h.cls + ' ' : '') + 'font-semibold text-sm text-foreground', h.label));
+    var st = sorts[active];
+    t.headers.forEach(function (h, i) {
+      var on = st && st.col === i,
+          h3 = el('h3', (h.cls ? h.cls + ' ' : '') + 'font-semibold text-sm text-foreground ia-sortable', h.label);
+      h3.setAttribute('role', 'button');
+      h3.tabIndex = 0;
+      h3.title = 'Sort by ' + h.label;
+      h3.setAttribute('aria-sort', on ? (st.dir > 0 ? 'ascending' : 'descending') : 'none');
+      h3.appendChild(el('span', 'ia-sort-mark', on ? (st.dir > 0 ? ' ▲' : ' ▼') : ''));
+      var go = function () {
+        var cur = sorts[active];
+        sorts[active] = !cur || cur.col !== i ? { col: i, dir: 1 } : cur.dir > 0 ? { col: i, dir: -1 } : null;
+        shown = 0;
+        var fresh = matches();
+        card.parentNode && (card.closest('.ia-table') || card).replaceWith(buildTable(fresh));
+      };
+      h3.addEventListener('click', go);
+      h3.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      head.appendChild(h3);
     });
     card.appendChild(head);
 
     var frag = document.createDocumentFragment();
-    rows.forEach(function (row) {
+    rows.slice(0, lim).forEach(function (row) {
       var line = el('div', 'grid items-center ' + t.cols +
         ' px-2 py-1 hover:bg-muted border-border not-last:border-b group');
       t.cells(row).forEach(function (c) { line.appendChild(c); });
       frag.appendChild(line);
     });
     card.appendChild(frag);
-    return card;
+    if (rows.length <= lim) return card;
+
+    var box = el('div', 'ia-table'), rest = rows.length - lim,
+        more = el('button', 'ia-more', 'Show ' + Math.min(t.max, rest).toLocaleString() + ' more · ' +
+                  rest.toLocaleString() + ' not shown');
+    more.type = 'button';
+    more.addEventListener('click', function () {
+      shown = lim + t.max;
+      box.replaceWith(buildTable(rows));
+    });
+    box.appendChild(card);
+    box.appendChild(more);
+    return box;
   }
 
   function render() {
@@ -343,6 +419,7 @@ export function renderPage(opts) {
         b.addEventListener('click', function () {
           if (i === active) return;
           active = i;
+          shown = 0;
           render();
         });
         list.appendChild(b);
@@ -409,6 +486,7 @@ export function renderPage(opts) {
     input.value = query;
     input.addEventListener('input', function () {
       query = input.value;
+      shown = 0;
       // Redraw in place so the caret and focus survive the keystroke.
       var fresh = matches();
       count.textContent = fresh.length + ' results';

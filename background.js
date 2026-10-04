@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`],
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -53,7 +53,7 @@ function sizeOf(d){
 function cacheId(page,key){return `ia:${page}:${key||`-`}`}
 async function cacheGet(page,key){
   let id=cacheId(page,key),hit=mem.get(id);
-  if(!hit&&store){try{hit=(await store.get(id))?.[id]}catch(e){}}
+  if(!hit&&store){try{hit=await unpack((await store.get(id))?.[id])}catch(e){hit=null}}
   if(!hit)return null;
   if(Date.now()-hit.ts>MAX_AGE){cacheDrop(page,key);return null}
   return mem.set(id,hit),hit
@@ -61,8 +61,49 @@ async function cacheGet(page,key){
 async function cacheSet(page,key,data){
   let hit={data,ts:Date.now()},id=cacheId(page,key);
   mem.set(id,hit);
-  if(store){try{await store.set({[id]:hit})}catch(e){}}   // over quota: keep it in memory only
+  if(store){
+    let rec;
+    try{rec={...await pack(data),ts:hit.ts}}catch(e){rec=hit}
+    try{await store.set({[id]:rec})}
+    catch(e){if(await evict(id,rec)){try{await store.set({[id]:rec})}catch(e2){}}}   // still over quota: memory only
+  }
   return hit
+}
+
+// storage.session holds 10 MB in all. Line Items on a large model (every
+// formula) is more than that on its own: the write failed silently, the report
+// lived only in memory, and the worker idling out (~30s) took it with it - the
+// view had shown it, but Summary called it "Not loaded" minutes later and the
+// next visit had to gather again. Anything over ZIP_AT is stored gzipped as
+// base64 (formulas shrink several times over); mem keeps the plain object.
+var ZIP_AT=256e3;
+function b64(u){let s=``;for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)}
+async function pack(data){
+  let s=JSON.stringify(data);
+  if(s.length<ZIP_AT||typeof CompressionStream!=`function`)return{data};
+  let b=await new Response(new Blob([s]).stream().pipeThrough(new CompressionStream(`gzip`))).arrayBuffer();
+  return{z:b64(new Uint8Array(b))}
+}
+async function unpack(rec){
+  if(!rec||rec.z==null)return rec||null;
+  let bin=atob(rec.z),u=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  let s=await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(`gzip`))).text();
+  return{data:JSON.parse(s),ts:rec.ts}
+}
+// Still over quota: make room by dropping cached reports - other models' first,
+// then this model's, oldest first - until there is about enough. Each can be
+// gathered again; the alternative was losing the newest one outright.
+async function evict(keepId,rec){
+  try{
+    let all=await store.get(null),need=JSON.stringify(rec).length,ts=rec.ts,
+        model=keepId.slice(keepId.indexOf(`:`,3)+1),
+        ids=Object.keys(all).filter(k=>k.startsWith(`ia:`)&&k!==`ia:key`&&k!==keepId&&all[k]&&all[k].ts<=ts)
+          .sort((a,b)=>(a.endsWith(`:`+model)-b.endsWith(`:`+model))||all[a].ts-all[b].ts),
+        drop=[],freed=0;
+    for(let k of ids){drop.push(k);mem.delete(k);freed+=JSON.stringify(all[k]).length;if(freed>need+1e6)break}
+    return drop.length?(await store.remove(drop),!0):!1
+  }catch(e){return!1}
 }
 function cacheDrop(page,key){
   let id=cacheId(page,key);
@@ -294,6 +335,17 @@ async function handle(msg,sender){
       if(p===`summary`)continue;
       let hit=await cacheGet(p,key);
       pages[p]={ts:hit?hit.ts:0,busy:busy.has(rid(tab,p)),size:hit?sizeOf(hit.data):null}
+    }
+    return{pages}
+  }
+
+  // Summary's "Download all": every cached payload for this model at once.
+  if(msg.type===`ia_dump`){
+    let tab=await tabFor(msg),key=await modelKey(tab),pages={};
+    for(let p of PAGES){
+      if(p===`summary`)continue;
+      let hit=await cacheGet(p,key);
+      hit&&(pages[p]={data:hit.data,ts:hit.ts});
     }
     return{pages}
   }
