@@ -235,7 +235,11 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   aborts its request and the worker caches what it gathered (`LIVE`) where other stopped runs are
   dropped. It also ends after `LK_MAX` (1h), `LK_ERRS` failed checks, or a refused login mid-run.
   `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded count. Whether the API
-  accepts the browser session is **not confirmed**.
+  accepts the browser session is **not confirmed**. api.anaplan.com answers **401** for a missing or
+  bad token (checked) and **403** for a valid token it won't serve - a live run with a fresh token
+  got 403 on model status, likely a workspace-admin-only call. On a first-check refusal with a token,
+  `lkDiagnose` asks `auth.anaplan.com/token/validate` and `GET /2/0/users/me` to say which part was
+  refused, and keeps a token that is still valid.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state

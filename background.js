@@ -379,6 +379,33 @@ async function lkLogin(user,pass){
   lkToken=v,lkTokenAt=Date.now()
 }
 
+// Anaplan's own words from an error reply, whichever shape it came in.
+function lkSaid(j){
+  let m=j&&(j.status?.message||j.statusMessage||j.message||j.error_description||j.error);
+  return typeof m==`string`?m.replace(/\s+/g,` `).trim().slice(0,160):``
+}
+
+/* A refused status call says only "Forbidden". The first live run got that
+   with a token that had just signed in fine, so before giving up the worker
+   works out which part was refused: the token itself (auth.anaplan.com's own
+   validate call), the API as a whole (GET /users/me, the simplest call there
+   is), or only the model status call - a permission on that call or model,
+   not the login. The answer goes into the panel's message. */
+async function lkDiagnose(){
+  let h={Authorization:`AnaplanAuthToken ${lkToken}`,Accept:`application/json`},
+      get=async u=>{
+        let ac=new AbortController(),tm=setTimeout(()=>ac.abort(),1e4);
+        try{let r=await fetch(u,{headers:h,credentials:`omit`,cache:`no-store`,signal:ac.signal}),j=null;try{j=await r.json()}catch(e){}return{ok:r.ok,code:r.status,j}}
+        catch(e){return{ok:!1,code:0,j:null,e:e?.message||String(e)}}
+        finally{clearTimeout(tm)}
+      },
+      v=await get(`https://auth.anaplan.com/token/validate`);
+  if(!v.ok)return `The token itself was refused by Anaplan's sign-in service (${v.code?`HTTP ${v.code}`:v.e}${lkSaid(v.j)?` - ${lkSaid(v.j)}`:``}): it has expired or was not copied whole.`;
+  let me=await get(`${LK_API}/users/me`),who=me.j?.user?.email||me.j?.user?.id||``;
+  if(!me.ok)return `The token is valid, but Anaplan's API refused even its simplest call, /users/me (${me.code?`HTTP ${me.code}`:me.e}${lkSaid(me.j)?` - ${lkSaid(me.j)}`:``}). Your account may not be allowed to use the Integration API, or the API isn't receiving the token from the extension.`;
+  return `The token is valid and the API accepts it${who?` (signed in as ${who})`:``}, but Anaplan won't give this account the model's status. It is likely limited to workspace administrators of this model's workspace - ask one to run the monitor, or to grant you workspace admin.`
+}
+
 async function lkRenew(){
   if(!lkToken||Date.now()-lkTokenAt<LK_RENEW)return;
   lkTokenAt=Date.now();   // one attempt per window, whatever happens
@@ -415,7 +442,12 @@ async function lkProbe(ids,run){
     }else run.m=run.m||`POST`;
     s.http=r.status;
     let j=null;try{j=await r.json()}catch(e){}
-    if(r.status===401||r.status===403||(r.ok&&!j))auth=!0,s.err=r.status===401||r.status===403?`Login refused (HTTP ${r.status})`:`Anaplan's API sent a login page`;
+    let said=lkSaid(j);
+    /* 401 is a missing or bad login; 403 is a login Anaplan accepted that may
+       not do this (checked against api.anaplan.com: no token and a bad token
+       both answer 401, so a 403 means the token arrived and was valid). */
+    if(r.status===401||r.status===403||(r.ok&&!j))auth=!0,s.err=r.status===401?`Login refused (HTTP 401${said?` - ${said}`:``})`
+      :r.status===403?`Forbidden (HTTP 403${said?` - ${said}`:``})`:`Anaplan's API sent a login page`;
     else if(!r.ok)s.err=`HTTP ${r.status}`+(j?.status?.message?` - ${String(j.status.message).slice(0,150)}`:``);
     else{
       let q=j.requestStatus||j.status&&typeof j.status==`object`&&j.status.requestStatus||{};
@@ -469,12 +501,14 @@ async function lkLoop(tab,ids,key,run){
     let a=Date.now(),p=await lkProbe(ids,run);
     if(run.stop||!busy.has(r))break;
     if(p.auth&&!S.length){
-      // Refused on the very first check: nothing to save - ask for a token.
-      let had=!!lkToken;lkToken=``;
+      // Refused on the very first check: nothing to save. Without a token,
+      // ask for one; with one, say which part Anaplan refused (lkDiagnose).
+      let had=!!lkToken,why2=had?await lkDiagnose():``;
+      had&&!/^The token is valid/.test(why2)&&(lkToken=``);   // keep a good token for the next try
       setBusy(tab,page,!1);
       return push({type:`ia_page_error`,page,to:tab,message:had
-        ?`Anaplan's API refused that token (it may have expired - they last 35 minutes). Paste a new one, or sign in with your user ID and password, and start again.`
-        :`Anaplan's API didn't accept your browser login. Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
+        ?`Anaplan's API refused the model status call: ${p.s.err}. ${why2}`
+        :`Anaplan's API didn't accept your browser login (${p.s.err}). Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
     }
     S.push(p.s),keys=keys||p.keys;
     p.s.status!==cur&&(cur=p.s.status,label=`${cur} since ${new Date(p.s.t).toLocaleTimeString()}`);
