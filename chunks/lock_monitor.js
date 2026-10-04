@@ -169,25 +169,7 @@ function top(d) {
   else if (WHY[d.why]) box.appendChild(el('p', 'ia-ws-line', WHY[d.why]));
   wrap.appendChild(box);
 
-  if (d.keys && d.keys.length) {
-    var f = el('details', 'ia-fields-seen');
-    f.appendChild(el('summary', null, 'Show the fields Anaplan\'s status reply held'));
-    f.appendChild(el('p', null, d.keys.join(', ')));
-    wrap.appendChild(f);
-  }
   return wrap;
-}
-
-// What the checks were depends on how the run got its answers (lkProbe).
-function note(d) {
-  var how = d && d.login === 'session'
-    ? 'Each check asks the model\'s server the way Anaplan\'s own screen does to show "Model is busy", over your session.'
-    : 'Each check reads the model status from Anaplan\'s Integration API' + (d && d.login === 'token' ? ', with your API token.' : '.');
-  return how + ' Checks never overlap. Available: Anaplan reports the model "Open". Busy: it names a running ' +
-    'step - a process, import, export or another user\'s change - the cause of "Model is busy". Updating: a ' +
-    'change being saved, usually brief.' + (d && d.login !== 'session'
-      ? ' Locked / Offline: the API refused the model as locked (423) or offline (424).' : '') +
-    ' Times are in your time zone.';
 }
 
 renderPage({
@@ -198,7 +180,6 @@ renderPage({
       label: 'Timeline',
       heading: 'Timeline',
       top: top,
-      note: note,
       rows: periods,
       cols: 'grid-cols-12',
       headers: [{ label: 'From', cls: 'col-span-3', sort: function (r) { return r.from; } },

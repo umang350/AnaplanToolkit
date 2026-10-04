@@ -269,7 +269,8 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   checkbox requests the *optional* `notifications` permission; with it the worker notifies once a
   model has been unavailable `LK_NOTE_BUSY` (30s) and when it is free again after `LK_NOTE_FREE`
   (10s). The view shows Anaplan's "(UTC)" times in local time (`localTip`; CSV keeps
-  `TooltipAsSent`) and its note says which method the run used.
+  `TooltipAsSent`). The view has no explanatory note or fields disclosure (removed on request);
+  the cached report still records the method (`login`) and the reply's keys (`keys`) for debugging.
   Stop is how it ends: `ia_cancel` stops the run (waking it from its interval wait) and the worker
   caches what it gathered (`LIVE`) where other stopped runs are dropped. The panel's `stop()` keeps a
   live view's report up (no `fail()`) until that saved copy arrives; a run stopped before its first
