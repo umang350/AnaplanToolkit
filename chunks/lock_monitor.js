@@ -126,7 +126,7 @@ var WHY = {
   running: 'Interrupted: the browser stopped the extension\'s background task mid-run. This is what it saw until then.',
   limit: 'Stopped on its own after an hour.',
   errors: 'Stopped on its own: Anaplan stopped answering the checks.',
-  auth: 'Stopped on its own: Anaplan\'s API stopped accepting the login (a token lasts 35 minutes).'
+  auth: 'Stopped on its own: Anaplan stopped accepting your session. Reload the Anaplan tab and start again.'
 };
 
 /* Clear: forget this report so the next start is a fresh run (refresh adds

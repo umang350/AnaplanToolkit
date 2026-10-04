@@ -133,14 +133,10 @@
       emptyLoad = document.getElementById('empty-load'),
       emptyNote = document.getElementById('empty-note'),
       emptyPreview = document.getElementById('empty-preview'),
-      emptyToken = document.getElementById('empty-token'),
       emptyLk = document.getElementById('empty-lk'),
       lkEvery = document.getElementById('lk-every'),
       lkHours = document.getElementById('lk-hours'),
       lkNotify = document.getElementById('lk-notify'),
-      tokenInput = document.getElementById('token-input'),
-      userInput = document.getElementById('user-input'),
-      passInput = document.getElementById('pass-input'),
       skPlaceholder = document.getElementById('sk-placeholder'),
       skHeading = document.getElementById('sk-heading'),
       skHead = document.getElementById('sk-head'),
@@ -385,7 +381,7 @@
     // The iframe exists as soon as there is data, or a gather is under way -
     // the result page renders its own loading and error states.
     // A live view (Lock Monitor) that just failed shows Get data and its note
-    // over its old report - that is where the token field is.
+    // over its old report.
     if ((st.ts && !(v.live && st.note)) || st.busy || active === 'summary') ensureFrame(active);
 
     // While this view gathers, the refresh button becomes Stop (all gathers).
@@ -405,7 +401,6 @@
       emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring' : 'Get data';
       emptyLoad.disabled = !!st.busy;
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
-      emptyToken.hidden = !v.live;
       emptyLk.hidden = !v.live;
       paintPreview(v);
     }
@@ -451,17 +446,11 @@
     st.steps = [];
     render();
     var msg = { type: force ? 'ia_refresh' : 'ia_load', page: page };
-    // Lock Monitor: a pasted API token, or a user ID and password the worker
-    // swaps for one, go to the worker, which keeps only the token and only in
-    // memory. The secret fields are cleared so nothing is left on screen.
+    // Lock Monitor: how often, how long, and whether to notify.
     if (byPage[page].live) {
       msg.every = +lkEvery.value;
       msg.hours = +lkHours.value;
       msg.notify = lkNotify.checked;
-      if (tokenInput.value.trim()) msg.token = tokenInput.value.trim();
-      else if (userInput.value.trim() && passInput.value) { msg.user = userInput.value.trim(); msg.pass = passInput.value; }
-      tokenInput.value = '';
-      passInput.value = '';
     }
     send(msg)
       .then(function (r) { if (r && r.error) fail(page, r.error); },
@@ -493,7 +482,7 @@
     st.note = message || 'Something went wrong.';
     // With no data the iframe would sit on its own loader forever, hiding the
     // reason - drop it so the view falls back to the message and Get data.
-    // A live view drops it either way: its note may ask for a token.
+    // A live view drops it either way, so its note shows over the old report.
     if ((!st.ts || byPage[page].live) && st.frame) {
       st.frame.remove();
       st.frame = null;
@@ -528,9 +517,6 @@
     if (!lkNotify.checked || !api.permissions) { if (!api.permissions) lkNotify.checked = false; saveLk(); return; }
     Promise.resolve(api.permissions.request({ permissions: ['notifications'] }))
       .then(function (ok) { lkNotify.checked = !!ok; saveLk(); }, function () { lkNotify.checked = false; saveLk(); });
-  });
-  [tokenInput, userInput, passInput].forEach(function (f) {
-    f.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !emptyLoad.disabled) emptyLoad.click(); });
   });
   refreshBtn.addEventListener('click', function () {
     if (state[active].busy) stop();

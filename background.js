@@ -339,14 +339,11 @@ function progAdd(tab,page,m){
 // and the banner itself (only drawn once the page is up, and it went back to
 // Available after 30s with the banner still showing).
 //
-// Login: api.anaplan.com wants an AnaplanAuthToken, not the page's session.
-// The browser's own cookies are tried first; if the API refuses them, the
-// panel asks for a token. The token lives in this variable only - never in
-// storage - and is refreshed through auth.anaplan.com before it expires.
+// Login: only the browser's own Anaplan session is used - the session
+// status call first, then the API with the page's cookies. There is no token
+// or password login; if neither answers, the run stops and says so.
 // Checks never overlap: a slow reply delays the next one.
 var LK_API=`https://api.anaplan.com/2/0`,
-    LK_AUTH=`https://auth.anaplan.com/token/refresh`,
-    LK_LOGIN=`https://auth.anaplan.com/token/authenticate`,
     LK_EVERY=1e3,         // one check a second by default...
     LK_EVERIES=[1e3,5e3,15e3,3e4,6e4],   // ...or any of these, picked in the panel
     LK_HOURS=[.25,1,4,8,12],             // run length choices, in hours
@@ -356,8 +353,6 @@ var LK_API=`https://api.anaplan.com/2/0`,
     LK_NOTE_FREE=1e4,     // ...and when it is free again after being busy at least this long
     LK_ERRS=60,           // ...or after this many failed checks in a row
     LK_SLOW=3e3,          // an "Open" reply this slow is still worth flagging
-    LK_RENEW=25*6e4,      // tokens last 35 min; renew well before
-    lkToken=``,lkTokenAt=0,
     lkRuns=new Map();     // rid -> {ac} for the run in flight (Stop aborts its request)
 
 // The tab's URL names the model in the new UX (/workspaces/<w>/models/<m>)
@@ -374,23 +369,6 @@ function lkIds(url){
 
 function lkDur(ms){let s=Math.floor(ms/1e3),h=Math.floor(s/3600),m=Math.floor(s%3600/60),p=n=>String(n).padStart(2,`0`);return(h?h+`:`+p(m):m)+`:`+p(s%60)}
 
-// User ID + password -> token, the Integration API's basic login. The
-// password is used for this one request and never kept: renewal works off
-// the token itself (lkRenew). SSO users can only do this as exception users.
-async function lkLogin(user,pass){
-  let b=new TextEncoder().encode(`${user}:${pass}`),bin=``;
-  for(let i=0;i<b.length;i++)bin+=String.fromCharCode(b[i]);
-  let r;
-  try{r=await fetch(LK_LOGIN,{method:`POST`,headers:{Authorization:`Basic ${btoa(bin)}`,Accept:`application/json`},credentials:`omit`})}
-  catch(e){throw Error(`Couldn't reach Anaplan's sign-in service (auth.anaplan.com). Check your connection, then try again.`)}
-  let j=null;try{j=await r.json()}catch(e){}
-  let v=j?.tokenInfo?.tokenValue;
-  if(!r.ok||typeof v!=`string`||!v)throw Error(r.status===401||r.status===403
-    ?`Anaplan refused that user ID and password. Single sign-on users can only sign in this way as SSO exception users - paste a token instead.`
-    :`Anaplan's sign-in failed (${j?.statusMessage||`HTTP `+r.status}).`);
-  lkToken=v,lkTokenAt=Date.now()
-}
-
 // Anaplan's own words from an error reply, whichever shape it came in.
 function lkSaid(j){
   let m=j&&(j.status?.message||j.statusMessage||j.message||j.error_description||j.error);
@@ -404,7 +382,7 @@ function lkSaid(j){
    content-scripts/api.js in the tab's top frame and goes out as the page's.
    Resolves to {status, ok, j}; a timeout or Stop rejects as AbortError. */
 var lkSeq=0;
-function lkFetch(tab,url,run){return lkRelay(tab,{type:`ia_lk_fetch`,url,token:lkToken},run)}
+function lkFetch(tab,url,run){return lkRelay(tab,{type:`ia_lk_fetch`,url},run)}
 function lkRelay(tab,m,run){
   let id=++lkSeq,
       call=api.tabs.sendMessage(tab,{...m,id,ms:LK_TMO},{frameId:0}).then(r=>{
@@ -442,40 +420,8 @@ async function lkRpc(tab,ids,run){
   return r
 }
 
-/* A refused status call says only "Forbidden". The first live run got that
-   with a token that had just signed in fine, so before giving up the worker
-   works out which part was refused: the token itself (auth.anaplan.com's own
-   validate call), the API as a whole (GET /users/me, the simplest call there
-   is), or only the model status call - a permission on that call or model,
-   not the login. The answer goes into the panel's message. */
-async function lkDiagnose(tab){
-  let h={Authorization:`AnaplanAuthToken ${lkToken}`,Accept:`application/json`},
-      get=async u=>{
-        let ac=new AbortController(),tm=setTimeout(()=>ac.abort(),1e4);
-        try{let r=await fetch(u,{headers:h,credentials:`omit`,cache:`no-store`,signal:ac.signal}),j=null;try{j=await r.json()}catch(e){}return{ok:r.ok,code:r.status,j}}
-        catch(e){return{ok:!1,code:0,j:null,e:e?.message||String(e)}}
-        finally{clearTimeout(tm)}
-      },
-      v=await get(`https://auth.anaplan.com/token/validate`);
-  if(!v.ok)return `The token itself was refused by Anaplan's sign-in service (${v.code?`HTTP ${v.code}`:v.e}${lkSaid(v.j)?` - ${lkSaid(v.j)}`:``}): it has expired or was not copied whole.`;
-  let me;try{let r=await lkFetch(tab,`${LK_API}/users/me`);me={ok:r.ok,code:r.status,j:r.j}}catch(e){me={ok:!1,code:0,j:null,e:e?.message||String(e)}}
-  let who=me.j?.user?.email||me.j?.user?.id||``;
-  if(!me.ok)return `The token is valid, but Anaplan's API refused even its simplest call, /users/me (${me.code?`HTTP ${me.code}`:me.e}${lkSaid(me.j)?` - ${lkSaid(me.j)}`:``}). Your account may not be allowed to use the Integration API, or the API isn't receiving the token from the extension.`;
-  return `The token is valid and the API accepts it${who?` (signed in as ${who})`:``}, but Anaplan won't give this account the model's status. It is likely limited to workspace administrators of this model's workspace - ask one to run the monitor, or to grant you workspace admin.`
-}
-
-async function lkRenew(){
-  if(!lkToken||Date.now()-lkTokenAt<LK_RENEW)return;
-  lkTokenAt=Date.now();   // one attempt per window, whatever happens
-  try{
-    let r=await fetch(LK_AUTH,{method:`POST`,headers:{Authorization:`AnaplanAuthToken ${lkToken}`,Accept:`application/json`}});
-    let v=r.ok?(await r.json())?.tokenInfo?.tokenValue:null;
-    typeof v==`string`&&v&&(lkToken=v)
-  }catch(e){}
-}
-
 // One check. `auth` is set when the API refused the login (401/403, or a
-// login page instead of JSON) - the run stops and the panel asks for a token.
+// login page instead of JSON) - the run stops and the panel says so.
 async function lkProbe(tab,ids,run){
   let s={t:Date.now(),ms:0,http:0,step:``,progress:null,tooltip:``,taskId:``,type:``,err:``,status:``},keys=null,auth=!1;
   try{
@@ -490,7 +436,6 @@ async function lkProbe(tab,ids,run){
     }
     s.via=run.mode;
     if(!r){
-      await lkRenew();
       /* GET - checked live: POST answers 415 without a Content-Type and 405
          with one; GET gives {requestStatus:{currentStep, progress, tooltip,
          taskId, creationTime, exportTaskType, ...}}. */
@@ -500,8 +445,7 @@ async function lkProbe(tab,ids,run){
     let j=r.j;
     let said=lkSaid(j);
     /* 401 is a missing or bad login; 403 is a login Anaplan accepted that may
-       not do this (checked against api.anaplan.com: no token and a bad token
-       both answer 401, so a 403 means the token arrived and was valid). */
+       not do this. */
     if(run.mode===`api`&&(r.status===401||r.status===403||(r.ok&&!j)))auth=!0,s.err=r.status===401?`Login refused (HTTP 401${said?` - ${said}`:``})`
       :r.status===403?`Forbidden (HTTP 403${said?` - ${said}`:``})`:`Anaplan's API sent a login page`;
     else if(!r.ok)s.err=`HTTP ${r.status}`+(j?.status?.message?` - ${String(j.status.message).slice(0,150)}`:``);
@@ -515,7 +459,7 @@ async function lkProbe(tab,ids,run){
   }catch(e){
     // "Failed to fetch" alone says nothing: name the call so the report shows what was refused.
     s.err=e?.name===`AbortError`?(run.stop?`Stopped`:`no reply in ${LK_TMO/1e3}s`)
-      :`Request failed (${(e?.message||String(e)).slice(0,160)}) - ${run.mode===`api`?`API model status, ${lkToken?`token`:`browser login`}`:`session status check`}`
+      :`Request failed (${(e?.message||String(e)).slice(0,160)}) - ${run.mode===`api`?`API model status`:`session status check`}`
   }finally{run.kill=run.abort=null}
   s.ms=Date.now()-s.t;
   // 423 / 424 are the API's "model locked" / "model offline".
@@ -533,9 +477,6 @@ async function lkStart(msg){
   let url=``,title=``;try{let x=await api.tabs.get(tab);url=x?.url||``,title=x?.title||``}catch(e){}
   let ids=lkIds(url);
   if(!ids)throw Error(`This tab's address doesn't name a model. Open the model in Anaplan, then try again.`);
-  typeof msg.token==`string`&&msg.token.trim()&&(lkToken=msg.token.trim().replace(/^AnaplanAuthToken\s+/i,``),lkTokenAt=Date.now());
-  if(!lkRuns.has(rid(tab,`lock_monitor`))&&typeof msg.user==`string`&&msg.user.trim()&&typeof msg.pass==`string`&&msg.pass)
-    await lkLogin(msg.user.trim(),msg.pass);
   // The cache key is the content script's when it can give one (the page may
   // be stuck loading), else built from the URL the same way.
   let known=keyByTab.get(tab),key=known||(ids.c?`${ids.c}:${ids.m}`:await modelKey(tab));
@@ -583,22 +524,18 @@ async function lkLoop(tab,ids,key,run,prev){
       tail=()=>`${S.length} ${S.length===1?`check`:`checks`} · ${lkDur(Date.now()-runAt)}${prev?` (continued)`:``}`,
       snap=(w,live)=>({modelName:ids.name||``,workspaceId:ids.w,modelId:ids.m,started:t0,ended:Date.now(),every:run.every,
         max:run.max,slow:LK_SLOW,why:w,live,samples:S,keys:keys||[],
-        login:run.mode===`rpc`?`session`:lkToken?`token`:`browser`,rpcWhy:run.rpcWhy||``}),
+        login:run.mode===`rpc`?`session`:`browser`,rpcWhy:run.rpcWhy||``}),
       lastLive=0,lastSave=Date.now(),downSince=0,toldBusy=!1;
-  tick(lkToken?`with your API token`:`with your browser login`);
+  tick(`with your Anaplan session`);
   while(busy.has(r)&&!run.stop){
     if(Date.now()-runAt>=run.max){why=`limit`;break}
     let a=Date.now(),p=await lkProbe(tab,ids,run);
     if(run.stop||!busy.has(r))break;
     if(p.auth&&!fresh){
-      // Refused on the very first check: nothing to save. Without a token,
-      // ask for one; with one, say which part Anaplan refused (lkDiagnose).
-      let had=!!lkToken,why2=had?await lkDiagnose(tab):``;
-      had&&!/^The token is valid/.test(why2)&&(lkToken=``);   // keep a good token for the next try
+      // Refused on the very first check: nothing to save.
       setBusy(tab,page,!1);
-      return push({type:`ia_page_error`,page,to:tab,message:had
-        ?`Anaplan's API refused the model status call: ${p.s.err}. ${why2}`
-        :`Anaplan's session status check didn't answer (${run.rpcWhy||`unknown`}), and its API didn't accept your browser login (${p.s.err}). Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
+      return push({type:`ia_page_error`,page,to:tab,message:
+        `Anaplan didn't give this model's status to your session: its session status check didn't answer (${run.rpcWhy||`unknown`}), and its API didn't accept your browser login (${p.s.err}). Reload the Anaplan tab and try again.`},page)
     }
     prev&&!fresh&&(p.s.gap=!0);
     fresh++,S.push(p.s),keys=keys||p.keys;

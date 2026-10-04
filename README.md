@@ -88,14 +88,9 @@ demand, grouped as in the panel's tab bar:
 - **Available**: Anaplan reports the model open with nothing running. **Busy**: Anaplan names a
   running step (a process, import, export or other task), with its progress and task where given.
   **Locked** / **Offline**: the API refused the model as locked or offline.
-- **No login needed, if it works for you**: each run first asks the model's status the way
-  Anaplan's own screen does, over your existing session. Only if that gets no answer does it use the
-  API.
-- **API login**: Anaplan's API doesn't accept your browser login. If the monitor needs it, the Lock tab asks
-  you to either paste an Anaplan API token (AnaplanAuthToken) or enter your Anaplan user ID and
-  password. The user ID and password are swapped for a token at Anaplan's sign-in service and the
-  password is not kept. Single sign-on users can only do this as SSO exception users. The token is
-  kept in memory only, never saved, and renewed while the monitor runs.
+- **No login needed**: each run asks the model's status the way Anaplan's own screen does, over
+  your existing session. If that gets no answer, it tries the API with your browser login, and if
+  Anaplan refuses that too, it stops and says so. It never asks for a token or password.
 - **Timeline** merges checks in a row with the same status into periods. **Checks** lists every
   check.
 
@@ -173,14 +168,13 @@ Inside the Anaplan modelling UI (`⌘⌥` on macOS, `Ctrl+Alt` on Windows/Linux)
 ## Privacy
 
 The extension talks to **no server other than Anaplan itself**. There is no analytics, no
-telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your existing session
-(or, for the Lock Monitor only, an API token you paste):
+telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your existing session:
 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
 - `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
-- `api.anaplan.com` (Integration API model status, sent from the Anaplan tab) and
-  `auth.anaplan.com` (sign-in with user ID and password, token renewal): the Lock Monitor only
+- `api.anaplan.com` (Integration API model status, sent from the Anaplan tab): the Lock Monitor
+  only, if the session status check doesn't answer
 
 All of these calls only read. Results are kept in `storage.session`, compressed when large, and
 are dropped when the browser closes. Nothing is sent anywhere else.

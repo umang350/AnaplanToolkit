@@ -144,7 +144,7 @@ views flowing past them. View batches get a 5 min cap (`IA_VTMO`) rather than th
 never retried, and a timeout stops new batches: Anaplan keeps working on an aborted request, so
 aborting or retrying only adds server load and leaves the model busy after the client has given up.
 Beyond those, only the Lock Monitor calls Anaplan's Integration API (`api.anaplan.com`, model
-status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever contacted.
+status, with the page's cookies). No non-Anaplan server is ever contacted.
 
 ## Editing constraints
 
@@ -248,13 +248,9 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   `requestStatus` moves to the API for good (`run.mode`, `run.rpcWhy` saved in the report).
   **API login:** the API does **not** honour the session (confirmed: from the page it gets only
   Cloudflare/consent cookies -> 401; region URLs `us1a.app.anaplan.com/2/0/…` answer 503 "deprecated");
-  on 401/403 the run stops with `ia_page_error` and the
-  panel's login form (`#empty-token`, Lock tab only) takes an AnaplanAuthToken or a user ID +
-  password, which `lkLogin` swaps for a token at `auth.anaplan.com/token/authenticate` from the worker
-  (auth.anaplan.com accepts the extension origin; the password is used once and never kept - SSO
-  users need to be exception users). The token is held in `lkToken` only - never stored - and renewed
-  via `auth.anaplan.com/token/refresh` every 25 min (tokens last 35). On a refused first check with a
-  token, `lkDiagnose` checks `token/validate` and `GET /2/0/users/me` to say which part was refused.
+  on 401/403 the run stops with `ia_page_error` saying so. There is **no token or password login** -
+  a pasted AnaplanAuthToken and a user ID + password sign-in (via `auth.anaplan.com`) were built and
+  then removed on purpose, so the extension never handles credentials. Don't add them back.
   Confirmed live: the session path works and shows every user's work ("Busy" with "processing
   change(s) by user …", "Updating" for a change being saved - its own status, lighter amber).
   **Per run** (panel `#empty-lk`, remembered in the panel's localStorage `ia_lk_opts`, sent with
