@@ -41,13 +41,19 @@
                         <h1 id="empty-title"></h1>
                         <p id="empty-desc"></p>
                         <button id="empty-load" type="button"></button>
-                        <!-- Lock Monitor only: an Integration API token, for when
-                             api.anaplan.com refuses the browser's own login. -->
-                        <label id="empty-token" hidden>
-                            <span>Anaplan API token, if asked</span>
+                        <!-- Lock Monitor only: a login for api.anaplan.com, for when
+                             it refuses the browser's own. Either a token, or a user ID
+                             and password the worker swaps for one (and then forgets). -->
+                        <div id="empty-token" hidden>
+                            <span>If Anaplan's API asks for a login</span>
                             <input id="token-input" type="password" autocomplete="off" spellcheck="false"
-                                   placeholder="AnaplanAuthToken">
-                        </label>
+                                   placeholder="Paste an AnaplanAuthToken" aria-label="Anaplan API token">
+                            <span class="or">or sign in to get one</span>
+                            <input id="user-input" type="text" autocomplete="username" spellcheck="false"
+                                   placeholder="User ID (email)" aria-label="Anaplan user ID">
+                            <input id="pass-input" type="password" autocomplete="current-password"
+                                   placeholder="Password" aria-label="Anaplan password">
+                        </div>
                         <p id="empty-note"></p>
                     </div>
                 </div>

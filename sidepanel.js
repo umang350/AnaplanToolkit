@@ -135,6 +135,8 @@
       emptyPreview = document.getElementById('empty-preview'),
       emptyToken = document.getElementById('empty-token'),
       tokenInput = document.getElementById('token-input'),
+      userInput = document.getElementById('user-input'),
+      passInput = document.getElementById('pass-input'),
       skPlaceholder = document.getElementById('sk-placeholder'),
       skHeading = document.getElementById('sk-heading'),
       skHead = document.getElementById('sk-head'),
@@ -441,9 +443,15 @@
     st.steps = [];
     render();
     var msg = { type: force ? 'ia_refresh' : 'ia_load', page: page };
-    // Lock Monitor: a pasted API token goes to the worker, which keeps it in
-    // memory only; the field is cleared so it isn't left on screen.
-    if (byPage[page].live && tokenInput.value.trim()) { msg.token = tokenInput.value.trim(); tokenInput.value = ''; }
+    // Lock Monitor: a pasted API token, or a user ID and password the worker
+    // swaps for one, go to the worker, which keeps only the token and only in
+    // memory. The secret fields are cleared so nothing is left on screen.
+    if (byPage[page].live) {
+      if (tokenInput.value.trim()) msg.token = tokenInput.value.trim();
+      else if (userInput.value.trim() && passInput.value) { msg.user = userInput.value.trim(); msg.pass = passInput.value; }
+      tokenInput.value = '';
+      passInput.value = '';
+    }
     send(msg)
       .then(function (r) { if (r && r.error) fail(page, r.error); },
             function (e) { fail(page, e && e.message); });
@@ -486,6 +494,9 @@
   }
 
   emptyLoad.addEventListener('click', function () { start(active, false); });
+  [tokenInput, userInput, passInput].forEach(function (f) {
+    f.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !emptyLoad.disabled) emptyLoad.click(); });
+  });
   refreshBtn.addEventListener('click', function () {
     if (state[active].busy) stop();
     else if (active === 'summary') startSummary();

@@ -226,8 +226,11 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   live model and were removed: Workspace's summary call said Unlocked in <1s while the model was busy,
   and reading the "Model is busy" banner needs the page up and went back to Available with the banner
   still showing. **Login:** the browser's cookies are tried first; on 401/403 (or a login page) the run
-  stops with `ia_page_error` and the panel's token field (`#empty-token`, Lock tab only) takes an
-  AnaplanAuthToken, sent with `ia_load` and held in `lkToken` only - never stored - and renewed via
+  stops with `ia_page_error` and the panel's login form (`#empty-token`, Lock tab only) takes either an
+  AnaplanAuthToken or a user ID + password, which `lkLogin` swaps for a token at
+  `auth.anaplan.com/token/authenticate` (Basic auth; the password is used for that one request and
+  never kept - SSO users need to be exception users). Sent with `ia_load`; the token is held in
+  `lkToken` only - never stored - and renewed via
   `auth.anaplan.com/token/refresh` every 25 min (tokens last 35). Stop is how it ends: `ia_cancel`
   aborts its request and the worker caches what it gathered (`LIVE`) where other stopped runs are
   dropped. It also ends after `LK_MAX` (1h), `LK_ERRS` failed checks, or a refused login mid-run.

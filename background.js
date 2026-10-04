@@ -338,6 +338,7 @@ function progAdd(tab,page,m){
 // Checks never overlap: a slow reply delays the next one.
 var LK_API=`https://api.anaplan.com/2/0`,
     LK_AUTH=`https://auth.anaplan.com/token/refresh`,
+    LK_LOGIN=`https://auth.anaplan.com/token/authenticate`,
     LK_EVERY=1e3,         // one check a second...
     LK_TMO=3e4,           // ...each given this long
     LK_MAX=36e5,          // a run ends on its own after an hour
@@ -360,6 +361,23 @@ function lkIds(url){
 }
 
 function lkDur(ms){let s=Math.floor(ms/1e3),h=Math.floor(s/3600),m=Math.floor(s%3600/60),p=n=>String(n).padStart(2,`0`);return(h?h+`:`+p(m):m)+`:`+p(s%60)}
+
+// User ID + password -> token, the Integration API's basic login. The
+// password is used for this one request and never kept: renewal works off
+// the token itself (lkRenew). SSO users can only do this as exception users.
+async function lkLogin(user,pass){
+  let b=new TextEncoder().encode(`${user}:${pass}`),bin=``;
+  for(let i=0;i<b.length;i++)bin+=String.fromCharCode(b[i]);
+  let r;
+  try{r=await fetch(LK_LOGIN,{method:`POST`,headers:{Authorization:`Basic ${btoa(bin)}`,Accept:`application/json`},credentials:`omit`})}
+  catch(e){throw Error(`Couldn't reach Anaplan's sign-in service (auth.anaplan.com). Check your connection, then try again.`)}
+  let j=null;try{j=await r.json()}catch(e){}
+  let v=j?.tokenInfo?.tokenValue;
+  if(!r.ok||typeof v!=`string`||!v)throw Error(r.status===401||r.status===403
+    ?`Anaplan refused that user ID and password. Single sign-on users can only sign in this way as SSO exception users - paste a token instead.`
+    :`Anaplan's sign-in failed (${j?.statusMessage||`HTTP `+r.status}).`);
+  lkToken=v,lkTokenAt=Date.now()
+}
 
 async function lkRenew(){
   if(!lkToken||Date.now()-lkTokenAt<LK_RENEW)return;
@@ -410,6 +428,8 @@ async function lkStart(msg){
   let ids=lkIds(url);
   if(!ids)throw Error(`This tab's address doesn't name a model. Open the model in Anaplan, then try again.`);
   typeof msg.token==`string`&&msg.token.trim()&&(lkToken=msg.token.trim().replace(/^AnaplanAuthToken\s+/i,``),lkTokenAt=Date.now());
+  if(!lkRuns.has(rid(tab,`lock_monitor`))&&typeof msg.user==`string`&&msg.user.trim()&&typeof msg.pass==`string`&&msg.pass)
+    await lkLogin(msg.user.trim(),msg.pass);
   // The cache key is the content script's when it can give one (the page may
   // be stuck loading), else built from the URL the same way.
   let known=keyByTab.get(tab),key=known||(ids.c?`${ids.c}:${ids.m}`:await modelKey(tab));
@@ -437,8 +457,8 @@ async function lkLoop(tab,ids,key,run){
       let had=!!lkToken;lkToken=``;
       setBusy(tab,page,!1);
       return push({type:`ia_page_error`,page,to:tab,message:had
-        ?`Anaplan's API refused that token (it may have expired - they last 35 minutes). Paste a new AnaplanAuthToken and start again.`
-        :`Anaplan's API didn't accept your browser login. Paste an AnaplanAuthToken below and start again.`},page)
+        ?`Anaplan's API refused that token (it may have expired - they last 35 minutes). Paste a new one, or sign in with your user ID and password, and start again.`
+        :`Anaplan's API didn't accept your browser login. Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
     }
     S.push(p.s),keys=keys||p.keys;
     p.s.status!==cur&&(cur=p.s.status,label=`${cur} since ${new Date(p.s.t).toLocaleTimeString()}`);

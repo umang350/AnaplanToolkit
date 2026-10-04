@@ -55,8 +55,10 @@ demand, grouped as in the panel's tab bar:
   running step (a process, import, export or other task), with its progress and task where given.
   **Locked** / **Offline**: the API refused the model as locked or offline.
 - **Login**: your browser login is tried first. If Anaplan's API won't accept it, the Lock tab asks
-  for an Anaplan API token (AnaplanAuthToken). The token is kept in memory only, never saved, and
-  renewed while the monitor runs.
+  you to either paste an Anaplan API token (AnaplanAuthToken) or enter your Anaplan user ID and
+  password. The user ID and password are swapped for a token at Anaplan's sign-in service and the
+  password is not kept. Single sign-on users can only do this as SSO exception users. The token is
+  kept in memory only, never saved, and renewed while the monitor runs.
 - **Timeline** merges checks in a row with the same status into periods. **Checks** lists every
   check.
 
@@ -133,8 +135,8 @@ telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
 - `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
-- `api.anaplan.com` (Integration API model status) and `auth.anaplan.com` (token renewal): the
-  Lock Monitor only
+- `api.anaplan.com` (Integration API model status) and `auth.anaplan.com` (sign-in with user ID
+  and password, token renewal): the Lock Monitor only
 
 All of these calls only read. Results are kept in `storage.session`, compressed when large, and
 are dropped when the browser closes. Nothing is sent anywhere else.
