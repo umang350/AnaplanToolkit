@@ -257,3 +257,5 @@
 .ia-lk-strip i[data-lk="ok"] { background: #16a34a; }
 .ia-lk-strip i[data-lk="warn"] { background: #f59e0b; }
 .ia-lk-strip i[data-lk="bad"] { background: #dc2626; }
+.ia-lk[data-lk="soft"] { color: #b45309; background: color-mix(in srgb, #f59e0b 8%, transparent); }
+.ia-lk-strip i[data-lk="soft"] { background: #fcd34d; }

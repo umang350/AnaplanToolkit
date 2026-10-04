@@ -23,7 +23,7 @@ import { stackCell } from './structure_shared.js';
    that took `slow` ms or more. Timeline merges consecutive checks with the
    same status and step into one period. */
 
-var COLOR = { Available: 'ok', Busy: 'warn', 'Slow reply': 'warn', Locked: 'bad', Offline: 'bad',
+var COLOR = { Available: 'ok', Busy: 'warn', Updating: 'soft', 'Slow reply': 'warn', Locked: 'bad', Offline: 'bad',
               'Not loaded': 'off', 'No reply': 'off', 'Login refused': 'bad', Unknown: 'off' };
 
 function samples(d) { return (d && Array.isArray(d.samples)) ? d.samples : []; }
@@ -48,9 +48,24 @@ function pct(p) {
   return Math.round(p <= 1 ? p * 100 : p) + '%';
 }
 // What Anaplan said: its current step, how far along, and the task it names.
+// Anaplan writes its times in UTC ("Submitted at 08:17 (UTC)"); show them in
+// the viewer's time zone, on the day of the check - the day before when that
+// would put them after it. The CSV keeps Anaplan's own text alongside.
+function localTip(tip, at) {
+  if (!tip) return '';
+  return String(tip).replace(/\b(\d{1,2}):(\d{2})\s*\(UTC\)/g, function (m, h, mi) {
+    var d = new Date(at);
+    if (isNaN(d)) return m;
+    var u = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), +h, +mi);
+    if (u > at + 36e5) u -= 864e5;
+    var x = new Date(u);
+    return p2(x.getHours()) + ':' + p2(x.getMinutes());
+  });
+}
 function says(r) { return [r.step || (r.err ? '' : '–'), pct(r.progress)].filter(Boolean).join(' · '); }
 function detail(r) {
-  return [r.err, r.tooltip, r.type && 'Task type ' + r.type, r.taskId && 'Task ' + r.taskId].filter(Boolean).join(' · ');
+  return [r.err, localTip(r.tooltip, r.t || r.from), r.type && 'Task type ' + r.type, r.taskId && 'Task ' + r.taskId]
+    .filter(Boolean).join(' · ');
 }
 
 function tag(status) {
@@ -98,6 +113,7 @@ function median(xs) {
 }
 
 var WHY = {
+  running: 'Interrupted: the browser stopped the extension\'s background task mid-run. This is what it saw until then.',
   limit: 'Stopped on its own after an hour.',
   errors: 'Stopped on its own: Anaplan stopped answering the checks.',
   auth: 'Stopped on its own: Anaplan\'s API stopped accepting the login (a token lasts 35 minutes).'
@@ -138,7 +154,8 @@ function top(d) {
     .join(' · ')));
   box.appendChild(el('p', 'ia-ws-line',
     stamp(start) + ' – ' + clock(end) + ' · ' + dur(span) + ' · ' + list.length.toLocaleString() +
-    (list.length === 1 ? ' check' : ' checks') + ' · ' + ps.length + (ps.length === 1 ? ' period' : ' periods')));
+    (list.length === 1 ? ' check' : ' checks') + ' every ' + dur(d.every || 1000) + ' · ' + ps.length +
+    (ps.length === 1 ? ' period' : ' periods')));
   var ok = list.filter(function (s) { return !s.err; }).map(function (s) { return s.ms; });
   if (ok.length)
     box.appendChild(el('p', 'ia-ws-line', 'Reply time: median ' + reply(median(ok)) + ' · slowest ' +
@@ -148,7 +165,8 @@ function top(d) {
   if (worst)
     box.appendChild(el('p', 'ia-ws-line', 'Longest unavailable: ' + worst.status + ' for ' + dur(worst.ms) +
                        ' from ' + clock(worst.from)));
-  if (WHY[d.why]) box.appendChild(el('p', 'ia-ws-line', WHY[d.why]));
+  if (d.live) box.appendChild(el('p', 'ia-ws-line', 'Monitoring now - this updates as it goes. Stop saves the report.'));
+  else if (WHY[d.why]) box.appendChild(el('p', 'ia-ws-line', WHY[d.why]));
   wrap.appendChild(box);
 
   if (d.keys && d.keys.length) {
@@ -160,10 +178,17 @@ function top(d) {
   return wrap;
 }
 
-var NOTE = 'One check a second through Anaplan\'s Integration API (model status), never two at once. ' +
-  'Available: Anaplan reports the model "Open" with no task running. Busy: it names a running step - ' +
-  'a process, import, export or other task - the cause of "Model is busy". Locked / Offline: the API ' +
-  'refused the model as locked (423) or offline (424).';
+// What the checks were depends on how the run got its answers (lkProbe).
+function note(d) {
+  var how = d && d.login === 'session'
+    ? 'Each check asks the model\'s server the way Anaplan\'s own screen does to show "Model is busy", over your session.'
+    : 'Each check reads the model status from Anaplan\'s Integration API' + (d && d.login === 'token' ? ', with your API token.' : '.');
+  return how + ' Checks never overlap. Available: Anaplan reports the model "Open". Busy: it names a running ' +
+    'step - a process, import, export or another user\'s change - the cause of "Model is busy". Updating: a ' +
+    'change being saved, usually brief.' + (d && d.login !== 'session'
+      ? ' Locked / Offline: the API refused the model as locked (423) or offline (424).' : '') +
+    ' Times are in your time zone.';
+}
 
 renderPage({
   page: 'lock_monitor',
@@ -173,7 +198,7 @@ renderPage({
       label: 'Timeline',
       heading: 'Timeline',
       top: top,
-      note: NOTE,
+      note: note,
       rows: periods,
       cols: 'grid-cols-12',
       headers: [{ label: 'From', cls: 'col-span-3', sort: function (r) { return r.from; } },
@@ -192,7 +217,8 @@ renderPage({
       },
       csvRow: function (r) {
         return { From: stamp(r.from), To: stamp(r.to), DurationSeconds: Math.round(r.ms / 1000), Status: r.status,
-                 CurrentStep: r.step, Progress: pct(r.progress), Tooltip: r.tooltip, TaskId: r.taskId,
+                 CurrentStep: r.step, Progress: pct(r.progress), Tooltip: localTip(r.tooltip, r.from),
+                 TooltipAsSent: r.tooltip, TaskId: r.taskId,
                  TaskType: r.type, Checks: r.checks, SlowestReplyMs: r.slowest, Error: r.err };
       },
       filename: 'model-lock-timeline.csv'
@@ -220,7 +246,8 @@ renderPage({
       },
       csvRow: function (r) {
         return { Time: stamp(r.t), Status: r.status, CurrentStep: r.step, Progress: pct(r.progress),
-                 Tooltip: r.tooltip, TaskId: r.taskId, TaskType: r.type, ReplyMs: r.ms, HTTP: r.http || '',
+                 Tooltip: localTip(r.tooltip, r.t), TooltipAsSent: r.tooltip, TaskId: r.taskId, TaskType: r.type,
+                 ReplyMs: r.ms, HTTP: r.http || '',
                  Error: r.err };
       },
       filename: 'model-lock-checks.csv'

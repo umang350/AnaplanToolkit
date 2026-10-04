@@ -255,9 +255,24 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   users need to be exception users). The token is held in `lkToken` only - never stored - and renewed
   via `auth.anaplan.com/token/refresh` every 25 min (tokens last 35). On a refused first check with a
   token, `lkDiagnose` checks `token/validate` and `GET /2/0/users/me` to say which part was refused.
-  Stop is how it ends: `ia_cancel` stops the run and the worker caches what it gathered (`LIVE`)
-  where other stopped runs are dropped. It also ends after `LK_MAX` (1h), `LK_ERRS` failed checks, or
-  a refused login mid-run. `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded
+  Confirmed live: the session path works and shows every user's work ("Busy" with "processing
+  change(s) by user …", "Updating" for a change being saved - its own status, lighter amber).
+  **Per run** (panel `#empty-lk`, remembered in the panel's localStorage `ia_lk_opts`, sent with
+  `ia_load`): interval `every` from `LK_EVERIES` (1s-1min) and length `hours` from `LK_HOURS`
+  (15 min-12h); anything else falls back to `LK_EVERY`/`LK_MAX`. **Live report:** the loop pushes a
+  snapshot (`lock_monitor_data`, `data.live: true`) every `max(5s, n×20ms)` - the one unsolicited
+  data push, fine because the panel keeps the view's iframe up while the run is busy and the next
+  push replaces a lost one; `renderPage` keeps scroll, shown rows and search focus across live
+  updates, and the panel shows the progress as a strip (`compact`) over a live view. **Saved as it
+  goes:** `cacheSet` every `max(10s, n×10ms)` with `why: "running"`, so a worker restart mid-run
+  leaves the checks so far (the view calls it interrupted). **Notifications** are opt-in: the
+  checkbox requests the *optional* `notifications` permission; with it the worker notifies once a
+  model has been unavailable `LK_NOTE_BUSY` (30s) and when it is free again after `LK_NOTE_FREE`
+  (10s). The view shows Anaplan's "(UTC)" times in local time (`localTip`; CSV keeps
+  `TooltipAsSent`) and its note says which method the run used.
+  Stop is how it ends: `ia_cancel` stops the run (waking it from its interval wait) and the worker
+  caches what it gathered (`LIVE`) where other stopped runs are dropped. It also ends after its
+  length, about two minutes of failed checks in a row, or a refused login mid-run. `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded
   count.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current

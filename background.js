@@ -339,9 +339,13 @@ function progAdd(tab,page,m){
 var LK_API=`https://api.anaplan.com/2/0`,
     LK_AUTH=`https://auth.anaplan.com/token/refresh`,
     LK_LOGIN=`https://auth.anaplan.com/token/authenticate`,
-    LK_EVERY=1e3,         // one check a second...
+    LK_EVERY=1e3,         // one check a second by default...
+    LK_EVERIES=[1e3,5e3,15e3,3e4,6e4],   // ...or any of these, picked in the panel
+    LK_HOURS=[.25,1,4,8,12],             // run length choices, in hours
     LK_TMO=3e4,           // ...each given this long
-    LK_MAX=36e5,          // a run ends on its own after an hour
+    LK_MAX=36e5,          // a run ends on its own after an hour unless the panel picks longer
+    LK_NOTE_BUSY=3e4,     // with notifications on: say so once the model has been busy this long...
+    LK_NOTE_FREE=1e4,     // ...and when it is free again after being busy at least this long
     LK_ERRS=60,           // ...or after this many failed checks in a row
     LK_SLOW=3e3,          // an "Open" reply this slow is still worth flagging
     LK_RENEW=25*6e4,      // tokens last 35 min; renew well before
@@ -510,6 +514,7 @@ async function lkProbe(tab,ids,run){
   s.status=s.http===423?`Locked`:s.http===424?`Offline`:s.err?(auth?`Login refused`:`No reply`)
     :!s.step?`Unknown`   // a reply without currentStep: the view lists the fields it did hold
     :/^open\b/i.test(s.step)?(s.ms>=LK_SLOW?`Slow reply`:`Available`)   // REQUEST_STATUS echoes our serial as taskId even when open
+    :/^updating\b/i.test(s.step)?`Updating`   // a change being saved - short, unlike Processing
     :/clos|unload/i.test(s.step)?`Not loaded`:`Busy`;
   return{s,keys,auth}
 }
@@ -529,20 +534,44 @@ async function lkStart(msg){
   let r=rid(tab,page);
   if(lkRuns.has(r))return{ok:!0};
   stopped.delete(r),setBusy(tab,page,!0);
-  let run={stop:!1};lkRuns.set(r,run);
+  // Interval and length come from the panel; anything off the lists is ignored.
+  let every=LK_EVERIES.includes(+msg.every)?+msg.every:LK_EVERY,
+      max=LK_HOURS.includes(+msg.hours)?+msg.hours*36e5:LK_MAX,
+      run={stop:!1,every,max,notify:!!msg.notify&&!!api.notifications};
+  lkRuns.set(r,run);
   ids.name=title.split(` | `)[0].trim();   // "UQJP_20260621 | Anaplan"
   lkLoop(tab,ids,key,run).catch(()=>{}).finally(()=>lkRuns.delete(r));
   return{ok:!0}
 }
 
+// Opt-in (the panel's "Notify me" asks for the permission): once a model has
+// been busy LK_NOTE_BUSY, and when it is free again after LK_NOTE_FREE.
+var LK_UNAVAILABLE=new Set([`Busy`,`Updating`,`Locked`,`Offline`]);
+// Anaplan's "… at 08:17 (UTC)" in local time, as the view shows it.
+function lkLocal(tip,at){
+  return String(tip||``).replace(/\b(\d{1,2}):(\d{2})\s*\(UTC\)/g,(m,h,mi)=>{
+    let d=new Date(at),u=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),+h,+mi);
+    u>at+36e5&&(u-=864e5);
+    let x=new Date(u);return String(x.getHours()).padStart(2,`0`)+`:`+String(x.getMinutes()).padStart(2,`0`)
+  })
+}
+function lkNotify(tab,title,message){
+  try{api.notifications.create(`ia-lk-${tab}`,{type:`basic`,iconUrl:`icon-128.png`,title,message:String(message||``).slice(0,250)})?.catch?.(()=>{})}catch(e){}
+}
+
 async function lkLoop(tab,ids,key,run){
   let page=`lock_monitor`,r=rid(tab,page),S=[],keys=null,t0=Date.now(),bad=0,why=`stopped`,cur=``,
+      errs=Math.max(5,Math.ceil(12e4/run.every)),   // about two minutes of failed checks in a row
       label=`Asking Anaplan for the model's status`,
       tick=d=>progAdd(tab,page,{step:label,detail:d}),
-      tail=()=>`${S.length} ${S.length===1?`check`:`checks`} · ${lkDur(Date.now()-t0)}`;
+      tail=()=>`${S.length} ${S.length===1?`check`:`checks`} · ${lkDur(Date.now()-t0)}`,
+      snap=(w,live)=>({modelName:ids.name||``,workspaceId:ids.w,modelId:ids.m,started:t0,ended:Date.now(),every:run.every,
+        max:run.max,slow:LK_SLOW,why:w,live,samples:S,keys:keys||[],
+        login:run.mode===`rpc`?`session`:lkToken?`token`:`browser`,rpcWhy:run.rpcWhy||``}),
+      lastLive=0,lastSave=Date.now(),downSince=0,toldBusy=!1;
   tick(lkToken?`with your API token`:`with your browser login`);
   while(busy.has(r)&&!run.stop){
-    if(Date.now()-t0>=LK_MAX){why=`limit`;break}
+    if(Date.now()-t0>=run.max){why=`limit`;break}
     let a=Date.now(),p=await lkProbe(tab,ids,run);
     if(run.stop||!busy.has(r))break;
     if(p.auth&&!S.length){
@@ -558,16 +587,35 @@ async function lkLoop(tab,ids,key,run){
     S.push(p.s),keys=keys||p.keys;
     p.s.status!==cur&&(cur=p.s.status,label=`${cur} since ${new Date(p.s.t).toLocaleTimeString()}`);
     tick([p.s.step,p.s.progress>=0&&p.s.progress!=null?Math.round(p.s.progress*(p.s.progress<=1?100:1))+`%`:``,p.s.tooltip,p.s.err||`${p.s.ms} ms`,tail()].filter(Boolean).join(` · `));
+    // Notifications (opt-in). A failed check neither starts nor ends a busy spell.
+    if(run.notify&&!p.s.err){
+      let down=LK_UNAVAILABLE.has(p.s.status),nm=ids.name||`The model`;
+      if(down){
+        downSince||(downSince=p.s.t,toldBusy=!1);
+        !toldBusy&&p.s.t-downSince>=LK_NOTE_BUSY&&(toldBusy=!0,lkNotify(tab,`${nm} is busy`,
+          `${lkDur(p.s.t-downSince)} so far. ${lkLocal(p.s.tooltip,p.s.t)||p.s.step}`))
+      }else if(downSince){
+        p.s.t-downSince>=LK_NOTE_FREE&&lkNotify(tab,`${nm} is available again`,`It was busy for ${lkDur(p.s.t-downSince)}.`);
+        downSince=0,toldBusy=!1
+      }
+    }
+    /* The view updates while the run goes on: a snapshot pushed straight at
+       it (it is open - the panel draws its iframe while the run is busy; a
+       lost push is replaced by the next). Spaced out as the run grows, since
+       each carries every check. */
+    if(Date.now()-lastLive>=Math.max(5e3,S.length*20))lastLive=Date.now(),push({type:`${page}_data`,data:snap(`running`,!0),to:tab},`live`);
+    /* Saved as it goes: a worker the browser restarts mid-run takes the loop
+       with it, but what was gathered stays cached (why "running", live false
+       - the view calls it interrupted). */
+    if(Date.now()-lastSave>=Math.max(1e4,S.length*10))lastSave=Date.now(),await cacheSet(page,key,snap(`running`,!1));
     bad=p.s.err?bad+1:0;
     if(p.auth){why=`auth`;break}
-    if(bad>=LK_ERRS){why=`errors`;break}
-    let w=LK_EVERY-(Date.now()-a);
-    w>0&&await new Promise(z=>setTimeout(z,w))
+    if(bad>=errs){why=`errors`;break}
+    let w=run.every-(Date.now()-a);
+    w>0&&await new Promise(z=>{let t=setTimeout(z,w);run.kill=()=>{clearTimeout(t),z()}})
   }
   if(!S.length)return void(busy.has(r)&&setBusy(tab,page,!1));
-  let hit=await cacheSet(page,key,{modelName:ids.name||``,workspaceId:ids.w,modelId:ids.m,started:t0,ended:Date.now(),every:LK_EVERY,
-    slow:LK_SLOW,why,samples:S,keys:keys||[],login:run.mode===`rpc`?`session`:lkToken?`token`:`browser`,
-    rpcWhy:run.rpcWhy||``});
+  let hit=await cacheSet(page,key,snap(why,!1));
   setBusy(tab,page,!1);
   push({type:`ia_state`,page,ts:hit.ts,key,to:tab},page)
 }

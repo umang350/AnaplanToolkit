@@ -107,7 +107,7 @@
     /* `live`: runs until Stop (or an hour), then saves what it saw - so it
        is left out of Get all data, and Stop is labelled as saving. */
     { page: 'lock_monitor', tab: 'Lock', title: 'Model Lock Monitor', live: true,
-      desc: 'Asks Anaplan once a second whether the model is open, busy (and with what), locked or offline - even when the model page won\'t load. Press Stop to save the timeline as a report.',
+      desc: 'Asks Anaplan, as often as you choose, whether the model is open, busy (and with what), locked or offline - even when the model page won\'t load. The report fills in as it runs; Stop saves it.',
       preview: ['Timeline', 'Checks'],
       heading: 'Timeline', search: 'Search by status, step or task...',
       cols: ['From', 'Duration', 'Status', 'Anaplan says'] },
@@ -134,6 +134,10 @@
       emptyNote = document.getElementById('empty-note'),
       emptyPreview = document.getElementById('empty-preview'),
       emptyToken = document.getElementById('empty-token'),
+      emptyLk = document.getElementById('empty-lk'),
+      lkEvery = document.getElementById('lk-every'),
+      lkHours = document.getElementById('lk-hours'),
+      lkNotify = document.getElementById('lk-notify'),
       tokenInput = document.getElementById('token-input'),
       userInput = document.getElementById('user-input'),
       passInput = document.getElementById('pass-input'),
@@ -287,7 +291,9 @@
     // only sit on top of it.
     progress.hidden = !st.busy || active === 'summary';
     if (progress.hidden) return;
-    progress.classList.toggle('compact', !!st.ts);
+    // A live view (Lock Monitor) draws its report as it runs: keep the
+    // progress to a strip over it rather than a cover.
+    progress.classList.toggle('compact', !!st.ts || !!byPage[active].live);
     progressHead.textContent = byPage[active].live ? 'Monitoring · press Stop to save the report'
       : (st.ts ? 'Refreshing ' : 'Gathering ') + byPage[active].title;
 
@@ -399,6 +405,7 @@
       emptyLoad.disabled = !!st.busy;
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
       emptyToken.hidden = !v.live;
+      emptyLk.hidden = !v.live;
       paintPreview(v);
     }
     paintProgress();
@@ -447,6 +454,9 @@
     // swaps for one, go to the worker, which keeps only the token and only in
     // memory. The secret fields are cleared so nothing is left on screen.
     if (byPage[page].live) {
+      msg.every = +lkEvery.value;
+      msg.hours = +lkHours.value;
+      msg.notify = lkNotify.checked;
       if (tokenInput.value.trim()) msg.token = tokenInput.value.trim();
       else if (userInput.value.trim() && passInput.value) { msg.user = userInput.value.trim(); msg.pass = passInput.value; }
       tokenInput.value = '';
@@ -494,6 +504,30 @@
   }
 
   emptyLoad.addEventListener('click', function () { start(active, false); });
+
+  /* Lock Monitor options, remembered in this browser (they're used by "Monitor
+     again" too, where the form isn't shown). Notifications are off unless
+     ticked, and ticking asks for the permission then - it is optional in the
+     manifest, so the extension never holds it unless you want it. */
+  var LK_OPTS = 'ia_lk_opts';
+  try {
+    var o = JSON.parse(localStorage.getItem(LK_OPTS) || '{}');
+    if (o.every) lkEvery.value = String(o.every);
+    if (o.hours) lkHours.value = String(o.hours);
+    lkNotify.checked = !!o.notify;
+  } catch (e) {}
+  if (!lkEvery.value) lkEvery.value = '1000';
+  if (!lkHours.value) lkHours.value = '1';
+  function saveLk() {
+    try { localStorage.setItem(LK_OPTS, JSON.stringify({ every: lkEvery.value, hours: lkHours.value, notify: lkNotify.checked })); } catch (e) {}
+  }
+  lkEvery.addEventListener('change', saveLk);
+  lkHours.addEventListener('change', saveLk);
+  lkNotify.addEventListener('change', function () {
+    if (!lkNotify.checked || !api.permissions) { if (!api.permissions) lkNotify.checked = false; saveLk(); return; }
+    Promise.resolve(api.permissions.request({ permissions: ['notifications'] }))
+      .then(function (ok) { lkNotify.checked = !!ok; saveLk(); }, function () { lkNotify.checked = false; saveLk(); });
+  });
   [tokenInput, userInput, passInput].forEach(function (f) {
     f.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !emptyLoad.disabled) emptyLoad.click(); });
   });

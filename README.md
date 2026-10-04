@@ -45,9 +45,14 @@ demand, grouped as in the panel's tab bar:
 
 **Lock Monitor:**
 
-- **Start monitoring** asks Anaplan once a second what the model is doing and shows it live. Press
-  **Stop** to end it and save the report. It stops on its own after an hour, and Get all data
-  skips it.
+- **Start monitoring** asks Anaplan what the model is doing: every second, or every 5, 15 or 30
+  seconds or every minute, for up to 15 minutes, 1, 4, 8 or 12 hours (your choice is remembered).
+  The report fills in while it runs. **Stop** ends it and saves it, and it's saved as it goes too.
+  Get all data skips it.
+- **Notify me** (off unless you tick it, which asks for permission to show notifications) tells
+  you when the model has been busy for 30 seconds, and when it's free again.
+- **Updating** is a change being saved, usually brief. **Busy** is a process, import, export or
+  someone's change holding the model. Anaplan's times are shown in your time zone.
 - It uses Anaplan's Integration API model status, the same status behind "Model is busy". When
   the model is busy it shows what is running, for example "The system is currently processing an
   Export … started by … at 06:59 (UTC)". It doesn't read the model page, so it keeps working when
@@ -153,6 +158,7 @@ Permissions requested:
 | `host_permissions: https://*.anaplan.com/*` | read model metadata from the tab you have open |
 | `sidePanel` (Chrome only; Firefox's sidebar needs no permission) | render the UI |
 | `storage` | cache results for the session |
+| `notifications` (optional, only if you tick *Notify me* on the Lock tab) | tell you when the model is busy or free again |
 
 ## Layout
 

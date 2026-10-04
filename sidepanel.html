@@ -41,6 +41,30 @@
                         <h1 id="empty-title"></h1>
                         <p id="empty-desc"></p>
                         <button id="empty-load" type="button"></button>
+                        <!-- Lock Monitor only: how often, how long, and whether to
+                             notify. Remembered in this browser (sidepanel.js). -->
+                        <div id="empty-lk" hidden>
+                            <label>Check every
+                                <select id="lk-every">
+                                    <option value="1000">1 second</option>
+                                    <option value="5000">5 seconds</option>
+                                    <option value="15000">15 seconds</option>
+                                    <option value="30000">30 seconds</option>
+                                    <option value="60000">1 minute</option>
+                                </select>
+                            </label>
+                            <label>for up to
+                                <select id="lk-hours">
+                                    <option value="0.25">15 minutes</option>
+                                    <option value="1" selected>1 hour</option>
+                                    <option value="4">4 hours</option>
+                                    <option value="8">8 hours</option>
+                                    <option value="12">12 hours</option>
+                                </select>
+                            </label>
+                            <label class="lk-check"><input id="lk-notify" type="checkbox">
+                                Notify me when the model is busy, and when it's free again</label>
+                        </div>
                         <!-- Lock Monitor only: a login for api.anaplan.com, for when
                              it refuses the browser's own. Either a token, or a user ID
                              and password the worker swaps for one (and then forgets). -->
