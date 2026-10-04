@@ -89,7 +89,7 @@
       desc: 'Every module with its ID, dimensions, line item and saved view counts, and the App pages that use it.',
       preview: ['All', 'Not on a page'],
       heading: 'Modules', search: 'Search by module, ID or dimension...',
-      cols: ['Module', 'Dimensions', 'Contents', 'Pages'] },
+      cols: ['Module', 'Dimensions', 'Time Scale', 'Time Range', 'Pages'] },
     { page: 'line_items', tab: 'Line Items', group: 'Structure', sub: 'Line Items', title: 'Line Items',
       desc: 'Every line item in every module with its ID, format, applies-to and formula. Search matches formulas too.',
       heading: 'Line Items', search: 'Search by module, line item, format or formula...',

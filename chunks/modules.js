@@ -3,7 +3,7 @@
  * Author: Umang Chauhan
  */
 import { renderPage, el, textCell, idCell, linkCell } from './sv_shared.js';
-import { joined, stackCell } from './structure_shared.js';
+import { joined } from './structure_shared.js';
 
 /* Modules - every module with its ID, dimensions and counts, and the App
    pages that read it. Structure comes off the in-page model cache
@@ -32,7 +32,7 @@ function note(d, extra) {
 }
 
 function pagesCell(m) {
-  var wrap = el('div', 'col-span-3 min-w-0'), ps = m.pages || [];
+  var wrap = el('div', 'col-span-2 min-w-0'), ps = m.pages || [];
   if (!ps.length) { wrap.appendChild(textCell('–', 'text-sm text-muted-foreground')); return wrap; }
   ps.slice(0, PAGES_SHOWN).forEach(function (p) {
     wrap.appendChild(linkCell(p.app ? p.app + ' › ' + p.name : p.name, p.url));
@@ -51,21 +51,26 @@ function table(label, heading, extra, keep) {
     max: 400,
     placeholder: 'Search by module, ID or dimension...',
     cols: 'grid-cols-12',
-    headers: [{ label: 'Module', cls: 'ia-span-4', sort: function (m) { return m.name; } },
+    // Line item and saved view counts sit under the module's name to make room for time.
+    headers: [{ label: 'Module', cls: 'col-span-3', sort: function (m) { return m.name; } },
               { label: 'Dimensions', cls: 'col-span-3', sort: function (m) { return joined(m.dims); } },
-              { label: 'Contents', cls: 'col-span-2', sort: function (m) { return m.lineItems; } },
-              { label: 'Pages', cls: 'col-span-3', sort: function (m) { return (m.pages || []).length; } }],
+              { label: 'Time Scale', cls: 'col-span-2', sort: function (m) { return m.timeScale; } },
+              { label: 'Time Range', cls: 'col-span-2', sort: function (m) { return m.timeRange; } },
+              { label: 'Pages', cls: 'col-span-2', sort: function (m) { return (m.pages || []).length; } }],
     key: function (m) {
       return m.name + ' ' + m.id + ' ' + joined(m.dims) + ' ' + (m.area || '');
     },
     cells: function (m) {
       var name = idCell(m.name, m.id);
-      name.classList.add('ia-span-4');
+      name.classList.add('col-span-3');
       if (m.area) name.appendChild(el('p', 'text-xs text-muted-foreground', m.area));
+      name.appendChild(el('p', 'text-xs text-muted-foreground',
+        plural(m.lineItems, 'line item') + ' · ' + plural(m.views, 'saved view')));
       return [
         name,
         textCell(joined(m.dims) || '–', 'col-span-3 text-xs text-muted-foreground'),
-        stackCell([plural(m.lineItems, 'line item'), plural(m.views, 'saved view')], 'col-span-2'),
+        textCell(m.timeScale || '–', 'col-span-2 text-sm text-foreground'),
+        textCell(m.timeRange || '–', 'col-span-2 text-sm text-foreground'),
         pagesCell(m)
       ];
     },
@@ -75,6 +80,9 @@ function table(label, heading, extra, keep) {
         ModuleId: m.id,
         FunctionalArea: m.area,
         Dimensions: (m.dims || []).join('; '),
+        TimeScale: m.timeScale || 'Not Applicable',
+        TimeRange: m.timeRange || 'Not Applicable',
+        Versions: m.versions || 'Not Applicable',
         LineItems: m.lineItems,
         SavedViews: m.views,
         PageCount: (m.pages || []).length,

@@ -179,7 +179,12 @@ No other server is ever contacted.
   (time scale; "Not Applicable" when unset) - there is no summary-method field. `fullAppliesTo` also
   carries Time (`20000000003`) and Versions, which Anaplan's Applies To column leaves out (they have
   columns of their own): ids the name index can't resolve are dropped when shorter than 12 digits
-  (lists and subsets are 12), and a module's own `appliesTo` is read before its `fullAppliesTo`. A list's info holds
+  (lists and subsets are 12), and a module's own `appliesTo` is read before its `fullAppliesTo`.
+  A module's info also holds `leafPeriodType` (Time Scale), `timeRangeLabel` and `versionSelection`
+  (`IA_modTime`): the Modules view shows Time Scale and Time Range columns, Versions is CSV only.
+  `timeRangeLabel` is "Time" where Anaplan's grid says "Model Calendar", and only counts when the
+  module has a time scale - otherwise the grid says "Not Applicable". That mapping is inferred
+  from the grid, not confirmed field by field. A list's info holds
   `parentHierarchyEntityLongId` (`-1` = none), `itemCount`, and `propertiesLabelPage` +
   `propertiesInfo` (`{format, formula}` per property, same order). That label page's arrays are
   **flat** (`labels: [...]`), unlike every other label page (`[[...]]`); `IA_page` reads both. Names and
