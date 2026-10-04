@@ -54,7 +54,7 @@ var STRUCTURE = [
 
 var mount = document.getElementById('app'),
     model = null, status = null, overview = null, asking = false, again = false,
-    dl = { busy: false, note: '' };
+    dl = { busy: false, note: '' }, getAll = { running: false };
 
 /* --- formatting ----------------------------------------------------------- */
 
@@ -205,22 +205,41 @@ function reportsCard() {
   });
   s.appendChild(list);
   if (!overview) s.appendChild(el('p', 'ia-note', 'Checking…'));
-  s.appendChild(downloadAll(loaded));
+  s.appendChild(actions(loaded, on.length));
   return s;
+}
+
+/* Get all data + Download all, side by side. Get all data is run by the
+   panel shell (getAll in sidepanel.js), one report after another; it tells
+   us how far along it is (ia_getall_status), and the button becomes Stop. */
+function actions(loaded, total) {
+  var row = el('div', 'ia-dl'),
+      g = el('button', 'ia-dl-btn', getAll.running ? 'Stop' : 'Get all data');
+  g.type = 'button';
+  g.disabled = !getAll.running && (!model || loaded >= total);
+  g.title = getAll.running ? 'Stop getting data' : loaded >= total ? 'Every report is loaded'
+    : 'Gather every report that is not loaded yet, one after another';
+  g.addEventListener('click', function () {
+    window.parent.postMessage({ type: getAll.running ? 'ia_getall_stop' : 'ia_getall' }, location.origin);
+  });
+  row.appendChild(g);
+  downloadAll(row, loaded);
+  if (getAll.running)
+    row.appendChild(el('span', 'ia-note', 'Getting ' + (getAll.done + 1) + ' of ' + getAll.total +
+                       (getAll.current ? ': ' + getAll.current : '') + '…'));
+  return row;
 }
 
 /* "Download all": every loaded report's CSV files in one .zip, plus the model
    facts above as summary.csv (chunks/export_all.js). */
-function downloadAll(loaded) {
-  var wrap = el('div', 'ia-dl'),
-      b = el('button', 'ia-dl-btn', dl.busy ? 'Preparing…' : 'Download all as CSV (.zip)');
+function downloadAll(wrap, loaded) {
+  var b = el('button', 'ia-dl-btn', dl.busy ? 'Preparing…' : 'Download all as CSV (.zip)');
   b.type = 'button';
   b.disabled = dl.busy || !loaded;
   b.title = loaded ? 'Every loaded report\'s CSV files, zipped' : 'Load a report first';
   b.addEventListener('click', downloadAllNow);
   wrap.appendChild(b);
   if (dl.note) wrap.appendChild(el('span', 'ia-note' + (dl.error ? ' ia-error' : ''), dl.note));
-  return wrap;
 }
 
 function summaryRows() {
@@ -304,6 +323,7 @@ try {
 window.addEventListener('message', function (e) {
   if (e.source !== window.parent || e.origin !== location.origin) return;
   if (e.data && e.data.type === 'ia_summary_status') { status = e.data.status || null; render(); }
+  if (e.data && e.data.type === 'ia_getall_status') { getAll = e.data; render(); }
 });
 
 render();

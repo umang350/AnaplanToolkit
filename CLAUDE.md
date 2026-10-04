@@ -216,7 +216,13 @@ No other server is ever contacted.
   per view tab plus `summary.csv`, built entirely in the page (a small ZIP writer, raw DEFLATE via
   `CompressionStream`). The hand-written views are imported with `globalThis.IA_COLLECT` set, which
   makes `renderPage` register their options instead of drawing, so their CSV columns are defined
-  once; the four compiled views' columns are mirrored in `COMPILED` there - keep those in step. It and the Actions tab counts
+  once; the four compiled views' columns are mirrored in `COMPILED` there - keep those in step.
+  Beside it, **Get all data** asks the panel (`window.postMessage` `ia_getall` / `ia_getall_stop`)
+  to gather every report not yet loaded **one after another** (`getAll`/`pump` in `sidepanel.js`:
+  `IA_step`'s progress page is one global per frame, and parallel gathers would also all load the
+  model at once). The queue moves on when the running report stops being busy, ignores the
+  `ia_select` each gather sends so the panel stays on Summary, reports back with
+  `ia_getall_status`, and is dropped by Stop and by a model switch. It and the Actions tab counts
   (`chunks/actions_counts.js`) are styled with `ia-*` classes in `views.css`, because the compiled
   Tailwind CSS only contains utilities the bundled views already use.
 - **`background.js`, `inner.js`, `outer.js` and `main.js` are minified vendor output with

@@ -233,7 +233,7 @@
     f.addEventListener('load', function () {
       st.loaded = true;
       maybeServe(page);
-      if (page === 'summary') tellSummary();
+      if (page === 'summary') { tellSummary(); tellQueue(); }
     });
     f.src = '/' + page + '.html' + (myTab != null ? '?t=' + myTab : '');
     views.appendChild(f);
@@ -445,6 +445,7 @@
       st.served = 0;
     }
     render();
+    if (page === queue.current) pump();
   }
 
   emptyLoad.addEventListener('click', function () { start(active, false); });
@@ -457,7 +458,61 @@
   // Stop every gather. The worker clears busy for all of them and drops their
   // late results; a view that had no data yet falls back to its Get data
   // screen (fail() removes the iframe still showing its loader).
+  /* "Get all data" (Summary): every report not loaded yet, gathered one after
+     another rather than all at once - inner.js reports progress for one run
+     at a time, and a dozen gathers at once would all load the model together.
+     The queue moves on whenever the running report stops being busy: done,
+     served from cache, failed or stopped. Summary asks with ia_getall /
+     ia_getall_stop and is told how far along it is with ia_getall_status. */
+  var queue = { pages: [], current: null, total: 0 };
+
+  function tellQueue() {
+    var f = state.summary.frame;
+    if (!f || !state.summary.loaded || !f.contentWindow) return;
+    f.contentWindow.postMessage({ type: 'ia_getall_status', running: !!queue.current, total: queue.total,
+      done: queue.total - queue.pages.length - (queue.current ? 1 : 0),
+      current: queue.current ? byPage[queue.current].title : '' }, location.origin);
+  }
+
+  function getAll() {
+    if (queue.current) return;
+    queue.pages = VIEWS.filter(function (v) {
+      return v.page !== 'summary' && !v.off && !state[v.page].ts && !state[v.page].busy;
+    }).map(function (v) { return v.page; });
+    queue.total = queue.pages.length;
+    pump();
+  }
+
+  function pump() {
+    if (queue.current && state[queue.current].busy) return;
+    queue.current = null;
+    while (queue.pages.length) {
+      var p = queue.pages.shift();
+      if (state[p].ts || state[p].busy) continue;
+      queue.current = p;
+      start(p, false);
+      break;
+    }
+    if (!queue.current) queue.total = 0;
+    tellQueue();
+  }
+
+  function dropQueue() {
+    queue.pages = [];
+    queue.current = null;
+    queue.total = 0;
+    tellQueue();
+  }
+
+  window.addEventListener('message', function (e) {
+    var f = state.summary.frame;
+    if (!f || e.source !== f.contentWindow || e.origin !== location.origin || !e.data) return;
+    if (e.data.type === 'ia_getall') getAll();
+    if (e.data.type === 'ia_getall_stop' && queue.current) stop();
+  });
+
   function stop() {
+    dropQueue();
     clearTimeout(summary.timer);
     summary.timer = 0;
     summary.deadline = 0;
@@ -477,7 +532,9 @@
   api.runtime.onMessage.addListener(function (msg) {
     if (!msg || !msg.type) return;
     if (myTab != null && msg.to != null && msg.to !== myTab) return;
-    if (msg.type === 'ia_select') { select(msg.page); return; }
+    // A gather announces itself with ia_select (it is how a keyboard shortcut
+    // opens its view); during Get all data the panel stays where it is.
+    if (msg.type === 'ia_select') { if (msg.page !== queue.current) select(msg.page); return; }
     if (msg.type === 'ia_page_error' && state[msg.page]) { fail(msg.page, msg.message); return; }
     if (msg.type === 'ia_state' && state[msg.page]) {
       if (msg.key != null && myKey != null && msg.key !== myKey) return;
@@ -493,6 +550,7 @@
       state[msg.page].busy = !!msg.busy;
       if (msg.busy) state[msg.page].steps = [];
       render();
+      if (!msg.busy && msg.page === queue.current) pump();
       return;
     }
     if (msg.type === 'ia_progress' && state[msg.page]) {
@@ -519,6 +577,7 @@
      re-gathered, so a model that is still loading announces itself once more
      when ready without the view flickering through a second gather. */
   function switchModel() {
+    dropQueue();
     clearTimeout(summary.timer);
     summary.timer = 0;
     summary.deadline = 0;
