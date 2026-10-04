@@ -271,6 +271,14 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   (10s). The view shows Anaplan's "(UTC)" times in local time (`localTip`; CSV keeps
   `TooltipAsSent`). The view has no explanatory note or fields disclosure (removed on request);
   the cached report still records the method (`login`) and the reply's keys (`keys`) for debugging.
+  **Refresh continues, Clear starts over:** `ia_refresh` (the panel's refresh button, "Continue
+  monitoring") seeds the run with the saved report's checks (`lkLoop(…, prev)`) and marks its first new
+  check `gap`; the view draws the time between as a `Paused` period (thin dashed slice in the strip,
+  left out of the shares and "longest unavailable"). `ia_load` (Start, from the empty screen) begins a
+  new run. The view's **Clear report** button (two clicks) sends `ia_clear`; the worker drops the cache
+  (refused while running) and pushes `ia_state` with `ts: 0`, on which the panel removes the frame and
+  shows the start screen with its options. A continued run's length and first-check rules count from
+  its own start (`runAt`, `fresh`).
   Stop is how it ends: `ia_cancel` stops the run (waking it from its interval wait) and the worker
   caches what it gathered (`LIVE`) where other stopped runs are dropped. The panel's `stop()` keeps a
   live view's report up (no `fail()`) until that saved copy arrives; a run stopped before its first

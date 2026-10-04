@@ -548,7 +548,11 @@ async function lkStart(msg){
       run={stop:!1,every,max,notify:!!msg.notify&&!!api.notifications};
   lkRuns.set(r,run);
   ids.name=title.split(` | `)[0].trim();   // "UQJP_20260621 | Anaplan"
-  lkLoop(tab,ids,key,run).catch(()=>{}).finally(()=>lkRuns.delete(r));
+  // Refresh ("Continue monitoring") picks up the saved run for this model and
+  // adds to it; Start (ia_load, from the empty screen) begins a new one.
+  let prev=null;
+  if(msg.type===`ia_refresh`){try{let h=await cacheGet(page,key);h&&Array.isArray(h.data?.samples)&&h.data.samples.length&&(prev=h.data)}catch(e){}}
+  lkLoop(tab,ids,key,run,prev).catch(()=>{}).finally(()=>lkRuns.delete(r));
   return{ok:!0}
 }
 
@@ -567,22 +571,26 @@ function lkNotify(tab,title,message){
   try{api.notifications.create(`ia-lk-${tab}`,{type:`basic`,iconUrl:`icon-128.png`,title,message:String(message||``).slice(0,250)})?.catch?.(()=>{})}catch(e){}
 }
 
-async function lkLoop(tab,ids,key,run){
-  let page=`lock_monitor`,r=rid(tab,page),S=[],keys=null,t0=Date.now(),bad=0,why=`stopped`,cur=``,
+async function lkLoop(tab,ids,key,run,prev){
+  /* A continued run starts from the saved one's checks; its first new check
+     is marked `gap` so the view shows the time in between as not monitored.
+     The run's own length (run.max) and first-check rules count from now. */
+  let page=`lock_monitor`,r=rid(tab,page),S=prev?prev.samples.slice():[],keys=prev?.keys?.length?prev.keys:null,
+      t0=prev?.started||Date.now(),runAt=Date.now(),fresh=0,bad=0,why=`stopped`,cur=``,
       errs=Math.max(5,Math.ceil(12e4/run.every)),   // about two minutes of failed checks in a row
       label=`Asking Anaplan for the model's status`,
       tick=d=>progAdd(tab,page,{step:label,detail:d}),
-      tail=()=>`${S.length} ${S.length===1?`check`:`checks`} · ${lkDur(Date.now()-t0)}`,
+      tail=()=>`${S.length} ${S.length===1?`check`:`checks`} · ${lkDur(Date.now()-runAt)}${prev?` (continued)`:``}`,
       snap=(w,live)=>({modelName:ids.name||``,workspaceId:ids.w,modelId:ids.m,started:t0,ended:Date.now(),every:run.every,
         max:run.max,slow:LK_SLOW,why:w,live,samples:S,keys:keys||[],
         login:run.mode===`rpc`?`session`:lkToken?`token`:`browser`,rpcWhy:run.rpcWhy||``}),
       lastLive=0,lastSave=Date.now(),downSince=0,toldBusy=!1;
   tick(lkToken?`with your API token`:`with your browser login`);
   while(busy.has(r)&&!run.stop){
-    if(Date.now()-t0>=run.max){why=`limit`;break}
+    if(Date.now()-runAt>=run.max){why=`limit`;break}
     let a=Date.now(),p=await lkProbe(tab,ids,run);
     if(run.stop||!busy.has(r))break;
-    if(p.auth&&!S.length){
+    if(p.auth&&!fresh){
       // Refused on the very first check: nothing to save. Without a token,
       // ask for one; with one, say which part Anaplan refused (lkDiagnose).
       let had=!!lkToken,why2=had?await lkDiagnose(tab):``;
@@ -592,7 +600,8 @@ async function lkLoop(tab,ids,key,run){
         ?`Anaplan's API refused the model status call: ${p.s.err}. ${why2}`
         :`Anaplan's session status check didn't answer (${run.rpcWhy||`unknown`}), and its API didn't accept your browser login (${p.s.err}). Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
     }
-    S.push(p.s),keys=keys||p.keys;
+    prev&&!fresh&&(p.s.gap=!0);
+    fresh++,S.push(p.s),keys=keys||p.keys;
     p.s.status!==cur&&(cur=p.s.status,label=`${cur} since ${new Date(p.s.t).toLocaleTimeString()}`);
     tick([p.s.step,p.s.progress>=0&&p.s.progress!=null?Math.round(p.s.progress*(p.s.progress<=1?100:1))+`%`:``,p.s.tooltip,p.s.err||`${p.s.ms} ms`,tail()].filter(Boolean).join(` · `));
     // Notifications (opt-in). A failed check neither starts nor ends a busy spell.
@@ -624,8 +633,9 @@ async function lkLoop(tab,ids,key,run){
   }
   // Stopped before any check came back: nothing to save, and the panel (which
   // keeps a live view up on Stop, waiting for the saved copy) must hear so.
-  if(!S.length)return busy.has(r)&&setBusy(tab,page,!1),void push({type:`ia_page_error`,page,to:tab,
-    message:`Stopped before the first check came back - nothing to save.`},page);
+  if(!fresh)return busy.has(r)&&setBusy(tab,page,!1),void(prev
+    ?push({type:`ia_state`,page,ts:(await cacheGet(page,key))?.ts||Date.now(),key,to:tab},page)   // the saved run stands as it was
+    :push({type:`ia_page_error`,page,to:tab,message:`Stopped before the first check came back - nothing to save.`},page));
   let hit=await cacheSet(page,key,snap(why,!1));
   setBusy(tab,page,!1);
   push({type:`ia_state`,page,ts:hit.ts,key,to:tab},page)
@@ -677,6 +687,15 @@ async function handle(msg,sender){
     let tab=await tabFor(msg),hit=await cacheGet(msg.page,await modelKey(tab));
     if(!hit)return{hit:!1};
     return push({type:`${msg.page}_data`,data:hit.data,ts:hit.ts,cached:!0,to:msg.forTab??tab},msg.page),{hit:!0,ts:hit.ts}
+  }
+
+  // Lock Monitor's Clear button (in its view): forget the saved run so the
+  // next start is a new one. Not while it runs - Stop first.
+  if(msg.type===`ia_clear`&&msg.page===`lock_monitor`){
+    let tab=await tabFor(msg),key=await modelKey(tab);
+    if(busy.has(rid(tab,msg.page)))return{error:`Stop the monitor first.`};
+    cacheDrop(msg.page,key);
+    return push({type:`ia_state`,page:msg.page,ts:0,key,to:msg.forTab??tab},msg.page),{ok:!0}
   }
 
   // Stop button: end every gather under way. The worker clears the busy state

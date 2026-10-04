@@ -48,6 +48,9 @@ demand, grouped as in the panel's tab bar:
 - **Start monitoring** asks Anaplan what the model is doing: every second, or every 5, 15 or 30
   seconds or every minute, for up to 15 minutes, 1, 4, 8 or 12 hours (your choice is remembered).
   The report fills in while it runs. **Stop** ends it and saves it, and it's saved as it goes too.
+- **Refresh** (top right) continues monitoring and adds to the same report; the time in between
+  shows as *Paused*. **Clear report** (in the report, click twice) deletes it and goes back to the
+  start screen, where you can change the interval and length.
   Get all data skips it.
 - **Notify me** (off unless you tick it, which asks for permission to show notifications) tells
   you when the model has been busy for 30 seconds, and when it's free again.

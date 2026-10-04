@@ -24,7 +24,10 @@ import { stackCell } from './structure_shared.js';
    same status and step into one period. */
 
 var COLOR = { Available: 'ok', Busy: 'warn', Updating: 'soft', 'Slow reply': 'warn', Locked: 'bad', Offline: 'bad',
-              'Not loaded': 'off', 'No reply': 'off', 'Login refused': 'bad', Unknown: 'off' };
+              'Not loaded': 'off', 'No reply': 'off', 'Login refused': 'bad', Unknown: 'off', Paused: 'gap' };
+var GAP = 'Paused';   // the time between a run and its continuation
+
+var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
 function samples(d) { return (d && Array.isArray(d.samples)) ? d.samples : []; }
 
@@ -62,9 +65,9 @@ function localTip(tip, at) {
     return p2(x.getHours()) + ':' + p2(x.getMinutes());
   });
 }
-function says(r) { return [r.step || (r.err ? '' : '–'), pct(r.progress)].filter(Boolean).join(' · '); }
+function says(r) { if (r.status === GAP) return ''; return [r.step || (r.err ? '' : '–'), pct(r.progress)].filter(Boolean).join(' · '); }
 function detail(r) {
-  return [r.err, localTip(r.tooltip, r.t || r.from), r.type && 'Task type ' + r.type, r.taskId && 'Task ' + r.taskId]
+  return [r.gap && 'Monitoring continued here', r.err, localTip(r.tooltip, r.t || r.from), r.type && 'Task type ' + r.type, r.taskId && 'Task ' + r.taskId]
     .filter(Boolean).join(' · ');
 }
 
@@ -86,6 +89,13 @@ function periods(d) {
   if (memo.has(d)) return memo.get(d);
   var list = samples(d), out = [], cur = null;
   list.forEach(function (s) {
+    /* A continued run (refresh) marks its first check `gap`: the time between
+       the two runs is a period of its own, not part of the one before. */
+    if (s.gap && cur) {
+      out.push({ status: GAP, step: '', progress: null, from: cur.to, to: s.t, checks: 0, slowest: 0,
+                 err: '', tooltip: '', taskId: '', type: '' });
+      cur = null;
+    }
     if (!cur || cur.status !== s.status || cur.step !== s.step) {
       if (cur) cur.to = s.t;
       cur = { status: s.status, step: s.step, progress: null, from: s.t, to: s.t + s.ms,
@@ -119,6 +129,30 @@ var WHY = {
   auth: 'Stopped on its own: Anaplan\'s API stopped accepting the login (a token lasts 35 minutes).'
 };
 
+/* Clear: forget this report so the next start is a fresh run (refresh adds
+   to it instead). Two clicks, so a stray one can't throw away hours of checks.
+   The panel drops back to the start screen when the worker says it's gone. */
+function clearButton() {
+  var row = el('div', 'ia-lk-actions'), b = el('button', 'ia-dl-btn', 'Clear report'), armed = 0;
+  b.type = 'button';
+  b.title = 'Delete this report and start over. Refresh adds to it instead.';
+  b.addEventListener('click', function () {
+    if (!armed) {
+      b.textContent = 'Click again to delete it';
+      armed = setTimeout(function () { armed = 0; b.textContent = 'Clear report'; }, 4000);
+      return;
+    }
+    clearTimeout(armed);
+    b.disabled = true;
+    b.textContent = 'Clearing…';
+    Promise.resolve(api.runtime.sendMessage({ type: 'ia_clear', page: 'lock_monitor' })).then(function (r) {
+      if (r && r.error) { b.disabled = false; armed = 0; b.textContent = r.error; }
+    }, function () { b.disabled = false; armed = 0; b.textContent = 'Clear report'; });
+  });
+  row.appendChild(b);
+  return row;
+}
+
 function top(d) {
   var list = samples(d);
   if (!list.length) return null;
@@ -133,21 +167,26 @@ function top(d) {
   head.appendChild(now);
   box.appendChild(head);
 
+  var monitored = ps.reduce(function (n, p) { return p.status === GAP ? n : n + p.ms; }, 0);
   // Status over time: one segment per period, as wide as it lasted.
   var strip = el('div', 'ia-lk-strip');
   strip.setAttribute('role', 'img');
   ps.forEach(function (p) {
     var seg = el('i');
     seg.dataset.lk = COLOR[p.status] || 'off';
-    seg.style.flexGrow = String(Math.max(p.ms, 1));
+    // A pause gets a thin fixed slice - hours of it would hide what was seen.
+    seg.style.flexGrow = String(p.status === GAP ? Math.max(monitored * .015, 1) : Math.max(p.ms, 1));
     seg.title = p.status + ' · ' + clock(p.from) + ' – ' + clock(p.to) + ' (' + dur(p.ms) + ')';
     strip.appendChild(seg);
   });
   strip.setAttribute('aria-label', 'Status over time: ' + ps.map(function (p) { return p.status + ' ' + dur(p.ms); }).join(', '));
   box.appendChild(strip);
 
-  var share = {};
-  ps.forEach(function (p) { share[p.status] = (share[p.status] || 0) + p.ms; });
+  // Shares are of the time actually monitored - gaps between runs left out.
+  var share = {}, gaps = ps.filter(function (p) { return p.status === GAP; });
+  span = 0;
+  ps.forEach(function (p) { if (p.status !== GAP) { share[p.status] = (share[p.status] || 0) + p.ms; span += p.ms; } });
+  span = Math.max(1, span);
   box.appendChild(el('p', 'ia-ws-line', Object.keys(share)
     .sort(function (a, b) { return share[b] - share[a]; })
     .map(function (k) { return k + ' ' + Math.round(share[k] / span * 100) + '% (' + dur(share[k]) + ')'; })
@@ -160,13 +199,17 @@ function top(d) {
   if (ok.length)
     box.appendChild(el('p', 'ia-ws-line', 'Reply time: median ' + reply(median(ok)) + ' · slowest ' +
                        reply(Math.max.apply(null, ok))));
-  var worst = ps.filter(function (p) { return p.status !== 'Available'; })
+  if (gaps.length)
+    box.appendChild(el('p', 'ia-ws-line', 'Paused ' + gaps.length + (gaps.length === 1 ? ' time' : ' times') +
+      ' between runs · ' + dur(gaps.reduce(function (n, p) { return n + p.ms; }, 0)) + ' not monitored'));
+  var worst = ps.filter(function (p) { return p.status !== 'Available' && p.status !== GAP; })
     .sort(function (a, b) { return b.ms - a.ms; })[0];
   if (worst)
     box.appendChild(el('p', 'ia-ws-line', 'Longest unavailable: ' + worst.status + ' for ' + dur(worst.ms) +
                        ' from ' + clock(worst.from)));
   if (d.live) box.appendChild(el('p', 'ia-ws-line', 'Monitoring now - this updates as it goes. Stop saves the report.'));
   else if (WHY[d.why]) box.appendChild(el('p', 'ia-ws-line', WHY[d.why]));
+  if (!d.live) box.appendChild(clearButton());
   wrap.appendChild(box);
 
   return wrap;

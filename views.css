@@ -259,3 +259,7 @@
 .ia-lk-strip i[data-lk="bad"] { background: #dc2626; }
 .ia-lk[data-lk="soft"] { color: #b45309; background: color-mix(in srgb, #f59e0b 8%, transparent); }
 .ia-lk-strip i[data-lk="soft"] { background: #fcd34d; }
+.ia-lk-actions { display: flex; justify-content: flex-end; margin-top: .25rem; }
+.ia-lk-actions .ia-dl-btn { font-size: .75rem; padding: .25rem .625rem; }
+.ia-lk[data-lk="gap"] { color: var(--muted-foreground); background: none; border: 1px dashed var(--border); }
+.ia-lk-strip i[data-lk="gap"] { background: repeating-linear-gradient(90deg, var(--muted-foreground) 0 2px, transparent 2px 4px); opacity: .5; }

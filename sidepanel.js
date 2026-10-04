@@ -394,7 +394,8 @@
     refreshBtn.disabled = false;
     refreshBtn.dataset.busy = st.busy ? '1' : '0';
     refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : v.live ? 'Stop and save' : 'Stop')
-      : v.live ? 'Monitor again' : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
+      : v.live ? 'Continue monitoring - adds to this report (Clear, in the report, starts over)'
+      : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
     refreshBtn.setAttribute('aria-label', st.busy ? 'Stop' : 'Refresh');
 
     empty.hidden = !!st.frame;
@@ -629,6 +630,13 @@
       state[msg.page].ts = msg.ts || 0;
       state[msg.page].note = '';
       if (state[msg.page].ts) maybeServe(msg.page);
+      // No report any more (Lock Monitor's Clear): back to the start screen.
+      else if (state[msg.page].frame && !state[msg.page].busy) {
+        state[msg.page].frame.remove();
+        state[msg.page].frame = null;
+        state[msg.page].loaded = false;
+        state[msg.page].served = 0;
+      }
       render();
       return;
     }
