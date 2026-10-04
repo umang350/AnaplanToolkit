@@ -220,3 +220,8 @@
   font-size: .75rem; color: var(--muted-foreground);
 }
 .ia-more:hover { background: var(--muted); color: var(--foreground); }
+
+/* Fields Anaplan's in-page model data held (structure_shared.js fieldsBlock). */
+.ia-fields-seen { font-size: .6875rem; color: var(--muted-foreground); }
+.ia-fields-seen summary { cursor: pointer; }
+.ia-fields-seen p { margin-top: .25rem; font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }

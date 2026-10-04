@@ -62,3 +62,25 @@ export function copyButton(label, text, title) {
   });
   return b;
 }
+
+/* The keys Anaplan's in-page model data held (IA_shape from main.js), behind
+   a disclosure - shown when a report comes back with a column empty, so a
+   screenshot of it is enough to point the lookup at the right field. */
+export function fieldsBlock(shape, title) {
+  var sh = shape || {}, box = el('details', 'ia-fields-seen'), any = false;
+  box.appendChild(el('summary', null, title || 'Show the fields Anaplan provided'));
+  [['Model', sh.model], ['List info', sh.listInfo], ['Lists container', sh.hierarchiesInfo],
+   ['Module info', sh.moduleInfo], ['Line item info', sh.lineItemInfo], ['Property info', sh.propertyInfo]
+  ].forEach(function (x) {
+    if (!x[1] || !x[1].length) return;
+    any = true;
+    box.appendChild(el('p', null, x[0] + ': ' + x[1].join(', ')));
+  });
+  [sh.propertyKeys, sh.listPropertyKeys].forEach(function (o) {
+    Object.keys(o || {}).forEach(function (k) {
+      any = true;
+      box.appendChild(el('p', null, k + ': ' + (o[k] || []).join(', ')));
+    });
+  });
+  return any ? box : null;
+}

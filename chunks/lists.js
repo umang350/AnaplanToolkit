@@ -3,7 +3,7 @@
  * Author: Umang Chauhan
  */
 import { renderPage, el, textCell, idCell } from './sv_shared.js';
-import { formulaCell, missingNote } from './structure_shared.js';
+import { formulaCell, missingNote, fieldsBlock } from './structure_shared.js';
 
 /* Lists & Properties - every list with its parent, and every list property
    with its format and formula, off the in-page model cache (IA_structure in
@@ -16,12 +16,23 @@ function lists(d) { return (d && d.lists) || []; }
 function props(d) { return (d && d.properties) || []; }
 
 function listNote(d) {
-  var ls = lists(d), keys = ((d && d.shape) || {}).listInfo, parts = [];
+  var ls = lists(d), parts = [];
   if (ls.length && !ls.some(function (l) { return l.items != null; }))
     parts.push('Item counts are not in Anaplan\'s in-page model data for this model.');
-  if (ls.length && !props(d).length && !ls.some(function (l) { return l.parent; }))
-    parts.push(missingNote('list parents and properties', keys));
+  if (ls.length && !props(d).length)
+    parts.push('No list properties were found in Anaplan\'s in-page model data - see the Properties tab.');
   return parts.join(' ');
+}
+
+// Properties came back empty: say so on the tab, with the fields to look at.
+function propTop(d) {
+  if (!lists(d).length || props(d).length) return null;
+  var box = el('div', 'ia-ws-list');
+  box.appendChild(el('p', 'text-xs text-muted-foreground',
+    'Anaplan\'s in-page model data for this model did not hold list properties anywhere this version looks.'));
+  var f = fieldsBlock(d && d.shape);
+  if (f) box.appendChild(f);
+  return box;
 }
 
 function propNote(d) {
@@ -68,6 +79,7 @@ renderPage({
       label: 'Properties',
       heading: 'List Properties',
       note: propNote,
+      top: propTop,
       rows: props,
       max: 400,
       placeholder: 'Search by list, property, format or formula...',

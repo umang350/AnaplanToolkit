@@ -3,7 +3,7 @@
  * Author: Umang Chauhan
  */
 import { renderPage, textCell, idCell } from './sv_shared.js';
-import { words, joined, formulaCell, stackCell, missingNote } from './structure_shared.js';
+import { words, joined, formulaCell, stackCell, missingNote, fieldsBlock } from './structure_shared.js';
 
 /* Line Items - every line item in every module, off the in-page model cache
    (IA_structure in content-scripts/main.js; no Anaplan calls). The search key
@@ -23,10 +23,16 @@ function note(d) {
   return missingNote(!fmt && !fx ? 'line item formats and formulas' : !fmt ? 'line item formats' : 'formulas', keys);
 }
 
+// With formats or formulas missing, the fields Anaplan did hold.
+function top(d) {
+  return note(d) ? fieldsBlock(d && d.shape) : null;
+}
+
 renderPage({
   page: 'line_items',
   heading: 'Line Items',
   note: note,
+  top: top,
   rows: rows,
   max: 400,
   placeholder: 'Search by module, line item, format or formula...',

@@ -163,7 +163,12 @@ No other server is ever contacted.
   probed under several likely key names (`IA_pick`) and left empty when none matches. Names and
   IDs come from the label pages the other reports already rely on, so those are solid.
   `IA_shape` carries the keys the cache actually held, and a view with an empty column says so
-  with those keys in its note - that list is what to use to fix a probe. Line Items and Lists
+  with those keys in its note and a "Show the fields Anaplan provided" disclosure
+  (`fieldsBlock`) - that list is what to use to fix a probe. Confirmed on a live model: list
+  names, IDs, parents (`-1` = none) and item counts. Properties were **not** where first guessed
+  (a `propertiesLabelPage` per list), so `IA_listProps`/`IA_topProps` now find them by shape: any
+  key matching `/propert/i` on a list's info or at the top of the model cache that holds a label
+  page (or labelled objects), with a model-wide one split by a parallel list-id array. Line Items and Lists
   make no Anaplan calls; Modules also reads the `/pages` list (as Linked Pages does) for the App
   pages each module feeds, and still reports modules if that call fails.
 - **Process Steps** (`process_steps`, Actions group, `IA_gps`/`IA_procSteps`) reuses
