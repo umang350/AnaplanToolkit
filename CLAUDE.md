@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Fourteen read-only report views, each
+the structure of the Anaplan model open in the active tab. Fifteen read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -131,7 +131,8 @@ would leave the spinner up forever. `background.js` arms `FIRST_SIGN` (15s) on t
 gateway's model list (`/a/springboard-platform-gateway-service/customer/…/models?limit=50000`, the
 list behind Anaplan's Models menu - Workspace's All Workspaces tab), the
 springboard definition service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
-per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions (and, for Workspace, model summaries), batched
+per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions (and, for Workspace, model summaries;
+for Revisions, the read-only `GET_MODEL_REVISIONS` system action), batched
 10 views at a time (`IA_VB`), 4 batches in flight (`IA_VW`). `IA_pool()` caps concurrency at 8 for
 page definitions. Opening a saved view makes Anaplan evaluate its filters, and a few views on large
 modules cost a minute or more however little is requested — small parallel batches keep the cheap
@@ -153,7 +154,7 @@ No other server is ever contacted.
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all fourteen views are expected to export and search
+  rebuilt. Keep the two implementations in step; all fifteen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Every table sorts by clicking a column header (ascending, descending, back to original order).
@@ -195,6 +196,13 @@ No other server is ever contacted.
   "Copy API call" buttons copy an Integration API v2 `curl` (`/processes|imports|exports|actions/
   <id>/tasks`) for the user to run with their own token - the extension itself never calls
   `api.anaplan.com` and never runs anything.
+- **Revisions** (`revisions`, `IA_grev`, `chunks/revisions.js`) is one `/jsonrpc` call with no view
+  requests and `systemActions: [{actionId: "GET_MODEL_REVISIONS", params: {modelId, workspaceId}}]`,
+  as Anaplan's own Revision tags page sends it; the tags are in `result.systemActionResults[].revisions`
+  (title, description, created by/on/in, `revisionTargetModels` = the models it was applied to and
+  how). "Synced" mirrors that page's icon: this model is a target by sync/import/copy rather than
+  "User added revision". "Current": the tag's `metadataId` equals the reply's, i.e. the model's
+  definition is unchanged since. Two tabs - Revision Tags and Applied To.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state
@@ -214,7 +222,7 @@ No other server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the fifteenth view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the sixteenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button

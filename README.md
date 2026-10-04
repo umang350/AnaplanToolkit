@@ -28,6 +28,7 @@ model in the active tab:
 | **Structure › Modules** | Every module with its ID, dimensions, line item and saved view counts, and the App pages that use it |
 | **Structure › Line Items** | Every line item with its ID, format, applies-to, time scale, summary and formula — search matches formulas |
 | **Structure › Lists** | Every list with its ID and parent, and every list property with its format and formula |
+| **Revisions** | The model's revision tags (who created each, when, where) and every model each was applied to |
 | **Workspace** | Models and storage in this workspace, and across every workspace you can access |
 
 Every view exports to CSV, has a search box and sorts by any column (click its header), and Summary has **Get all data** (gathers every
