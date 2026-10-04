@@ -124,6 +124,13 @@ can't be named and is not listed. Both caveats are also shown on the page itself
 
 ## Install
 
+**From the stores:** [Chrome Web Store](https://chromewebstore.google.com/detail/anaplan-toolkit/kbbgidpmmiechmccmmjpjkidihojdgnj)
+(Chrome, Edge and other Chromium browsers) or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/anaplan-toolkit/)
+(Firefox 140+). The stores can lag behind the latest
+[GitHub release](https://github.com/umang350/AnaplanToolkit/releases).
+
+**Unpacked, from source:**
+
 **Chrome / Edge / other Chromium browsers**
 
 1. Open `chrome://extensions`
