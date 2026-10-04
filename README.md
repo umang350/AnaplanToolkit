@@ -1,5 +1,14 @@
 # Anaplan Toolkit
 
+<p>
+  <a href="https://chromewebstore.google.com/detail/anaplan-toolkit/kbbgidpmmiechmccmmjpjkidihojdgnj"><img src=".github/badges/chrome-web-store.png" alt="Available in the Chrome Web Store" height="58"></a>
+  <a href="https://addons.mozilla.org/en-US/firefox/addon/anaplan-toolkit/"><img src=".github/badges/firefox-addons.svg" alt="Get the add-on for Firefox" height="58"></a>
+</p>
+
+[![Chrome Web Store version](https://img.shields.io/chrome-web-store/v/kbbgidpmmiechmccmmjpjkidihojdgnj?logo=googlechrome&logoColor=white&label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/anaplan-toolkit/kbbgidpmmiechmccmmjpjkidihojdgnj)
+[![Firefox Add-ons version](https://img.shields.io/amo/v/anaplan-toolkit?logo=firefoxbrowser&logoColor=white&label=Firefox%20Add-ons)](https://addons.mozilla.org/en-US/firefox/addon/anaplan-toolkit/)
+[![Latest GitHub release](https://img.shields.io/github/v/release/umang350/AnaplanToolkit?logo=github&label=Latest%20release)](https://github.com/umang350/AnaplanToolkit/releases/latest)
+
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
