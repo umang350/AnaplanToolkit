@@ -176,7 +176,10 @@ No other server is ever contacted.
   is probed under several likely key names (`IA_pick`) and left empty when none matches.
   Confirmed on a live model (a console dump): line item info holds `format` (`dataType`, …),
   `formula`, `fullAppliesTo` (array of list ids), `isSummary` and `leafPeriodType.entityLabel`
-  (time scale; "Not Applicable" when unset) - there is no summary-method field. A list's info holds
+  (time scale; "Not Applicable" when unset) - there is no summary-method field. `fullAppliesTo` also
+  carries Time (`20000000003`) and Versions, which Anaplan's Applies To column leaves out (they have
+  columns of their own): ids the name index can't resolve are dropped when shorter than 12 digits
+  (lists and subsets are 12), and a module's own `appliesTo` is read before its `fullAppliesTo`. A list's info holds
   `parentHierarchyEntityLongId` (`-1` = none), `itemCount`, and `propertiesLabelPage` +
   `propertiesInfo` (`{format, formula}` per property, same order). That label page's arrays are
   **flat** (`labels: [...]`), unlike every other label page (`[[...]]`); `IA_page` reads both. Names and
