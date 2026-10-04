@@ -168,6 +168,12 @@ body {
 }
 #empty-load:hover:not(:disabled) { opacity: .85; }
 #empty-load:disabled { opacity: .6; cursor: default; }
+#empty-token { display: flex; flex-direction: column; gap: .25rem; width: min(100%, 22rem); font-size: .6875rem; color: var(--muted-foreground); }
+#empty-token[hidden] { display: none; }
+#empty-token input {
+  padding: .375rem .5rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - .25rem);
+  font: inherit; font-size: .75rem; color: var(--foreground); background: var(--background);
+}
 
 /* Live overview of the gather in flight. Covers the view while there is nothing
    to show yet; shrinks to a strip over the top of existing results on refresh. */

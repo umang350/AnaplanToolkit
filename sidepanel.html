@@ -41,6 +41,13 @@
                         <h1 id="empty-title"></h1>
                         <p id="empty-desc"></p>
                         <button id="empty-load" type="button"></button>
+                        <!-- Lock Monitor only: an Integration API token, for when
+                             api.anaplan.com refuses the browser's own login. -->
+                        <label id="empty-token" hidden>
+                            <span>Anaplan API token, if asked</span>
+                            <input id="token-input" type="password" autocomplete="off" spellcheck="false"
+                                   placeholder="AnaplanAuthToken">
+                        </label>
                         <p id="empty-note"></p>
                     </div>
                 </div>

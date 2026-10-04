@@ -45,17 +45,18 @@ demand, grouped as in the panel's tab bar:
 
 **Lock Monitor:**
 
-- **Start monitoring** checks the model once a second and shows its status live. Press **Stop**
-  to end it and save the report. It stops on its own after an hour, and Get all data skips it.
-- Each check is one small read-only request (the workspace summary Anaplan's Workspace page
-  uses). A check never starts while the last one is still out, so a busy model is not loaded
-  with extra requests.
-- **Locked** or **Offline** comes from the model's state (Lock or Take offline in Model
-  Management). **Busy** means Anaplan's own "Model is busy" banner was on screen (in any part of
-  the Anaplan page, including one that flashed between checks) or a busy flag was in the reply. **Slow reply** means a
-  check took 3 seconds or more, which usually means a process, import, export or large
-  calculation is holding the model. Anaplan has no documented field for "Model is busy", so treat
-  Slow reply as a strong hint, not proof.
+- **Start monitoring** asks Anaplan once a second what the model is doing and shows it live. Press
+  **Stop** to end it and save the report. It stops on its own after an hour, and Get all data
+  skips it.
+- It uses Anaplan's Integration API model status, the same status Anaplan uses for "Model is
+  busy", and runs inside the extension rather than the page. It keeps working when the model
+  page is stuck loading.
+- **Available**: Anaplan reports the model open with nothing running. **Busy**: Anaplan names a
+  running step (a process, import, export or other task), with its progress and task where given.
+  **Locked** / **Offline**: the API refused the model as locked or offline.
+- **Login**: your browser login is tried first. If Anaplan's API won't accept it, the Lock tab asks
+  for an Anaplan API token (AnaplanAuthToken). The token is kept in memory only, never saved, and
+  renewed while the monitor runs.
 - **Timeline** merges checks in a row with the same status into periods. **Checks** lists every
   check.
 
@@ -126,12 +127,14 @@ Inside the Anaplan modelling UI (`⌘⌥` on macOS, `Ctrl+Alt` on Windows/Linux)
 ## Privacy
 
 The extension talks to **no server other than Anaplan itself**. There is no analytics, no
-telemetry and no auto-update endpoint. Every call goes to your Anaplan host and uses your existing
-session:
+telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your existing session
+(or, for the Lock Monitor only, an API token you paste):
 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
-- `/jsonrpc`: saved views, action definitions, workspace storage (also the Lock Monitor's checks) and revision tags
+- `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
+- `api.anaplan.com` (Integration API model status) and `auth.anaplan.com` (token renewal): the
+  Lock Monitor only
 
 All of these calls only read. Results are kept in `storage.session`, compressed when large, and
 are dropped when the browser closes. Nothing is sent anywhere else.

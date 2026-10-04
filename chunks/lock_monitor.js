@@ -5,21 +5,26 @@
 import { renderPage, el, textCell } from './sv_shared.js';
 import { stackCell } from './structure_shared.js';
 
-/* Lock Monitor - what the model's lock / busy state was, once a second, for
-   as long as the monitor ran (IA_glock in content-scripts/inner.js). Each
-   check is one workspace summary call, read for this model's row:
+/* Lock Monitor - what Anaplan said the model was doing, once a second, for as
+   long as the monitor ran (lkLoop in background.js). Each check is one call
+   to the Integration API's model status (POST /2/0/workspaces/{w}/models/{m}/
+   status), made from the worker so it works even when the model page won't
+   load:
 
-     samples[]  {t, ms, http, state, open, unload, extra, hot, banner, err, status}
-                t = when the check was sent (epoch ms), ms = how long it took
-     started, ended, every, slow, why ('stopped' | 'limit' | 'errors'), keys
+     samples[]  {t, ms, http, step, progress, tooltip, taskId, type, err, status}
+                t = when the check was sent (epoch ms), ms = how long it took,
+                step / progress / tooltip / taskId / type = requestStatus's
+                currentStep / progress / tooltip / taskId / exportTaskType
+     modelName, started, ended, every, slow, why, keys, login
 
-   status is decided in the content script (IA_lkStatus): Locked / Offline
-   from the model's state or HTTP 423 / 424, Busy from Anaplan's busy banner
-   or a busy flag in the reply, Slow reply when the check took `slow` ms or
-   more, No reply when it failed. Timeline merges consecutive checks with the
-   same status and model state into one period. */
+   status is decided in the worker (lkProbe): Available when currentStep is
+   "Open" with no task, Busy when it names anything else, Locked / Offline on
+   HTTP 423 / 424, Not loaded for a closed model, Slow reply for an "Open"
+   that took `slow` ms or more. Timeline merges consecutive checks with the
+   same status and step into one period. */
 
-var COLOR = { Available: 'ok', Busy: 'warn', 'Slow reply': 'warn', Locked: 'bad', Offline: 'bad', 'No reply': 'off' };
+var COLOR = { Available: 'ok', Busy: 'warn', 'Slow reply': 'warn', Locked: 'bad', Offline: 'bad',
+              'Not loaded': 'off', 'No reply': 'off', 'Login refused': 'bad', Unknown: 'off' };
 
 function samples(d) { return (d && Array.isArray(d.samples)) ? d.samples : []; }
 
@@ -37,17 +42,15 @@ function dur(ms) {
   return h ? h + 'h ' + p2(m) + 'm' : m ? m + 'm ' + p2(s % 60) + 's' : s + 's';
 }
 function reply(ms) { return ms >= 1000 ? (ms / 1000).toFixed(1) + ' s' : ms + ' ms'; }
-function word(s) {
-  s = String(s || '').toLowerCase().replace(/_/g, ' ');
-  return s ? s[0].toUpperCase() + s.slice(1) : '';
-}
 
-// The model state line under a status: state, loaded or not, and whatever else was seen.
-function stateBits(r) {
-  return [word(r.state) || (r.err ? '' : '–'), r.open === false ? 'Not loaded' : '', r.unload ? 'Marked for unload' : ''];
+function pct(p) {
+  if (typeof p !== 'number' || p < 0) return '';
+  return Math.round(p <= 1 ? p * 100 : p) + '%';
 }
+// What Anaplan said: its current step, how far along, and the task it names.
+function says(r) { return [r.step || (r.err ? '' : '–'), pct(r.progress)].filter(Boolean).join(' · '); }
 function detail(r) {
-  return [r.err, r.banner && 'Page: "' + r.banner + '"', r.extra].filter(Boolean).join(' · ');
+  return [r.err, r.tooltip, r.type && 'Task type ' + r.type, r.taskId && 'Task ' + r.taskId].filter(Boolean).join(' · ');
 }
 
 function tag(status) {
@@ -61,26 +64,27 @@ function statusCell(status, span) {
   return wrap;
 }
 
-// Consecutive checks with the same status and model state, as one period.
+// Consecutive checks with the same status and step, as one period.
 var memo = new WeakMap();
 function periods(d) {
   if (!d) return [];
   if (memo.has(d)) return memo.get(d);
   var list = samples(d), out = [], cur = null;
   list.forEach(function (s) {
-    if (!cur || cur.status !== s.status || cur.state !== s.state) {
+    if (!cur || cur.status !== s.status || cur.step !== s.step) {
       if (cur) cur.to = s.t;
-      cur = { status: s.status, state: s.state, open: s.open, unload: s.unload, from: s.t, to: s.t + s.ms,
-              checks: 0, slowest: 0, err: '', banner: '', extra: '' };
+      cur = { status: s.status, step: s.step, progress: null, from: s.t, to: s.t + s.ms,
+              checks: 0, slowest: 0, err: '', tooltip: '', taskId: '', type: '' };
       out.push(cur);
     }
     cur.checks++;
     cur.to = Math.max(cur.to, s.t + s.ms);
     cur.slowest = Math.max(cur.slowest, s.ms);
-    cur.open = s.open; cur.unload = s.unload;
+    cur.progress = s.progress;   // the last one seen
     cur.err = cur.err || s.err;
-    cur.banner = cur.banner || s.banner;
-    cur.extra = s.extra || cur.extra;
+    cur.tooltip = s.tooltip || cur.tooltip;
+    cur.taskId = cur.taskId || s.taskId;
+    cur.type = cur.type || s.type;
   });
   out.forEach(function (p) { p.ms = p.to - p.from; });
   memo.set(d, out);
@@ -95,7 +99,8 @@ function median(xs) {
 
 var WHY = {
   limit: 'Stopped on its own after an hour.',
-  errors: 'Stopped on its own: Anaplan stopped answering the checks.'
+  errors: 'Stopped on its own: Anaplan stopped answering the checks.',
+  auth: 'Stopped on its own: Anaplan\'s API stopped accepting the login (a token lasts 35 minutes).'
 };
 
 function top(d) {
@@ -148,21 +153,21 @@ function top(d) {
 
   if (d.keys && d.keys.length) {
     var f = el('details', 'ia-fields-seen');
-    f.appendChild(el('summary', null, 'Show the fields Anaplan provided for this model'));
+    f.appendChild(el('summary', null, 'Show the fields Anaplan\'s status reply held'));
     f.appendChild(el('p', null, d.keys.join(', ')));
     wrap.appendChild(f);
   }
   return wrap;
 }
 
-var NOTE = 'One check a second, never two at once: a slow reply delays the next check rather than ' +
-  'queueing behind it. Locked / Offline: the model\'s state (Model Management\'s Lock or Take offline). ' +
-  'Busy: Anaplan\'s own busy banner or flag. Slow reply: a check took 3 s or more - usually a process, ' +
-  'import, export or large calculation holding the model.';
+var NOTE = 'One check a second through Anaplan\'s Integration API (model status), never two at once. ' +
+  'Available: Anaplan reports the model "Open" with no task running. Busy: it names a running step - ' +
+  'a process, import, export or other task - the cause of "Model is busy". Locked / Offline: the API ' +
+  'refused the model as locked (423) or offline (424).';
 
 renderPage({
   page: 'lock_monitor',
-  placeholder: 'Search by status or model state...',
+  placeholder: 'Search by status, step or task...',
   tabs: [
     {
       label: 'Timeline',
@@ -174,23 +179,21 @@ renderPage({
       headers: [{ label: 'From', cls: 'col-span-3', sort: function (r) { return r.from; } },
                 { label: 'Duration', cls: 'col-span-2', sort: function (r) { return r.ms; } },
                 { label: 'Status', cls: 'col-span-3', sort: function (r) { return r.status; } },
-                { label: 'Model state', cls: 'ia-span-4', sort: function (r) { return r.state; } }],
-      key: function (r) { return r.status + ' ' + word(r.state) + ' ' + detail(r); },
+                { label: 'Anaplan says', cls: 'ia-span-4', sort: function (r) { return r.step; } }],
+      key: function (r) { return r.status + ' ' + says(r) + ' ' + detail(r); },
       cells: function (r) {
         return [
           stackCell([clock(r.from), 'to ' + clock(r.to)], 'col-span-3 ia-num'),
           stackCell([dur(r.ms), r.checks + (r.checks === 1 ? ' check' : ' checks')], 'col-span-2'),
           statusCell(r.status, 'col-span-3'),
           // Reply time only where it matters - a second or more.
-          stackCell([stateBits(r).filter(Boolean).join(' · '),
-                     r.slowest >= 1000 && 'Slowest reply ' + reply(r.slowest), detail(r)], 'ia-span-4')
+          stackCell([says(r), r.slowest >= 1000 && 'Slowest reply ' + reply(r.slowest), detail(r)], 'ia-span-4')
         ];
       },
       csvRow: function (r) {
         return { From: stamp(r.from), To: stamp(r.to), DurationSeconds: Math.round(r.ms / 1000), Status: r.status,
-                 ModelState: r.state, Loaded: r.open == null ? '' : r.open ? 'Yes' : 'No',
-                 MarkedForUnload: r.unload ? 'Yes' : 'No', Checks: r.checks, SlowestReplyMs: r.slowest,
-                 Error: r.err, PageBanner: r.banner, OtherFields: r.extra };
+                 CurrentStep: r.step, Progress: pct(r.progress), Tooltip: r.tooltip, TaskId: r.taskId,
+                 TaskType: r.type, Checks: r.checks, SlowestReplyMs: r.slowest, Error: r.err };
       },
       filename: 'model-lock-timeline.csv'
     },
@@ -204,21 +207,21 @@ renderPage({
       cols: 'grid-cols-12',
       headers: [{ label: 'Time', cls: 'col-span-2', sort: function (r) { return r.t; } },
                 { label: 'Status', cls: 'col-span-3', sort: function (r) { return r.status; } },
-                { label: 'Model state', cls: 'ia-span-5', sort: function (r) { return r.state; } },
+                { label: 'Anaplan says', cls: 'ia-span-5', sort: function (r) { return r.step; } },
                 { label: 'Reply', cls: 'col-span-2', sort: function (r) { return r.err ? null : r.ms; } }],
-      key: function (r) { return clock(r.t) + ' ' + r.status + ' ' + word(r.state) + ' ' + detail(r); },
+      key: function (r) { return clock(r.t) + ' ' + r.status + ' ' + says(r) + ' ' + detail(r); },
       cells: function (r) {
         return [
           textCell(clock(r.t), 'col-span-2 text-sm text-foreground ia-num'),
           statusCell(r.status, 'col-span-3'),
-          stackCell([stateBits(r).filter(Boolean).join(' · '), detail(r)], 'ia-span-5'),
+          stackCell([says(r), detail(r)], 'ia-span-5'),
           textCell(r.err ? '–' : reply(r.ms), 'col-span-2 text-sm text-muted-foreground ia-num')
         ];
       },
       csvRow: function (r) {
-        return { Time: stamp(r.t), Status: r.status, ModelState: r.state,
-                 Loaded: r.open == null ? '' : r.open ? 'Yes' : 'No', MarkedForUnload: r.unload ? 'Yes' : 'No',
-                 ReplyMs: r.ms, HTTP: r.http || '', Error: r.err, PageBanner: r.banner, OtherFields: r.extra };
+        return { Time: stamp(r.t), Status: r.status, CurrentStep: r.step, Progress: pct(r.progress),
+                 Tooltip: r.tooltip, TaskId: r.taskId, TaskType: r.type, ReplyMs: r.ms, HTTP: r.http || '',
+                 Error: r.err };
       },
       filename: 'model-lock-checks.csv'
     }

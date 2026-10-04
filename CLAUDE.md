@@ -136,14 +136,15 @@ gateway's model list (`/a/springboard-platform-gateway-service/customer/…/mode
 list behind Anaplan's Models menu - Workspace's All Workspaces tab), the
 springboard definition service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
 per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions (and, for Workspace, model summaries;
-for Revisions, the read-only `GET_MODEL_REVISIONS` system action; the Lock Monitor repeats Workspace's summary call once a second), batched
+for Revisions, the read-only `GET_MODEL_REVISIONS` system action), batched
 10 views at a time (`IA_VB`), 4 batches in flight (`IA_VW`). `IA_pool()` caps concurrency at 8 for
 page definitions. Opening a saved view makes Anaplan evaluate its filters, and a few views on large
 modules cost a minute or more however little is requested — small parallel batches keep the cheap
 views flowing past them. View batches get a 5 min cap (`IA_VTMO`) rather than the usual 90s, are
 never retried, and a timeout stops new batches: Anaplan keeps working on an aborted request, so
 aborting or retrying only adds server load and leaves the model busy after the client has given up.
-No other server is ever contacted.
+Beyond those, only the Lock Monitor calls Anaplan's Integration API (`api.anaplan.com`, model
+status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever contacted.
 
 ## Editing constraints
 
@@ -206,8 +207,8 @@ No other server is ever contacted.
   naming known action ids (or, failing that, exact action names) is the step list. A process
   whose steps can't be found gets a "No actions found" row and is counted in the page note. Its
   "Copy API call" buttons copy an Integration API v2 `curl` (`/processes|imports|exports|actions/
-  <id>/tasks`) for the user to run with their own token - the extension itself never calls
-  `api.anaplan.com` and never runs anything.
+  <id>/tasks`) for the user to run with their own token - the extension never runs anything (its only
+  `api.anaplan.com` call is the Lock Monitor's read-only model status).
 - **Revisions** (`revisions`, `IA_grev`, `chunks/revisions.js`) is one `/jsonrpc` call with no view
   requests and `systemActions: [{actionId: "GET_MODEL_REVISIONS", params: {modelId, workspaceId}}]`,
   as Anaplan's own Revision tags page sends it; the tags are in `result.systemActionResults[].revisions`
@@ -215,24 +216,23 @@ No other server is ever contacted.
   how). "Synced" mirrors that page's icon: this model is a target by sync/import/copy rather than
   "User added revision". "Current": the tag's `metadataId` equals the reply's, i.e. the model's
   definition is unchanged since. Two tabs - Revision Tags and Applied To.
-- **Lock Monitor** (`lock_monitor`, `IA_glock`, `chunks/lock_monitor.js`) is the one report that runs
-  until stopped. It repeats Workspace's summary call (`IA_wsReq`, no `modelId`) once a second
-  (`IA_LKEVERY`), never two at once, and reads this model's row: `activeState` (`LOCKED`,
-  `*MAINTENANCE*`), `modelManagerState`, `markedForUnload`, plus any other field whose name suggests a
-  lock or task (`IA_lkExtra` - Anaplan has no documented "Model is busy" field; the row's keys are
-  saved for the view's fields disclosure). It also records reply time (>= `IA_LKSLOW` = "Slow reply"),
-  HTTP 423/424 (the Integration API's locked/offline) and Anaplan's "Model is busy" banner. That
-  banner is drawn by the page in front (new modelling UI, App pages), **not** the framework.jsp frame
-  - the first live run read Available under it, with the summary call still saying Unlocked in
-  under a second. So each check also sends `ia_lk_scan`; the worker relays `ia_lk_frame` to every
-  frame of the tab, and `content-scripts/busy.js` (all Anaplan frames, idle until asked) answers
-  only if it saw the banner since the last check (a MutationObserver, started by the first ask and
-  stopped 10s after the last, catches one that flashed between checks). `IA_lkBanner` still reads
-  the engine's own frame. Its progress goes to its own page (`IA_lkTick`), not `IA_step`, since it
-  runs beside other gathers. **Stop is how it ends:** `ia_cancel` sets `IA_halt`, the loop sends the
-  checks so far as `ia_result`, and the worker keeps that result (`LIVE` in `background.js`) where it
-  drops every other stopped run's. It also ends itself after `IA_LKMAX` (1h) or `IA_LKERRS` failed
-  checks in a row. `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded count.
+- **Lock Monitor** (`lock_monitor`, `chunks/lock_monitor.js`) is the one report that runs until
+  stopped, and the one gathered **in the worker** (`lkStart`/`lkLoop`/`lkProbe` in `background.js`),
+  not in a content script: a busy model is exactly when the model page may never load. Workspace and
+  model IDs come from the tab URL (`lkIds`). Once a second, never two at once, it calls the
+  Integration API's model status, `POST https://api.anaplan.com/2/0/workspaces/{w}/models/{m}/status`;
+  `requestStatus.currentStep` is "Open" when idle and names the running step otherwise, with
+  `progress`, `tooltip`, `taskId`. HTTP 423/424 = locked/offline. Two page-based attempts failed on a
+  live model and were removed: Workspace's summary call said Unlocked in <1s while the model was busy,
+  and reading the "Model is busy" banner needs the page up and went back to Available with the banner
+  still showing. **Login:** the browser's cookies are tried first; on 401/403 (or a login page) the run
+  stops with `ia_page_error` and the panel's token field (`#empty-token`, Lock tab only) takes an
+  AnaplanAuthToken, sent with `ia_load` and held in `lkToken` only - never stored - and renewed via
+  `auth.anaplan.com/token/refresh` every 25 min (tokens last 35). Stop is how it ends: `ia_cancel`
+  aborts its request and the worker caches what it gathered (`LIVE`) where other stopped runs are
+  dropped. It also ends after `LK_MAX` (1h), `LK_ERRS` failed checks, or a refused login mid-run.
+  `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded count. Whether the API
+  accepts the browser session is **not confirmed**.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state

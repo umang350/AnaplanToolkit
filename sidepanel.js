@@ -107,10 +107,10 @@
     /* `live`: runs until Stop (or an hour), then saves what it saw - so it
        is left out of Get all data, and Stop is labelled as saving. */
     { page: 'lock_monitor', tab: 'Lock', title: 'Model Lock Monitor', live: true,
-      desc: 'Checks once a second whether the model is available, busy, locked or offline. Press Stop to save the timeline as a report.',
+      desc: 'Asks Anaplan once a second whether the model is open, busy (and with what), locked or offline - even when the model page won\'t load. Press Stop to save the timeline as a report.',
       preview: ['Timeline', 'Checks'],
-      heading: 'Timeline', search: 'Search by status or model state...',
-      cols: ['From', 'Duration', 'Status', 'Model state'] },
+      heading: 'Timeline', search: 'Search by status, step or task...',
+      cols: ['From', 'Duration', 'Status', 'Anaplan says'] },
     { page: 'workspace', tab: 'Workspace', group: 'Workspace', sub: 'Current', title: 'Workspace Models & Storage',
       desc: 'Every model in this workspace with its size and state, and how much of the workspace allowance is used.',
       preview: ['Active', 'Archived', 'Deleted'],
@@ -133,6 +133,8 @@
       emptyLoad = document.getElementById('empty-load'),
       emptyNote = document.getElementById('empty-note'),
       emptyPreview = document.getElementById('empty-preview'),
+      emptyToken = document.getElementById('empty-token'),
+      tokenInput = document.getElementById('token-input'),
       skPlaceholder = document.getElementById('sk-placeholder'),
       skHeading = document.getElementById('sk-heading'),
       skHead = document.getElementById('sk-head'),
@@ -374,7 +376,9 @@
 
     // The iframe exists as soon as there is data, or a gather is under way -
     // the result page renders its own loading and error states.
-    if (st.ts || st.busy || active === 'summary') ensureFrame(active);
+    // A live view (Lock Monitor) that just failed shows Get data and its note
+    // over its old report - that is where the token field is.
+    if ((st.ts && !(v.live && st.note)) || st.busy || active === 'summary') ensureFrame(active);
 
     // While this view gathers, the refresh button becomes Stop (all gathers).
     var running = VIEWS.filter(function (x) { return state[x.page].busy; }).length;
@@ -392,6 +396,7 @@
       emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring' : 'Get data';
       emptyLoad.disabled = !!st.busy;
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
+      emptyToken.hidden = !v.live;
       paintPreview(v);
     }
     paintProgress();
@@ -435,7 +440,11 @@
     st.note = '';
     st.steps = [];
     render();
-    send({ type: force ? 'ia_refresh' : 'ia_load', page: page })
+    var msg = { type: force ? 'ia_refresh' : 'ia_load', page: page };
+    // Lock Monitor: a pasted API token goes to the worker, which keeps it in
+    // memory only; the field is cleared so it isn't left on screen.
+    if (byPage[page].live && tokenInput.value.trim()) { msg.token = tokenInput.value.trim(); tokenInput.value = ''; }
+    send(msg)
       .then(function (r) { if (r && r.error) fail(page, r.error); },
             function (e) { fail(page, e && e.message); });
   }
@@ -465,7 +474,8 @@
     st.note = message || 'Something went wrong.';
     // With no data the iframe would sit on its own loader forever, hiding the
     // reason - drop it so the view falls back to the message and Get data.
-    if (!st.ts && st.frame) {
+    // A live view drops it either way: its note may ask for a token.
+    if ((!st.ts || byPage[page].live) && st.frame) {
       st.frame.remove();
       st.frame = null;
       st.loaded = false;
