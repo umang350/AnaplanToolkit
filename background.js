@@ -76,7 +76,7 @@ async function cacheSet(page,key,data){
 // view had shown it, but Summary called it "Not loaded" minutes later and the
 // next visit had to gather again. Anything over ZIP_AT is stored gzipped as
 // base64 (formulas shrink several times over); mem keeps the plain object.
-var ZIP_AT=256e3;
+var ZIP_AT=32e3;
 function b64(u){let s=``;for(let i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)}
 async function pack(data){
   let s=JSON.stringify(data);
@@ -101,7 +101,10 @@ async function evict(keepId,rec){
         ids=Object.keys(all).filter(k=>k.startsWith(`ia:`)&&k!==`ia:key`&&k!==keepId&&all[k]&&all[k].ts<=ts)
           .sort((a,b)=>(a.endsWith(`:`+model)-b.endsWith(`:`+model))||all[a].ts-all[b].ts),
         drop=[],freed=0;
-    for(let k of ids){drop.push(k);mem.delete(k);freed+=JSON.stringify(all[k]).length;if(freed>need+1e6)break}
+    // This model's reports leave storage only: memory still serves them while
+    // the worker lives. Deleting them from memory too used to leave the panel
+    // calling a report loaded that nothing could serve any more.
+    for(let k of ids){drop.push(k);k.endsWith(`:`+model)||mem.delete(k);freed+=JSON.stringify(all[k]).length;if(freed>need+1e6)break}
     return drop.length?(await store.remove(drop),!0):!1
   }catch(e){return!1}
 }

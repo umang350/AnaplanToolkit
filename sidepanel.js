@@ -249,8 +249,22 @@
   function maybeServe(page) {
     var st = state[page];
     if (!st.frame || !st.loaded || !st.ts || st.served === st.ts) return;
-    st.served = st.ts;
-    send({ type: 'ia_serve', page: page }).catch(function () {
+    var ts = st.served = st.ts;
+    /* The worker can answer that it no longer has the report: its storage is
+       10 MB, and making room for a big one (Line Items) can push older ones
+       out. That answer used to be ignored, leaving the view on its loader for
+       good. Fall back to Get data and say why. */
+    send({ type: 'ia_serve', page: page }).then(function (r) {
+      if (!r || r.hit !== false || st.ts !== ts) return;
+      if (page === 'summary') { st.ts = 0; st.served = 0; startSummary(); return; }
+      if (st.frame) st.frame.remove();
+      st.frame = null;
+      st.loaded = false;
+      st.served = 0;
+      st.ts = 0;
+      st.note = 'This report is no longer cached - the extension\'s storage was full. Get data to gather it again.';
+      render();
+    }, function () {
       st.served = 0;
     });
   }
