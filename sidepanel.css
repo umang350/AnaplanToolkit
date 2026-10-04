@@ -168,6 +168,13 @@ body {
 }
 #empty-load:hover:not(:disabled) { opacity: .85; }
 #empty-load:disabled { opacity: .6; cursor: default; }
+#empty-token { display: flex; flex-direction: column; gap: .25rem; width: min(100%, 22rem); font-size: .6875rem; color: var(--muted-foreground); }
+#empty-token[hidden] { display: none; }
+#empty-token .or { margin-top: .25rem; }
+#empty-token input {
+  padding: .375rem .5rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - .25rem);
+  font: inherit; font-size: .75rem; color: var(--foreground); background: var(--background);
+}
 
 /* Live overview of the gather in flight. Covers the view while there is nothing
    to show yet; shrinks to a strip over the top of existing results on refresh. */
@@ -241,3 +248,14 @@ body {
 #brand-text strong { color: var(--foreground); font-weight: 600; }
 
 #brand-by { flex: none; opacity: .75; white-space: nowrap; }
+
+/* Lock Monitor's login form makes the call to action taller than the
+   placeholder rows; grow the card so it doesn't run over the column headers. */
+.sk-card:has(#empty-token:not([hidden])) { min-height: 39rem; }
+#empty-lk { display: flex; flex-wrap: wrap; justify-content: center; gap: .375rem .75rem; font-size: .75rem; color: var(--muted-foreground); max-width: 24rem; }
+#empty-lk[hidden] { display: none; }
+#empty-lk select {
+  margin-left: .25rem; padding: .25rem .375rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - .25rem);
+  font: inherit; color: var(--foreground); background: var(--background);
+}
+#empty-lk .lk-check { display: flex; align-items: center; gap: .375rem; flex-basis: 100%; justify-content: center; }

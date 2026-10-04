@@ -19,6 +19,9 @@
     "sidePanel",
     "storage"
   ],
+  "optional_permissions": [
+    "notifications"
+  ],
   "background": {
     "service_worker": "background.js",
     "scripts": ["background.js"]
@@ -78,6 +81,16 @@
         "content-scripts/main.js"
       ],
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.anaplan.com/*"
+      ],
+      "all_frames": false,
+      "run_at": "document_start",
+      "js": [
+        "content-scripts/api.js"
+      ]
     },
     {
       "matches": [

@@ -104,6 +104,13 @@
       preview: ['Revision Tags', 'Applied To'],
       heading: 'Revision Tags', search: 'Search by title, description, user or model...',
       cols: ['Title', 'Created by', 'Created on', 'Created in'] },
+    /* `live`: runs until Stop (or an hour), then saves what it saw - so it
+       is left out of Get all data, and Stop is labelled as saving. */
+    { page: 'lock_monitor', tab: 'Lock', title: 'Model Lock Monitor', live: true,
+      desc: 'Asks Anaplan, as often as you choose, whether the model is open, busy (and with what), locked or offline - even when the model page won\'t load. The report fills in as it runs; Stop saves it.',
+      preview: ['Timeline', 'Checks'],
+      heading: 'Timeline', search: 'Search by status, step or task...',
+      cols: ['From', 'Duration', 'Status', 'Anaplan says'] },
     { page: 'workspace', tab: 'Workspace', group: 'Workspace', sub: 'Current', title: 'Workspace Models & Storage',
       desc: 'Every model in this workspace with its size and state, and how much of the workspace allowance is used.',
       preview: ['Active', 'Archived', 'Deleted'],
@@ -126,6 +133,14 @@
       emptyLoad = document.getElementById('empty-load'),
       emptyNote = document.getElementById('empty-note'),
       emptyPreview = document.getElementById('empty-preview'),
+      emptyToken = document.getElementById('empty-token'),
+      emptyLk = document.getElementById('empty-lk'),
+      lkEvery = document.getElementById('lk-every'),
+      lkHours = document.getElementById('lk-hours'),
+      lkNotify = document.getElementById('lk-notify'),
+      tokenInput = document.getElementById('token-input'),
+      userInput = document.getElementById('user-input'),
+      passInput = document.getElementById('pass-input'),
       skPlaceholder = document.getElementById('sk-placeholder'),
       skHeading = document.getElementById('sk-heading'),
       skHead = document.getElementById('sk-head'),
@@ -276,8 +291,11 @@
     // only sit on top of it.
     progress.hidden = !st.busy || active === 'summary';
     if (progress.hidden) return;
-    progress.classList.toggle('compact', !!st.ts);
-    progressHead.textContent = (st.ts ? 'Refreshing ' : 'Gathering ') + byPage[active].title;
+    // A live view (Lock Monitor) draws its report as it runs: keep the
+    // progress to a strip over it rather than a cover.
+    progress.classList.toggle('compact', !!st.ts || !!byPage[active].live);
+    progressHead.textContent = byPage[active].live ? 'Monitoring · press Stop to save the report'
+      : (st.ts ? 'Refreshing ' : 'Gathering ') + byPage[active].title;
 
     var steps = st.steps || [];
     if (!steps.length) steps = [{ step: 'Starting…', detail: '', i: null, n: null, done: false }];
@@ -366,14 +384,17 @@
 
     // The iframe exists as soon as there is data, or a gather is under way -
     // the result page renders its own loading and error states.
-    if (st.ts || st.busy || active === 'summary') ensureFrame(active);
+    // A live view (Lock Monitor) that just failed shows Get data and its note
+    // over its old report - that is where the token field is.
+    if ((st.ts && !(v.live && st.note)) || st.busy || active === 'summary') ensureFrame(active);
 
     // While this view gathers, the refresh button becomes Stop (all gathers).
     var running = VIEWS.filter(function (x) { return state[x.page].busy; }).length;
     refreshBtn.hidden = !st.frame;
     refreshBtn.disabled = false;
     refreshBtn.dataset.busy = st.busy ? '1' : '0';
-    refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : 'Stop')
+    refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : v.live ? 'Stop and save' : 'Stop')
+      : v.live ? 'Continue monitoring - adds to this report (Clear, in the report, starts over)'
       : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
     refreshBtn.setAttribute('aria-label', st.busy ? 'Stop' : 'Refresh');
 
@@ -381,9 +402,11 @@
     if (!st.frame) {
       emptyTitle.textContent = v.title;
       emptyDesc.textContent = v.desc;
-      emptyLoad.textContent = st.busy ? 'Gathering…' : 'Get data';
+      emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring' : 'Get data';
       emptyLoad.disabled = !!st.busy;
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
+      emptyToken.hidden = !v.live;
+      emptyLk.hidden = !v.live;
       paintPreview(v);
     }
     paintProgress();
@@ -427,7 +450,20 @@
     st.note = '';
     st.steps = [];
     render();
-    send({ type: force ? 'ia_refresh' : 'ia_load', page: page })
+    var msg = { type: force ? 'ia_refresh' : 'ia_load', page: page };
+    // Lock Monitor: a pasted API token, or a user ID and password the worker
+    // swaps for one, go to the worker, which keeps only the token and only in
+    // memory. The secret fields are cleared so nothing is left on screen.
+    if (byPage[page].live) {
+      msg.every = +lkEvery.value;
+      msg.hours = +lkHours.value;
+      msg.notify = lkNotify.checked;
+      if (tokenInput.value.trim()) msg.token = tokenInput.value.trim();
+      else if (userInput.value.trim() && passInput.value) { msg.user = userInput.value.trim(); msg.pass = passInput.value; }
+      tokenInput.value = '';
+      passInput.value = '';
+    }
+    send(msg)
       .then(function (r) { if (r && r.error) fail(page, r.error); },
             function (e) { fail(page, e && e.message); });
   }
@@ -457,7 +493,8 @@
     st.note = message || 'Something went wrong.';
     // With no data the iframe would sit on its own loader forever, hiding the
     // reason - drop it so the view falls back to the message and Get data.
-    if (!st.ts && st.frame) {
+    // A live view drops it either way: its note may ask for a token.
+    if ((!st.ts || byPage[page].live) && st.frame) {
       st.frame.remove();
       st.frame = null;
       st.loaded = false;
@@ -468,6 +505,33 @@
   }
 
   emptyLoad.addEventListener('click', function () { start(active, false); });
+
+  /* Lock Monitor options, remembered in this browser (they're used by "Monitor
+     again" too, where the form isn't shown). Notifications are off unless
+     ticked, and ticking asks for the permission then - it is optional in the
+     manifest, so the extension never holds it unless you want it. */
+  var LK_OPTS = 'ia_lk_opts';
+  try {
+    var o = JSON.parse(localStorage.getItem(LK_OPTS) || '{}');
+    if (o.every) lkEvery.value = String(o.every);
+    if (o.hours) lkHours.value = String(o.hours);
+    lkNotify.checked = !!o.notify;
+  } catch (e) {}
+  if (!lkEvery.value) lkEvery.value = '1000';
+  if (!lkHours.value) lkHours.value = '1';
+  function saveLk() {
+    try { localStorage.setItem(LK_OPTS, JSON.stringify({ every: lkEvery.value, hours: lkHours.value, notify: lkNotify.checked })); } catch (e) {}
+  }
+  lkEvery.addEventListener('change', saveLk);
+  lkHours.addEventListener('change', saveLk);
+  lkNotify.addEventListener('change', function () {
+    if (!lkNotify.checked || !api.permissions) { if (!api.permissions) lkNotify.checked = false; saveLk(); return; }
+    Promise.resolve(api.permissions.request({ permissions: ['notifications'] }))
+      .then(function (ok) { lkNotify.checked = !!ok; saveLk(); }, function () { lkNotify.checked = false; saveLk(); });
+  });
+  [tokenInput, userInput, passInput].forEach(function (f) {
+    f.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !emptyLoad.disabled) emptyLoad.click(); });
+  });
   refreshBtn.addEventListener('click', function () {
     if (state[active].busy) stop();
     else if (active === 'summary') startSummary();
@@ -496,7 +560,7 @@
   function getAll() {
     if (queue.current) return;
     queue.pages = VIEWS.filter(function (v) {
-      return v.page !== 'summary' && !v.off && !state[v.page].ts && !state[v.page].busy;
+      return v.page !== 'summary' && !v.off && !v.live && !state[v.page].ts && !state[v.page].busy;
     }).map(function (v) { return v.page; });
     queue.total = queue.pages.length;
     pump();
@@ -537,7 +601,12 @@
     summary.deadline = 0;
     var was = VIEWS.filter(function (x) { return state[x.page].busy; });
     send({ type: 'ia_cancel' }).catch(function () {});
-    was.forEach(function (x) { fail(x.page, 'Stopped.'); });
+    // Stop is how a live view (Lock Monitor) finishes, not a failure: keep its
+    // report on screen until the worker's saved copy arrives (ia_state).
+    was.forEach(function (x) {
+      if (x.live) { state[x.page].busy = false; state[x.page].steps = []; render(); }
+      else fail(x.page, 'Stopped.');
+    });
   }
 
   // Pushes for one page are latest-wins, so ignore anything that arrives late.
@@ -561,6 +630,13 @@
       state[msg.page].ts = msg.ts || 0;
       state[msg.page].note = '';
       if (state[msg.page].ts) maybeServe(msg.page);
+      // No report any more (Lock Monitor's Clear): back to the start screen.
+      else if (state[msg.page].frame && !state[msg.page].busy) {
+        state[msg.page].frame.remove();
+        state[msg.page].frame = null;
+        state[msg.page].loaded = false;
+        state[msg.page].served = 0;
+      }
       render();
       return;
     }

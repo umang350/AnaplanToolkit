@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Fifteen read-only report views, each
+the structure of the Anaplan model open in the active tab. Sixteen read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -80,6 +80,7 @@ content-scripts/
   outer.js              ISOLATED world on the modeling-ui frame — keyboard shortcuts only
   inner.js              ISOLATED world on framework.jsp — the report engine
   main.js               MAIN world on framework.jsp — reads Anaplan's in-page model cache
+  api.js                ISOLATED world, top frame of any Anaplan tab — Lock Monitor's API relay
 ```
 
 **Why three content scripts.** Anaplan's model metadata lives in page JS (`anaplan.data.
@@ -142,7 +143,8 @@ modules cost a minute or more however little is requested — small parallel bat
 views flowing past them. View batches get a 5 min cap (`IA_VTMO`) rather than the usual 90s, are
 never retried, and a timeout stops new batches: Anaplan keeps working on an aborted request, so
 aborting or retrying only adds server load and leaves the model busy after the client has given up.
-No other server is ever contacted.
+Beyond those, only the Lock Monitor calls Anaplan's Integration API (`api.anaplan.com`, model
+status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever contacted.
 
 ## Editing constraints
 
@@ -151,13 +153,13 @@ No other server is ever contacted.
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
 - `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
-  `modules`, `line_items` and `lists` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
+  `modules`, `line_items`, `lists`, `revisions` and `lock_monitor` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all fifteen views are expected to export and search
+  rebuilt. Keep the two implementations in step; all sixteen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Every table sorts by clicking a column header (ascending, descending, back to original order).
@@ -205,8 +207,8 @@ No other server is ever contacted.
   naming known action ids (or, failing that, exact action names) is the step list. A process
   whose steps can't be found gets a "No actions found" row and is counted in the page note. Its
   "Copy API call" buttons copy an Integration API v2 `curl` (`/processes|imports|exports|actions/
-  <id>/tasks`) for the user to run with their own token - the extension itself never calls
-  `api.anaplan.com` and never runs anything.
+  <id>/tasks`) for the user to run with their own token - the extension never runs anything (its only
+  `api.anaplan.com` call is the Lock Monitor's read-only model status).
 - **Revisions** (`revisions`, `IA_grev`, `chunks/revisions.js`) is one `/jsonrpc` call with no view
   requests and `systemActions: [{actionId: "GET_MODEL_REVISIONS", params: {modelId, workspaceId}}]`,
   as Anaplan's own Revision tags page sends it; the tags are in `result.systemActionResults[].revisions`
@@ -214,6 +216,77 @@ No other server is ever contacted.
   how). "Synced" mirrors that page's icon: this model is a target by sync/import/copy rather than
   "User added revision". "Current": the tag's `metadataId` equals the reply's, i.e. the model's
   definition is unchanged since. Two tabs - Revision Tags and Applied To.
+- **Lock Monitor** (`lock_monitor`, `chunks/lock_monitor.js`) is the one report that runs until
+  stopped, and is driven **from the worker** (`lkStart`/`lkLoop`/`lkProbe` in `background.js`), not
+  from the report engine: a busy model is exactly when the model page may never load. Workspace and
+  model IDs come from the tab URL (`lkIds`). Once a second, never two at once, it reads the
+  Integration API's model status, **`GET`** `https://api.anaplan.com/2/0/workspaces/{w}/models/{m}/status`
+  (confirmed live: POST answers 415/405). The reply is `{requestStatus: {currentStep, progress,
+  tooltip, taskId, creationTime, exportTaskType, peakMemoryUsage*}}`: `currentStep` "Open." when idle,
+  "Processing ..." with e.g. tooltip "The system is currently processing an Export: … started by … at
+  06:59 (UTC)" when busy. HTTP 423/424 = locked/offline.
+  **The API refuses extension origins** (confirmed with a valid token: `Origin: chrome-extension://` or
+  `moz-extension://` -> empty 403; `Origin: https://us1a.app.anaplan.com` -> 200; its preflight allows
+  GET + `Authorization` + credentials from any Anaplan page origin). So every API call goes through
+  `content-scripts/api.js` in the tab's top frame (`lkFetch` -> `ia_lk_fetch`, `frameId: 0`; Stop sends
+  `ia_lk_abort`), which only does GETs to `api.anaplan.com/2/0/` for the extension itself, using
+  `content.fetch` on Firefox so the request is the page's. It runs at `document_start` in the Anaplan
+  shell, which is up even while the model is busy. A missing or bad token is **401** (checked).
+  Two page-reading attempts failed live and were removed: Workspace's summary call said Unlocked while
+  busy, and the "Model is busy" banner needs the page up and dropped back to Available while shown.
+  **Session first (`lkRpc`):** before the API, each run tries the call Anaplan's own client uses to
+  show "Model is busy" (read off a live HAR): jsonrpc `requestType: "REQUEST_STATUS"`
+  (`{requestSerialNumber: "<GUID>-<n>", requestStatusRequestCount, workspaceId, modelId}`) POSTed to
+  the model's core, `…/coreNNNN/anaplan/jsonrpc`, via `api.js` (`ia_lk_rpc`; the top frame is
+  same-origin with the core, so the session cookie goes and no token is needed). The reply is
+  `{requestStatus: {currentStep "Open" | "Updating" | "Processing ...", tooltip "…processing change(s)
+  by user … Submitted at 08:10 (UTC)", taskId = the serial asked about, …}}`. `api.js` finds the core
+  from the framework.jsp frame or the page's resource timings and follows a wrong core's
+  `redirectUrl`; it relays nothing but REQUEST_STATUS. Anaplan's client only asks about its *own*
+  pending request (2s after sending it, then every ~5s) - whether the server reports the model's real
+  state for our own serial is **not confirmed**. A run whose first REQUEST_STATUS has no
+  `requestStatus` moves to the API for good (`run.mode`, `run.rpcWhy` saved in the report).
+  **API login:** the API does **not** honour the session (confirmed: from the page it gets only
+  Cloudflare/consent cookies -> 401; region URLs `us1a.app.anaplan.com/2/0/…` answer 503 "deprecated");
+  on 401/403 the run stops with `ia_page_error` and the
+  panel's login form (`#empty-token`, Lock tab only) takes an AnaplanAuthToken or a user ID +
+  password, which `lkLogin` swaps for a token at `auth.anaplan.com/token/authenticate` from the worker
+  (auth.anaplan.com accepts the extension origin; the password is used once and never kept - SSO
+  users need to be exception users). The token is held in `lkToken` only - never stored - and renewed
+  via `auth.anaplan.com/token/refresh` every 25 min (tokens last 35). On a refused first check with a
+  token, `lkDiagnose` checks `token/validate` and `GET /2/0/users/me` to say which part was refused.
+  Confirmed live: the session path works and shows every user's work ("Busy" with "processing
+  change(s) by user …", "Updating" for a change being saved - its own status, lighter amber).
+  **Per run** (panel `#empty-lk`, remembered in the panel's localStorage `ia_lk_opts`, sent with
+  `ia_load`): interval `every` from `LK_EVERIES` (1s-1min) and length `hours` from `LK_HOURS`
+  (15 min-12h); anything else falls back to `LK_EVERY`/`LK_MAX`. **Live report:** the loop pushes a
+  snapshot (`lock_monitor_data`, `data.live: true`) every `max(5s, n×20ms)` - the one unsolicited
+  data push, fine because the panel keeps the view's iframe up while the run is busy and the next
+  push replaces a lost one; `renderPage` keeps scroll, shown rows and search focus across live
+  updates, and the panel shows the progress as a strip (`compact`) over a live view. **Saved as it
+  goes:** `cacheSet` every `max(10s, n×10ms)` with `why: "running"`, so a worker restart mid-run
+  leaves the checks so far (the view calls it interrupted). **Notifications** are opt-in: the
+  checkbox requests the *optional* `notifications` permission; with it the worker notifies once a
+  model has been unavailable `LK_NOTE_BUSY` (30s) and when it is free again after `LK_NOTE_FREE`
+  (10s). The view shows Anaplan's "(UTC)" times in local time (`localTip`; CSV keeps
+  `TooltipAsSent`). The view has no explanatory note or fields disclosure (removed on request);
+  the cached report still records the method (`login`) and the reply's keys (`keys`) for debugging.
+  **Refresh continues, Clear starts over:** `ia_refresh` (the panel's refresh button, "Continue
+  monitoring") seeds the run with the saved report's checks (`lkLoop(…, prev)`) and marks its first new
+  check `gap`; the view draws the time between as a `Paused` period (thin dashed slice in the strip,
+  left out of the shares and "longest unavailable"). `ia_load` (Start, from the empty screen) begins a
+  new run. The view's **Clear report** button (two clicks) sends `ia_clear`; the worker drops the cache
+  (refused while running) and pushes `ia_state` with `ts: 0`, on which the panel removes the frame and
+  shows the start screen with its options. A continued run's length and first-check rules count from
+  its own start (`runAt`, `fresh`).
+  Stop is how it ends: `ia_cancel` stops the run (waking it from its interval wait) and the worker
+  caches what it gathered (`LIVE`) where other stopped runs are dropped. The panel's `stop()` keeps a
+  live view's report up (no `fail()`) until that saved copy arrives; a run stopped before its first
+  check answers with `ia_page_error`. `modelKey` never caches the page's `""` (what a busy model gives
+  after 3s): it falls back to the key in the new UX URL (`lkIds`), the same `<customer>:<model>` the
+  page gives - an empty key once made a just-saved run read as "no longer cached". It also ends after its
+  length, about two minutes of failed checks in a row, or a refused login mid-run. `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded
+  count.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state
@@ -233,7 +306,7 @@ No other server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the sixteenth view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the seventeenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button

@@ -279,7 +279,23 @@ export function renderPage(opts) {
   try {
     api.runtime.onMessage.addListener(function (msg) {
       if (!msg || !msg.type) return;
-      if (msg.type === opts.page + '_data') { data = msg.data || []; error = ''; shown = 0; render(); }
+      if (msg.type === opts.page + '_data') {
+        /* A live update (the Lock Monitor redraws while it runs) keeps the
+           reader where they were: scroll position, rows already shown, and
+           the search box's focus and caret. Anything else starts afresh. */
+        var live = !!(msg.data && msg.data.live && data), y = window.scrollY,
+            box = live && document.activeElement && mount.contains(document.activeElement) &&
+                  document.activeElement.tagName === 'INPUT' ? document.activeElement : null,
+            caret = box ? [box.selectionStart, box.selectionEnd] : null;
+        data = msg.data || []; error = '';
+        if (!live) shown = 0;
+        render();
+        if (live) {
+          window.scrollTo(0, y);
+          var inp = box && mount.querySelector('input[data-slot="input-group-control"]');
+          if (inp) { inp.focus(); try { inp.setSelectionRange(caret[0], caret[1]); } catch (e) {} }
+        }
+      }
       if (msg.type === 'error') { error = msg.message; render(); }
     });
   } catch (e) { /* not in an extension page; the states below still render */ }

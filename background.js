@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`],
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -19,7 +19,10 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     // Reports switched off: opening every saved view makes Anaplan evaluate its
     // filters, which takes tens of minutes on a large model. Keep in step with
     // `off` in VIEWS (sidepanel.js) and REPORTS (chunks/summary.js).
-    OFF=new Set([`sv_filter_items`,`sv_line_items`]);
+    OFF=new Set([`sv_filter_items`,`sv_line_items`]),
+    // Runs that go on until stopped (the Lock Monitor): Stop is how they end,
+    // so their result after an ia_cancel is the report, not a late leftover.
+    LIVE=new Set([`lock_monitor`]);
 
 // Results are cached per page *and* per model, so switching model never shows stale data.
 // storage.session survives service-worker restarts and is dropped when the browser closes.
@@ -179,8 +182,16 @@ async function modelKey(tabId){
     if(known!=null)return known;
     try{
       let key=await api.tabs.sendMessage(tabId,{type:`model_key`});
-      if(typeof key==`string`)return keyByTab.set(tabId,key),rememberKey(key),key
+      if(typeof key==`string`&&key)return keyByTab.set(tabId,key),rememberKey(key),key
     }catch(e){}
+    /* The page couldn't name its model in time - its answer is "" after 3s,
+       which is what a busy model gives. That "" used to be cached and used:
+       stopping the Lock Monitor during a busy spell (after Anaplan had changed
+       the tab's URL, which drops keyByTab) looked the saved run up under no
+       model and called it "no longer cached". The new UX URL names the model
+       (customers/<c>/…/models/<m>), so use that, the same key the page gives,
+       and don't cache it - the page's own answer wins once it can give one. */
+    try{let ids=lkIds((await api.tabs.get(tabId))?.url);if(ids&&ids.c)return `${ids.c}:${ids.m}`}catch(e){}
   }
   // A tab that cannot name its model yet is still loading one - possibly not the
   // last model we saw, so falling back to lastKey there showed the previous
@@ -313,6 +324,323 @@ function progAdd(tab,page,m){
   push({type:`ia_progress`,page,steps:ls,seq:++seqN,to:tab},page)
 }
 
+// --- Lock Monitor ------------------------------------------------------------
+//
+// Asks Anaplan's Integration API for the model's status once a second:
+// POST api.anaplan.com/2/0/workspaces/{w}/models/{m}/status, whose
+// requestStatus.currentStep is "Open" when the model is idle and names the
+// running task otherwise ("Processing ..."), with progress, tooltip and taskId.
+// That is the state behind the UI's "Model is busy" banner.
+//
+// It runs here, not in the page: a busy model is exactly when the model page
+// may never finish loading. The IDs come from the tab's URL, and nothing on
+// the page is needed. Two earlier attempts read the page - the workspace
+// summary call (said Unlocked, in under a second, while the model was busy)
+// and the banner itself (only drawn once the page is up, and it went back to
+// Available after 30s with the banner still showing).
+//
+// Login: api.anaplan.com wants an AnaplanAuthToken, not the page's session.
+// The browser's own cookies are tried first; if the API refuses them, the
+// panel asks for a token. The token lives in this variable only - never in
+// storage - and is refreshed through auth.anaplan.com before it expires.
+// Checks never overlap: a slow reply delays the next one.
+var LK_API=`https://api.anaplan.com/2/0`,
+    LK_AUTH=`https://auth.anaplan.com/token/refresh`,
+    LK_LOGIN=`https://auth.anaplan.com/token/authenticate`,
+    LK_EVERY=1e3,         // one check a second by default...
+    LK_EVERIES=[1e3,5e3,15e3,3e4,6e4],   // ...or any of these, picked in the panel
+    LK_HOURS=[.25,1,4,8,12],             // run length choices, in hours
+    LK_TMO=3e4,           // ...each given this long
+    LK_MAX=36e5,          // a run ends on its own after an hour unless the panel picks longer
+    LK_NOTE_BUSY=3e4,     // with notifications on: say so once the model has been busy this long...
+    LK_NOTE_FREE=1e4,     // ...and when it is free again after being busy at least this long
+    LK_ERRS=60,           // ...or after this many failed checks in a row
+    LK_SLOW=3e3,          // an "Open" reply this slow is still worth flagging
+    LK_RENEW=25*6e4,      // tokens last 35 min; renew well before
+    lkToken=``,lkTokenAt=0,
+    lkRuns=new Map();     // rid -> {ac} for the run in flight (Stop aborts its request)
+
+// The tab's URL names the model in the new UX (/workspaces/<w>/models/<m>)
+// and in classic framework.jsp (?selectedWorkspaceId=…&selectedModelId=…).
+function lkIds(url){
+  let m=/\/workspaces\/([0-9a-f]{32})\/models\/([0-9a-f]{32})/i.exec(url||``);
+  if(m)return{w:m[1],m:m[2],c:(/\/customers\/([0-9a-f]{32})/i.exec(url)||[])[1]||``};
+  try{
+    let q=new URL(url).searchParams,w=q.get(`selectedWorkspaceId`),mm=q.get(`selectedModelId`);
+    if(w&&mm)return{w,m:mm,c:``}
+  }catch(e){}
+  return null
+}
+
+function lkDur(ms){let s=Math.floor(ms/1e3),h=Math.floor(s/3600),m=Math.floor(s%3600/60),p=n=>String(n).padStart(2,`0`);return(h?h+`:`+p(m):m)+`:`+p(s%60)}
+
+// User ID + password -> token, the Integration API's basic login. The
+// password is used for this one request and never kept: renewal works off
+// the token itself (lkRenew). SSO users can only do this as exception users.
+async function lkLogin(user,pass){
+  let b=new TextEncoder().encode(`${user}:${pass}`),bin=``;
+  for(let i=0;i<b.length;i++)bin+=String.fromCharCode(b[i]);
+  let r;
+  try{r=await fetch(LK_LOGIN,{method:`POST`,headers:{Authorization:`Basic ${btoa(bin)}`,Accept:`application/json`},credentials:`omit`})}
+  catch(e){throw Error(`Couldn't reach Anaplan's sign-in service (auth.anaplan.com). Check your connection, then try again.`)}
+  let j=null;try{j=await r.json()}catch(e){}
+  let v=j?.tokenInfo?.tokenValue;
+  if(!r.ok||typeof v!=`string`||!v)throw Error(r.status===401||r.status===403
+    ?`Anaplan refused that user ID and password. Single sign-on users can only sign in this way as SSO exception users - paste a token instead.`
+    :`Anaplan's sign-in failed (${j?.statusMessage||`HTTP `+r.status}).`);
+  lkToken=v,lkTokenAt=Date.now()
+}
+
+// Anaplan's own words from an error reply, whichever shape it came in.
+function lkSaid(j){
+  let m=j&&(j.status?.message||j.statusMessage||j.message||j.error_description||j.error);
+  return typeof m==`string`?m.replace(/\s+/g,` `).trim().slice(0,160):``
+}
+
+/* api.anaplan.com answers any request from an extension origin with an empty
+   403 (checked with a valid token: Origin chrome-extension:// -> 403, Origin
+   https://us1a.app.anaplan.com -> 200, and its preflight allows GET with an
+   Authorization header from every Anaplan page). So each API call is made by
+   content-scripts/api.js in the tab's top frame and goes out as the page's.
+   Resolves to {status, ok, j}; a timeout or Stop rejects as AbortError. */
+var lkSeq=0;
+function lkFetch(tab,url,run){return lkRelay(tab,{type:`ia_lk_fetch`,url,token:lkToken},run)}
+function lkRelay(tab,m,run){
+  let id=++lkSeq,
+      call=api.tabs.sendMessage(tab,{...m,id,ms:LK_TMO},{frameId:0}).then(r=>{
+        if(!r)throw Error(`the Anaplan tab didn't answer`);
+        if(r.error){let e=Error(r.error);r.error===`timeout`&&(e.name=`AbortError`);throw e}
+        let j=null;try{j=JSON.parse(r.text)}catch(e){}
+        return{status:r.status,ok:r.status>=200&&r.status<300,j,base:r.base||``}
+      },e=>{throw Error(/Receiving end does not exist|Could not establish/i.test(e?.message||``)
+        ?`the Toolkit isn't running in that Anaplan tab yet - reload the Anaplan tab`:e?.message||String(e))});
+  if(!run)return call;
+  call.catch(()=>{});   // a Stop below wins the race; this one may still fail later
+  run.abort=()=>api.tabs.sendMessage(tab,{type:`ia_lk_abort`,id},{frameId:0}).catch(()=>{});
+  return Promise.race([call,new Promise((z,no)=>{run.kill=()=>{let e=Error(`Stopped`);e.name=`AbortError`;no(e)}})])
+}
+
+/* Session first (no token, no API). Anaplan's own client learns why the
+   model is busy from jsonrpc requestType REQUEST_STATUS on its core - read
+   off a HAR of a live session: {requestSerialNumber:"<client GUID>-<n>",
+   requestStatusRequestCount, requestType:"REQUEST_STATUS", workspaceId,
+   modelId} -> {requestStatus:{currentStep:"Open" | "Updating" |
+   "Processing ...", progress, tooltip:"The system is currently processing
+   change(s) by user … Submitted at 08:10 (UTC)", taskId, ...}}, the same
+   fields as the Integration API. The client only asks about its own pending
+   request; whether the server answers for a serial of our own (run.serial,
+   a fresh GUID) with the model's real state is NOT confirmed - if the first
+   answer isn't a requestStatus, the run switches to the API (run.mode). It
+   goes through content-scripts/api.js, whose top frame is same-origin with
+   the core, so it carries the session cookie. */
+function lkSerial(){let a=new Uint8Array(16);crypto.getRandomValues(a);return [...a].map(b=>b.toString(16).padStart(2,`0`)).join(``).toUpperCase()}
+async function lkRpc(tab,ids,run){
+  run.serial=run.serial||lkSerial(),run.n=(run.n||0)+1;
+  let r=await lkRelay(tab,{type:`ia_lk_rpc`,base:run.base||``,body:{requestSerialNumber:`${run.serial}-${run.n}`,
+        requestStatusRequestCount:0,requestType:`REQUEST_STATUS`,workspaceId:ids.w,modelId:ids.m}},run);
+  r.base&&(run.base=r.base);
+  return r
+}
+
+/* A refused status call says only "Forbidden". The first live run got that
+   with a token that had just signed in fine, so before giving up the worker
+   works out which part was refused: the token itself (auth.anaplan.com's own
+   validate call), the API as a whole (GET /users/me, the simplest call there
+   is), or only the model status call - a permission on that call or model,
+   not the login. The answer goes into the panel's message. */
+async function lkDiagnose(tab){
+  let h={Authorization:`AnaplanAuthToken ${lkToken}`,Accept:`application/json`},
+      get=async u=>{
+        let ac=new AbortController(),tm=setTimeout(()=>ac.abort(),1e4);
+        try{let r=await fetch(u,{headers:h,credentials:`omit`,cache:`no-store`,signal:ac.signal}),j=null;try{j=await r.json()}catch(e){}return{ok:r.ok,code:r.status,j}}
+        catch(e){return{ok:!1,code:0,j:null,e:e?.message||String(e)}}
+        finally{clearTimeout(tm)}
+      },
+      v=await get(`https://auth.anaplan.com/token/validate`);
+  if(!v.ok)return `The token itself was refused by Anaplan's sign-in service (${v.code?`HTTP ${v.code}`:v.e}${lkSaid(v.j)?` - ${lkSaid(v.j)}`:``}): it has expired or was not copied whole.`;
+  let me;try{let r=await lkFetch(tab,`${LK_API}/users/me`);me={ok:r.ok,code:r.status,j:r.j}}catch(e){me={ok:!1,code:0,j:null,e:e?.message||String(e)}}
+  let who=me.j?.user?.email||me.j?.user?.id||``;
+  if(!me.ok)return `The token is valid, but Anaplan's API refused even its simplest call, /users/me (${me.code?`HTTP ${me.code}`:me.e}${lkSaid(me.j)?` - ${lkSaid(me.j)}`:``}). Your account may not be allowed to use the Integration API, or the API isn't receiving the token from the extension.`;
+  return `The token is valid and the API accepts it${who?` (signed in as ${who})`:``}, but Anaplan won't give this account the model's status. It is likely limited to workspace administrators of this model's workspace - ask one to run the monitor, or to grant you workspace admin.`
+}
+
+async function lkRenew(){
+  if(!lkToken||Date.now()-lkTokenAt<LK_RENEW)return;
+  lkTokenAt=Date.now();   // one attempt per window, whatever happens
+  try{
+    let r=await fetch(LK_AUTH,{method:`POST`,headers:{Authorization:`AnaplanAuthToken ${lkToken}`,Accept:`application/json`}});
+    let v=r.ok?(await r.json())?.tokenInfo?.tokenValue:null;
+    typeof v==`string`&&v&&(lkToken=v)
+  }catch(e){}
+}
+
+// One check. `auth` is set when the API refused the login (401/403, or a
+// login page instead of JSON) - the run stops and the panel asks for a token.
+async function lkProbe(tab,ids,run){
+  let s={t:Date.now(),ms:0,http:0,step:``,progress:null,tooltip:``,taskId:``,type:``,err:``,status:``},keys=null,auth=!1;
+  try{
+    let r=null;
+    if(run.mode!==`api`){
+      // Session path (lkRpc). Kept once it has answered properly; on a first
+      // check that doesn't, the run moves to the API for good.
+      let x=null;try{x=await lkRpc(tab,ids,run)}catch(e){if(e?.name===`AbortError`||run.mode===`rpc`)throw e}
+      if(x&&x.ok&&x.j&&x.j.requestStatus)run.mode=`rpc`,r=x;
+      else if(run.mode===`rpc`)r=x||{status:0,ok:!1,j:null};
+      else run.mode=`api`,run.rpcWhy=x?`HTTP ${x.status}${lkSaid(x.j)?` - ${lkSaid(x.j)}`:x.j&&!x.j.requestStatus?` - no requestStatus`:``}`:`no answer`
+    }
+    s.via=run.mode;
+    if(!r){
+      await lkRenew();
+      /* GET - checked live: POST answers 415 without a Content-Type and 405
+         with one; GET gives {requestStatus:{currentStep, progress, tooltip,
+         taskId, creationTime, exportTaskType, ...}}. */
+      r=await lkFetch(tab,`${LK_API}/workspaces/${ids.w}/models/${ids.m}/status`,run)
+    }
+    s.http=r.status;
+    let j=r.j;
+    let said=lkSaid(j);
+    /* 401 is a missing or bad login; 403 is a login Anaplan accepted that may
+       not do this (checked against api.anaplan.com: no token and a bad token
+       both answer 401, so a 403 means the token arrived and was valid). */
+    if(run.mode===`api`&&(r.status===401||r.status===403||(r.ok&&!j)))auth=!0,s.err=r.status===401?`Login refused (HTTP 401${said?` - ${said}`:``})`
+      :r.status===403?`Forbidden (HTTP 403${said?` - ${said}`:``})`:`Anaplan's API sent a login page`;
+    else if(!r.ok)s.err=`HTTP ${r.status}`+(j?.status?.message?` - ${String(j.status.message).slice(0,150)}`:``);
+    else{
+      let q=j.requestStatus||j.status&&typeof j.status==`object`&&j.status.requestStatus||{};
+      s.step=String(q.currentStep??``).trim(),s.progress=typeof q.progress==`number`?q.progress:null,
+      s.tooltip=String(q.tooltip??``).replace(/\s*\n\s*/g,` `).trim().slice(0,400),s.taskId=String(q.taskId??``),s.type=String(q.exportTaskType??``),
+      run.mode===`rpc`&&run.serial&&s.taskId.startsWith(run.serial)&&(s.taskId=``),   // our own serial, not a task
+      keys=[...Object.keys(j).filter(k=>k!==`requestStatus`),...Object.keys(q).map(k=>`requestStatus.`+k)]
+    }
+  }catch(e){
+    // "Failed to fetch" alone says nothing: name the call so the report shows what was refused.
+    s.err=e?.name===`AbortError`?(run.stop?`Stopped`:`no reply in ${LK_TMO/1e3}s`)
+      :`Request failed (${(e?.message||String(e)).slice(0,160)}) - ${run.mode===`api`?`API model status, ${lkToken?`token`:`browser login`}`:`session status check`}`
+  }finally{run.kill=run.abort=null}
+  s.ms=Date.now()-s.t;
+  // 423 / 424 are the API's "model locked" / "model offline".
+  s.status=s.http===423?`Locked`:s.http===424?`Offline`:s.err?(auth?`Login refused`:`No reply`)
+    :!s.step?`Unknown`   // a reply without currentStep: the view lists the fields it did hold
+    :/^open\b/i.test(s.step)?(s.ms>=LK_SLOW?`Slow reply`:`Available`)   // REQUEST_STATUS echoes our serial as taskId even when open
+    :/^updating\b/i.test(s.step)?`Updating`   // a change being saved - short, unlike Processing
+    :/clos|unload/i.test(s.step)?`Not loaded`:`Busy`;
+  return{s,keys,auth}
+}
+
+async function lkStart(msg){
+  let page=`lock_monitor`,tab=await tabFor(msg);
+  if(tab==null)throw Error(`Open an Anaplan model tab, then try again.`);
+  let url=``,title=``;try{let x=await api.tabs.get(tab);url=x?.url||``,title=x?.title||``}catch(e){}
+  let ids=lkIds(url);
+  if(!ids)throw Error(`This tab's address doesn't name a model. Open the model in Anaplan, then try again.`);
+  typeof msg.token==`string`&&msg.token.trim()&&(lkToken=msg.token.trim().replace(/^AnaplanAuthToken\s+/i,``),lkTokenAt=Date.now());
+  if(!lkRuns.has(rid(tab,`lock_monitor`))&&typeof msg.user==`string`&&msg.user.trim()&&typeof msg.pass==`string`&&msg.pass)
+    await lkLogin(msg.user.trim(),msg.pass);
+  // The cache key is the content script's when it can give one (the page may
+  // be stuck loading), else built from the URL the same way.
+  let known=keyByTab.get(tab),key=known||(ids.c?`${ids.c}:${ids.m}`:await modelKey(tab));
+  let r=rid(tab,page);
+  if(lkRuns.has(r))return{ok:!0};
+  stopped.delete(r),setBusy(tab,page,!0);
+  // Interval and length come from the panel; anything off the lists is ignored.
+  let every=LK_EVERIES.includes(+msg.every)?+msg.every:LK_EVERY,
+      max=LK_HOURS.includes(+msg.hours)?+msg.hours*36e5:LK_MAX,
+      run={stop:!1,every,max,notify:!!msg.notify&&!!api.notifications};
+  lkRuns.set(r,run);
+  ids.name=title.split(` | `)[0].trim();   // "UQJP_20260621 | Anaplan"
+  // Refresh ("Continue monitoring") picks up the saved run for this model and
+  // adds to it; Start (ia_load, from the empty screen) begins a new one.
+  let prev=null;
+  if(msg.type===`ia_refresh`){try{let h=await cacheGet(page,key);h&&Array.isArray(h.data?.samples)&&h.data.samples.length&&(prev=h.data)}catch(e){}}
+  lkLoop(tab,ids,key,run,prev).catch(()=>{}).finally(()=>lkRuns.delete(r));
+  return{ok:!0}
+}
+
+// Opt-in (the panel's "Notify me" asks for the permission): once a model has
+// been busy LK_NOTE_BUSY, and when it is free again after LK_NOTE_FREE.
+var LK_UNAVAILABLE=new Set([`Busy`,`Updating`,`Locked`,`Offline`]);
+// Anaplan's "… at 08:17 (UTC)" in local time, as the view shows it.
+function lkLocal(tip,at){
+  return String(tip||``).replace(/\b(\d{1,2}):(\d{2})\s*\(UTC\)/g,(m,h,mi)=>{
+    let d=new Date(at),u=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),+h,+mi);
+    u>at+36e5&&(u-=864e5);
+    let x=new Date(u);return String(x.getHours()).padStart(2,`0`)+`:`+String(x.getMinutes()).padStart(2,`0`)
+  })
+}
+function lkNotify(tab,title,message){
+  try{api.notifications.create(`ia-lk-${tab}`,{type:`basic`,iconUrl:`icon-128.png`,title,message:String(message||``).slice(0,250)})?.catch?.(()=>{})}catch(e){}
+}
+
+async function lkLoop(tab,ids,key,run,prev){
+  /* A continued run starts from the saved one's checks; its first new check
+     is marked `gap` so the view shows the time in between as not monitored.
+     The run's own length (run.max) and first-check rules count from now. */
+  let page=`lock_monitor`,r=rid(tab,page),S=prev?prev.samples.slice():[],keys=prev?.keys?.length?prev.keys:null,
+      t0=prev?.started||Date.now(),runAt=Date.now(),fresh=0,bad=0,why=`stopped`,cur=``,
+      errs=Math.max(5,Math.ceil(12e4/run.every)),   // about two minutes of failed checks in a row
+      label=`Asking Anaplan for the model's status`,
+      tick=d=>progAdd(tab,page,{step:label,detail:d}),
+      tail=()=>`${S.length} ${S.length===1?`check`:`checks`} · ${lkDur(Date.now()-runAt)}${prev?` (continued)`:``}`,
+      snap=(w,live)=>({modelName:ids.name||``,workspaceId:ids.w,modelId:ids.m,started:t0,ended:Date.now(),every:run.every,
+        max:run.max,slow:LK_SLOW,why:w,live,samples:S,keys:keys||[],
+        login:run.mode===`rpc`?`session`:lkToken?`token`:`browser`,rpcWhy:run.rpcWhy||``}),
+      lastLive=0,lastSave=Date.now(),downSince=0,toldBusy=!1;
+  tick(lkToken?`with your API token`:`with your browser login`);
+  while(busy.has(r)&&!run.stop){
+    if(Date.now()-runAt>=run.max){why=`limit`;break}
+    let a=Date.now(),p=await lkProbe(tab,ids,run);
+    if(run.stop||!busy.has(r))break;
+    if(p.auth&&!fresh){
+      // Refused on the very first check: nothing to save. Without a token,
+      // ask for one; with one, say which part Anaplan refused (lkDiagnose).
+      let had=!!lkToken,why2=had?await lkDiagnose(tab):``;
+      had&&!/^The token is valid/.test(why2)&&(lkToken=``);   // keep a good token for the next try
+      setBusy(tab,page,!1);
+      return push({type:`ia_page_error`,page,to:tab,message:had
+        ?`Anaplan's API refused the model status call: ${p.s.err}. ${why2}`
+        :`Anaplan's session status check didn't answer (${run.rpcWhy||`unknown`}), and its API didn't accept your browser login (${p.s.err}). Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
+    }
+    prev&&!fresh&&(p.s.gap=!0);
+    fresh++,S.push(p.s),keys=keys||p.keys;
+    p.s.status!==cur&&(cur=p.s.status,label=`${cur} since ${new Date(p.s.t).toLocaleTimeString()}`);
+    tick([p.s.step,p.s.progress>=0&&p.s.progress!=null?Math.round(p.s.progress*(p.s.progress<=1?100:1))+`%`:``,p.s.tooltip,p.s.err||`${p.s.ms} ms`,tail()].filter(Boolean).join(` · `));
+    // Notifications (opt-in). A failed check neither starts nor ends a busy spell.
+    if(run.notify&&!p.s.err){
+      let down=LK_UNAVAILABLE.has(p.s.status),nm=ids.name||`The model`;
+      if(down){
+        downSince||(downSince=p.s.t,toldBusy=!1);
+        !toldBusy&&p.s.t-downSince>=LK_NOTE_BUSY&&(toldBusy=!0,lkNotify(tab,`${nm} is busy`,
+          `${lkDur(p.s.t-downSince)} so far. ${lkLocal(p.s.tooltip,p.s.t)||p.s.step}`))
+      }else if(downSince){
+        p.s.t-downSince>=LK_NOTE_FREE&&lkNotify(tab,`${nm} is available again`,`It was busy for ${lkDur(p.s.t-downSince)}.`);
+        downSince=0,toldBusy=!1
+      }
+    }
+    /* The view updates while the run goes on: a snapshot pushed straight at
+       it (it is open - the panel draws its iframe while the run is busy; a
+       lost push is replaced by the next). Spaced out as the run grows, since
+       each carries every check. */
+    if(Date.now()-lastLive>=Math.max(5e3,S.length*20))lastLive=Date.now(),push({type:`${page}_data`,data:snap(`running`,!0),to:tab},`live`);
+    /* Saved as it goes: a worker the browser restarts mid-run takes the loop
+       with it, but what was gathered stays cached (why "running", live false
+       - the view calls it interrupted). */
+    if(Date.now()-lastSave>=Math.max(1e4,S.length*10))lastSave=Date.now(),await cacheSet(page,key,snap(`running`,!1));
+    bad=p.s.err?bad+1:0;
+    if(p.auth){why=`auth`;break}
+    if(bad>=errs){why=`errors`;break}
+    let w=run.every-(Date.now()-a);
+    w>0&&await new Promise(z=>{let t=setTimeout(z,w);run.kill=()=>{clearTimeout(t),z()}})
+  }
+  // Stopped before any check came back: nothing to save, and the panel (which
+  // keeps a live view up on Stop, waiting for the saved copy) must hear so.
+  if(!fresh)return busy.has(r)&&setBusy(tab,page,!1),void(prev
+    ?push({type:`ia_state`,page,ts:(await cacheGet(page,key))?.ts||Date.now(),key,to:tab},page)   // the saved run stands as it was
+    :push({type:`ia_page_error`,page,to:tab,message:`Stopped before the first check came back - nothing to save.`},page));
+  let hit=await cacheSet(page,key,snap(why,!1));
+  setBusy(tab,page,!1);
+  push({type:`ia_state`,page,ts:hit.ts,key,to:tab},page)
+}
+
 async function handle(msg,sender){
   let tabId=sender?.tab?.id;
 
@@ -361,13 +689,28 @@ async function handle(msg,sender){
     return push({type:`${msg.page}_data`,data:hit.data,ts:hit.ts,cached:!0,to:msg.forTab??tab},msg.page),{hit:!0,ts:hit.ts}
   }
 
+  // Lock Monitor's Clear button (in its view): forget the saved run so the
+  // next start is a new one. Not while it runs - Stop first.
+  if(msg.type===`ia_clear`&&msg.page===`lock_monitor`){
+    let tab=await tabFor(msg),key=await modelKey(tab);
+    if(busy.has(rid(tab,msg.page)))return{error:`Stop the monitor first.`};
+    cacheDrop(msg.page,key);
+    return push({type:`ia_state`,page:msg.page,ts:0,key,to:msg.forTab??tab},msg.page),{ok:!0}
+  }
+
   // Stop button: end every gather under way. The worker clears the busy state
   // itself rather than waiting on the content script, so the panel frees up
   // even if the tab never answers; whatever the stopped runs send later is dropped.
+  // A LIVE run (the Lock Monitor, which runs in this worker) is the
+  // exception: Stop is how it ends, and what it gathered is cached as usual.
   if(msg.type===`ia_cancel`){
     sawShell=!0;
     let was=runsOf(msg.forTab),tabs=new Set(was.map(w=>w.tab));
-    for(let w of was)stopped.add(rid(w.tab,w.page)),setBusy(w.tab,w.page,!1);
+    for(let w of was){
+      let r=rid(w.tab,w.page),lk=lkRuns.get(r);
+      lk&&(lk.stop=!0,lk.kill?.(),lk.abort?.());
+      LIVE.has(w.page)||stopped.add(r),setBusy(w.tab,w.page,!1)
+    }
     if(!tabs.size){let t=await tabFor(msg);t!=null&&tabs.add(t)}
     for(let t of tabs)t!=null&&await api.tabs.sendMessage(t,{type:`ia_cancel`}).catch(()=>{});
     return{stopped:was.map(w=>w.page)}
@@ -377,6 +720,7 @@ async function handle(msg,sender){
   if(msg.type===`ia_load`||msg.type===`ia_refresh`){
     sawShell=!0;
     if(OFF.has(msg.page))return{error:`This report is disabled - it is too slow to run on large models.`};
+    if(msg.page===`lock_monitor`)return lkStart(msg);   // runs here, not in the page
     let page=msg.page,
         quiet=QUIET.has(page),
         tab=await tabFor(msg),

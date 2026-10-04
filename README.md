@@ -31,6 +31,7 @@ demand, grouped as in the panel's tab bar:
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
+| **Lock** | | Checks once a second whether the model is available, busy, locked or offline, until you press Stop; then shows the timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
 | | All | Storage for every workspace you can access, and every active model across them |
 
@@ -41,6 +42,38 @@ demand, grouped as in the panel's tab bar:
 - **Export to CSV** writes the rows in the order you've sorted them.
 - **Refresh** with the icon at the top right to gather a report again. Results are cached per model
   for 6 hours.
+
+**Lock Monitor:**
+
+- **Start monitoring** asks Anaplan what the model is doing: every second, or every 5, 15 or 30
+  seconds or every minute, for up to 15 minutes, 1, 4, 8 or 12 hours (your choice is remembered).
+  The report fills in while it runs. **Stop** ends it and saves it, and it's saved as it goes too.
+- **Refresh** (top right) continues monitoring and adds to the same report; the time in between
+  shows as *Paused*. **Clear report** (in the report, click twice) deletes it and goes back to the
+  start screen, where you can change the interval and length.
+  Get all data skips it.
+- **Notify me** (off unless you tick it, which asks for permission to show notifications) tells
+  you when the model has been busy for 30 seconds, and when it's free again.
+- **Updating** is a change being saved, usually brief. **Busy** is a process, import, export or
+  someone's change holding the model. Anaplan's times are shown in your time zone.
+- It uses Anaplan's Integration API model status, the same status behind "Model is busy". When
+  the model is busy it shows what is running, for example "The system is currently processing an
+  Export … started by … at 06:59 (UTC)". It doesn't read the model page, so it keeps working when
+  the model is stuck loading. Anaplan's API only accepts calls from Anaplan's own pages, so each
+  check is sent from the Anaplan tab.
+- **Available**: Anaplan reports the model open with nothing running. **Busy**: Anaplan names a
+  running step (a process, import, export or other task), with its progress and task where given.
+  **Locked** / **Offline**: the API refused the model as locked or offline.
+- **No login needed, if it works for you**: each run first asks the model's status the way
+  Anaplan's own screen does, over your existing session. Only if that gets no answer does it use the
+  API.
+- **API login**: Anaplan's API doesn't accept your browser login. If the monitor needs it, the Lock tab asks
+  you to either paste an Anaplan API token (AnaplanAuthToken) or enter your Anaplan user ID and
+  password. The user ID and password are swapped for a token at Anaplan's sign-in service and the
+  password is not kept. Single sign-on users can only do this as SSO exception users. The token is
+  kept in memory only, never saved, and renewed while the monitor runs.
+- **Timeline** merges checks in a row with the same status into periods. **Checks** lists every
+  check.
 
 **On Summary:**
 
@@ -109,12 +142,14 @@ Inside the Anaplan modelling UI (`⌘⌥` on macOS, `Ctrl+Alt` on Windows/Linux)
 ## Privacy
 
 The extension talks to **no server other than Anaplan itself**. There is no analytics, no
-telemetry and no auto-update endpoint. Every call goes to your Anaplan host and uses your existing
-session:
+telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your existing session
+(or, for the Lock Monitor only, an API token you paste):
 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
 - `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
+- `api.anaplan.com` (Integration API model status, sent from the Anaplan tab) and
+  `auth.anaplan.com` (sign-in with user ID and password, token renewal): the Lock Monitor only
 
 All of these calls only read. Results are kept in `storage.session`, compressed when large, and
 are dropped when the browser closes. Nothing is sent anywhere else.
@@ -126,6 +161,7 @@ Permissions requested:
 | `host_permissions: https://*.anaplan.com/*` | read model metadata from the tab you have open |
 | `sidePanel` (Chrome only; Firefox's sidebar needs no permission) | render the UI |
 | `storage` | cache results for the session |
+| `notifications` (optional, only if you tick *Notify me* on the Lock tab) | tell you when the model is busy or free again |
 
 ## Layout
 
