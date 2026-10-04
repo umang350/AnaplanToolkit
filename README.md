@@ -46,7 +46,7 @@ demand, grouped as in the panel's tab bar:
 | | Usages | Where actions are used across Apps and Pages |
 | | Steps | The actions each process runs, in order, with each import's source and target, plus the actions no process runs. A *Copy API call* button gives an Integration API `curl` per process and action. |
 | **Pages** | Modules | Which Apps and Pages use each module (backend → frontend lineage) |
-| | Filters | Line items used as page filters or for conditional formatting |
+| | Filters | Line items used as page filters or for conditional formatting, each beside its condition, with the formatting colours |
 | **Saved View** | List | Every saved view, grouped by module, with its ID |
 | | Screens | Which saved view each App page widget reads from |
 | | Actions | Imports whose source is a saved view (see the caveats below) |
@@ -71,26 +71,22 @@ demand, grouped as in the panel's tab bar:
 
 - **Start monitoring** asks Anaplan what the model is doing: every second, or every 5, 15 or 30
   seconds or every minute, for up to 15 minutes, 1, 4, 8 or 12 hours (your choice is remembered).
-  The report fills in while it runs. **Stop** ends it and saves it, and it's saved as it goes too.
+  The report fills in while it runs and is saved as it goes. **Stop** ends it and saves it.
 - **Refresh** (top right) continues monitoring and adds to the same report; the time in between
   shows as *Paused*. **Clear report** (in the report, click twice) deletes it and goes back to the
-  start screen, where you can change the interval and length.
-  Get all data skips it.
+  start screen, where you can change the interval and length. *Get all data* skips the Lock Monitor.
+- **Statuses:** *Available* means the model is open with nothing running. *Updating* is a change
+  being saved, usually brief. *Busy* means a process, import, export or someone's change is holding
+  the model, and the report shows what it is, for example "The system is currently processing an
+  Export … started by … at 06:59". *Locked* and *Offline* are Anaplan refusing the model as locked
+  or offline. Anaplan's times are shown in your time zone.
 - **Notify me** (off unless you tick it, which asks for permission to show notifications) tells
   you when the model has been busy for 30 seconds, and when it's free again.
-- **Updating** is a change being saved, usually brief. **Busy** is a process, import, export or
-  someone's change holding the model. Anaplan's times are shown in your time zone.
-- It uses Anaplan's Integration API model status, the same status behind "Model is busy". When
-  the model is busy it shows what is running, for example "The system is currently processing an
-  Export … started by … at 06:59 (UTC)". It doesn't read the model page, so it keeps working when
-  the model is stuck loading. Anaplan's API only accepts calls from Anaplan's own pages, so each
-  check is sent from the Anaplan tab.
-- **Available**: Anaplan reports the model open with nothing running. **Busy**: Anaplan names a
-  running step (a process, import, export or other task), with its progress and task where given.
-  **Locked** / **Offline**: the API refused the model as locked or offline.
-- **No login needed**: each run asks the model's status the way Anaplan's own screen does, over
-  your existing session. If that gets no answer, it tries the API with your browser login, and if
-  Anaplan refuses that too, it stops and says so. It never asks for a token or password.
+- **No login needed.** Each check asks for the model's status the way Anaplan's own "Model is
+  busy" banner does, over your existing session, sent from the Anaplan tab. It doesn't need the
+  model page to load, so it keeps working while the model is stuck loading. If that check gets no
+  answer, it tries Anaplan's Integration API with the same browser login, and if Anaplan refuses
+  that too, it stops and says so. It never asks for a token or password.
 - **Timeline** merges checks in a row with the same status into periods. **Checks** lists every
   check.
 
@@ -133,24 +129,24 @@ can't be named and is not listed. Both caveats are also shown on the page itself
 (Firefox 140+). The stores can lag behind the latest
 [GitHub release](https://github.com/umang350/AnaplanToolkit/releases).
 
-**Unpacked, from source:**
+**Unpacked, for the latest version or development.** Download `anaplan-toolkit.zip` or
+`anaplan-toolkit-firefox.zip` from the [latest release](https://github.com/umang350/AnaplanToolkit/releases/latest)
+and unzip it, or build both from source with `sh package.sh` (needs `jq`).
 
-**Chrome / Edge / other Chromium browsers**
+*Chrome, Edge and other Chromium browsers:*
 
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. **Load unpacked** → select this folder (or `dist/` after running `sh package.sh`)
-4. Open an Anaplan model, then click the toolbar icon to open the side panel
+1. Open `chrome://extensions` and turn on **Developer mode**
+2. Click **Load unpacked** and select the unzipped folder (or this repository, or `dist/`)
+3. Open an Anaplan model, then click the toolbar icon to open the side panel
 
-**Firefox**
+*Firefox:*
 
-1. Run `sh package.sh` to build `dist-firefox/`
-2. Open `about:debugging#/runtime/this-firefox`
-3. **Load Temporary Add-on** → select any file inside `dist-firefox/` (e.g. `manifest.json`)
-4. Open an Anaplan model, then click the toolbar icon to open the sidebar
+1. Open `about:debugging#/runtime/this-firefox`
+2. Click **Load Temporary Add-on** and select `manifest.json` in the unzipped Firefox folder (or
+   in `dist-firefox/`)
+3. Open an Anaplan model, then click the toolbar icon to open the sidebar
 
-A temporary add-on is removed when Firefox restarts, so you'll need to reload it each session
-during development. Firefox 140+ is required (AMO's mandatory data-collection disclosure key,
+A temporary add-on is removed when Firefox restarts, so you'll need to load it again each session. Firefox 140+ is required (AMO's mandatory data-collection disclosure key,
 `data_collection_permissions`, needs 140+; the `world: "MAIN"` content script used to read
 Anaplan's in-page data only needs 128+).
 
@@ -174,10 +170,12 @@ telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your 
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
 - `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
 - `api.anaplan.com` (Integration API model status, sent from the Anaplan tab): the Lock Monitor
-  only, if the session status check doesn't answer
+  only, and only if its session status check doesn't answer
 
-All of these calls only read. Results are kept in `storage.session`, compressed when large, and
-are dropped when the browser closes. Nothing is sent anywhere else.
+All of these calls only read. The extension never asks for or stores a password or API token.
+Results are kept in `storage.session`, compressed when large, and are dropped when the browser
+closes. The Lock Monitor's interval, length and *Notify me* choice are remembered in the panel's
+local storage. Nothing is sent anywhere else.
 
 Permissions requested:
 
@@ -200,7 +198,7 @@ content-scripts/
   inner.js               report engine (fetches and assembles every report)
   main.js                MAIN-world reader for Anaplan's in-page model cache
   api.js                 relays the Lock Monitor's status calls from the Anaplan tab
-chunks/                  report renderers (see below) and shared helpers:
+chunks/                  report renderers (see Notes for maintainers) and shared helpers:
                          sv_shared.js (table, search, sort, CSV), export_all.js
                          (Download all), table_sort.js (sorting for compiled views)
 *.html                   one page per report, loaded as side panel iframes
