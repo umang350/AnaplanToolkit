@@ -114,7 +114,11 @@ front changes it pushes `ia_context` and the panel drops every iframe and re-syn
 (each model's results stay cached under their own key).
 
 **Caching.** `chrome.storage.session` + an in-memory `Map`, keyed `ia:<page>:<customerId>:<modelId>`
-with a 6h max age, so switching model never shows stale data. `inner.js` probes with `cache_get`
+with a 6h max age, so switching model never shows stale data. `storage.session` holds 10 MB in all
+and Line Items on a large model is more than that alone, so `cacheSet` stores any result over
+`ZIP_AT` (256 KB of JSON) gzipped as base64 (`pack`/`unpack`), and on a quota error drops other
+models' then older cached reports (`evict`) and retries. A result that only lives in `mem` is lost
+when the worker idles out (~30s) - Summary then shows it "Not loaded". `inner.js` probes with `cache_get`
 *before* making Anaplan calls, so a hit skips the expensive work entirely. Separately, `IA_vc` in
 `inner.js` memoizes the jsonrpc saved-view fetch within a page session (cleared on force-refresh).
 
