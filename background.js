@@ -396,9 +396,23 @@ async function lkProbe(ids,run){
   let ac=run.ac=new AbortController(),tm=setTimeout(()=>ac.abort(),LK_TMO);
   try{
     await lkRenew();
-    let h={Accept:`application/json`,'Content-Type':`application/json`};
+    /* The first live run signed in fine, then the status call itself failed
+       with no HTTP answer (DevTools' red cross). So: with a token, the
+       browser's cookies stay home (credentials plus Anaplan's cookie jar can
+       turn a token request into a refused credentialed cross-origin one), no
+       Content-Type on a body-less call (it forces a CORS pre-check), and if
+       POST fails outright or is refused as 404/405, GET is tried once and
+       whichever answers is kept for the rest of the run (run.m). */
+    let h={Accept:`application/json`};
     lkToken&&(h.Authorization=`AnaplanAuthToken ${lkToken}`);
-    let r=await fetch(`${LK_API}/workspaces/${ids.w}/models/${ids.m}/status`,{method:`POST`,headers:h,credentials:`include`,signal:ac.signal});
+    let url=`${LK_API}/workspaces/${ids.w}/models/${ids.m}/status`,
+        go=m=>fetch(url,{method:m,headers:h,credentials:lkToken?`omit`:`include`,cache:`no-store`,signal:ac.signal}),
+        r=null,first=null;
+    try{r=await go(run.m||`POST`)}catch(e){if(e?.name===`AbortError`||run.m)throw e;first=e}
+    if(!run.m&&(!r||r.status===404||r.status===405)){
+      let r2=null;try{r2=await go(`GET`)}catch(e){if(e?.name===`AbortError`)throw e;if(!r)throw first}
+      r2&&(r2.ok||r2.status===401||r2.status===403||!r)?(r=r2,run.m=`GET`):r&&(run.m=`POST`)
+    }else run.m=run.m||`POST`;
     s.http=r.status;
     let j=null;try{j=await r.json()}catch(e){}
     if(r.status===401||r.status===403||(r.ok&&!j))auth=!0,s.err=r.status===401||r.status===403?`Login refused (HTTP ${r.status})`:`Anaplan's API sent a login page`;
@@ -410,7 +424,9 @@ async function lkProbe(ids,run){
       keys=[...Object.keys(j).filter(k=>k!==`requestStatus`),...Object.keys(q).map(k=>`requestStatus.`+k)]
     }
   }catch(e){
-    s.err=e?.name===`AbortError`?(run.stop?`Stopped`:`no reply in ${LK_TMO/1e3}s`):(e?.message||String(e)).slice(0,200)
+    // "Failed to fetch" alone says nothing: name the call so the report shows what was refused.
+    s.err=e?.name===`AbortError`?(run.stop?`Stopped`:`no reply in ${LK_TMO/1e3}s`)
+      :`Request failed (${(e?.message||String(e)).slice(0,120)}) - api.anaplan.com status call, ${lkToken?`token`:`browser login`}`
   }finally{clearTimeout(tm),run.ac=null}
   s.ms=Date.now()-s.t;
   // 423 / 424 are the API's "model locked" / "model offline".
