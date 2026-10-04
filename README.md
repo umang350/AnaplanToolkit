@@ -56,7 +56,10 @@ demand, grouped as in the panel's tab bar:
 - **Available**: Anaplan reports the model open with nothing running. **Busy**: Anaplan names a
   running step (a process, import, export or other task), with its progress and task where given.
   **Locked** / **Offline**: the API refused the model as locked or offline.
-- **Login**: your browser login is tried first. If Anaplan's API won't accept it, the Lock tab asks
+- **No login needed, if it works for you**: each run first asks the model's status the way
+  Anaplan's own screen does, over your existing session. Only if that gets no answer does it use the
+  API.
+- **API login**: Anaplan's API doesn't accept your browser login. If the monitor needs it, the Lock tab asks
   you to either paste an Anaplan API token (AnaplanAuthToken) or enter your Anaplan user ID and
   password. The user ID and password are swapped for a token at Anaplan's sign-in service and the
   password is not kept. Single sign-on users can only do this as SSO exception users. The token is

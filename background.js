@@ -392,19 +392,42 @@ function lkSaid(j){
    content-scripts/api.js in the tab's top frame and goes out as the page's.
    Resolves to {status, ok, j}; a timeout or Stop rejects as AbortError. */
 var lkSeq=0;
-function lkFetch(tab,url,run){
+function lkFetch(tab,url,run){return lkRelay(tab,{type:`ia_lk_fetch`,url,token:lkToken},run)}
+function lkRelay(tab,m,run){
   let id=++lkSeq,
-      call=api.tabs.sendMessage(tab,{type:`ia_lk_fetch`,id,url,token:lkToken,ms:LK_TMO},{frameId:0}).then(r=>{
+      call=api.tabs.sendMessage(tab,{...m,id,ms:LK_TMO},{frameId:0}).then(r=>{
         if(!r)throw Error(`the Anaplan tab didn't answer`);
         if(r.error){let e=Error(r.error);r.error===`timeout`&&(e.name=`AbortError`);throw e}
         let j=null;try{j=JSON.parse(r.text)}catch(e){}
-        return{status:r.status,ok:r.status>=200&&r.status<300,j}
+        return{status:r.status,ok:r.status>=200&&r.status<300,j,base:r.base||``}
       },e=>{throw Error(/Receiving end does not exist|Could not establish/i.test(e?.message||``)
         ?`the Toolkit isn't running in that Anaplan tab yet - reload the Anaplan tab`:e?.message||String(e))});
   if(!run)return call;
   call.catch(()=>{});   // a Stop below wins the race; this one may still fail later
   run.abort=()=>api.tabs.sendMessage(tab,{type:`ia_lk_abort`,id},{frameId:0}).catch(()=>{});
   return Promise.race([call,new Promise((z,no)=>{run.kill=()=>{let e=Error(`Stopped`);e.name=`AbortError`;no(e)}})])
+}
+
+/* Session first (no token, no API). Anaplan's own client learns why the
+   model is busy from jsonrpc requestType REQUEST_STATUS on its core - read
+   off a HAR of a live session: {requestSerialNumber:"<client GUID>-<n>",
+   requestStatusRequestCount, requestType:"REQUEST_STATUS", workspaceId,
+   modelId} -> {requestStatus:{currentStep:"Open" | "Updating" |
+   "Processing ...", progress, tooltip:"The system is currently processing
+   change(s) by user … Submitted at 08:10 (UTC)", taskId, ...}}, the same
+   fields as the Integration API. The client only asks about its own pending
+   request; whether the server answers for a serial of our own (run.serial,
+   a fresh GUID) with the model's real state is NOT confirmed - if the first
+   answer isn't a requestStatus, the run switches to the API (run.mode). It
+   goes through content-scripts/api.js, whose top frame is same-origin with
+   the core, so it carries the session cookie. */
+function lkSerial(){let a=new Uint8Array(16);crypto.getRandomValues(a);return [...a].map(b=>b.toString(16).padStart(2,`0`)).join(``).toUpperCase()}
+async function lkRpc(tab,ids,run){
+  run.serial=run.serial||lkSerial(),run.n=(run.n||0)+1;
+  let r=await lkRelay(tab,{type:`ia_lk_rpc`,base:run.base||``,body:{requestSerialNumber:`${run.serial}-${run.n}`,
+        requestStatusRequestCount:0,requestType:`REQUEST_STATUS`,workspaceId:ids.w,modelId:ids.m}},run);
+  r.base&&(run.base=r.base);
+  return r
 }
 
 /* A refused status call says only "Forbidden". The first live run got that
@@ -444,36 +467,49 @@ async function lkRenew(){
 async function lkProbe(tab,ids,run){
   let s={t:Date.now(),ms:0,http:0,step:``,progress:null,tooltip:``,taskId:``,type:``,err:``,status:``},keys=null,auth=!1;
   try{
-    await lkRenew();
-    /* GET - checked live: POST answers 415 without a Content-Type and 405
-       with one; GET gives {requestStatus:{currentStep, progress, tooltip,
-       taskId, creationTime, exportTaskType, ...}}. */
-    let r=await lkFetch(tab,`${LK_API}/workspaces/${ids.w}/models/${ids.m}/status`,run);
+    let r=null;
+    if(run.mode!==`api`){
+      // Session path (lkRpc). Kept once it has answered properly; on a first
+      // check that doesn't, the run moves to the API for good.
+      let x=null;try{x=await lkRpc(tab,ids,run)}catch(e){if(e?.name===`AbortError`||run.mode===`rpc`)throw e}
+      if(x&&x.ok&&x.j&&x.j.requestStatus)run.mode=`rpc`,r=x;
+      else if(run.mode===`rpc`)r=x||{status:0,ok:!1,j:null};
+      else run.mode=`api`,run.rpcWhy=x?`HTTP ${x.status}${lkSaid(x.j)?` - ${lkSaid(x.j)}`:x.j&&!x.j.requestStatus?` - no requestStatus`:``}`:`no answer`
+    }
+    s.via=run.mode;
+    if(!r){
+      await lkRenew();
+      /* GET - checked live: POST answers 415 without a Content-Type and 405
+         with one; GET gives {requestStatus:{currentStep, progress, tooltip,
+         taskId, creationTime, exportTaskType, ...}}. */
+      r=await lkFetch(tab,`${LK_API}/workspaces/${ids.w}/models/${ids.m}/status`,run)
+    }
     s.http=r.status;
     let j=r.j;
     let said=lkSaid(j);
     /* 401 is a missing or bad login; 403 is a login Anaplan accepted that may
        not do this (checked against api.anaplan.com: no token and a bad token
        both answer 401, so a 403 means the token arrived and was valid). */
-    if(r.status===401||r.status===403||(r.ok&&!j))auth=!0,s.err=r.status===401?`Login refused (HTTP 401${said?` - ${said}`:``})`
+    if(run.mode===`api`&&(r.status===401||r.status===403||(r.ok&&!j)))auth=!0,s.err=r.status===401?`Login refused (HTTP 401${said?` - ${said}`:``})`
       :r.status===403?`Forbidden (HTTP 403${said?` - ${said}`:``})`:`Anaplan's API sent a login page`;
     else if(!r.ok)s.err=`HTTP ${r.status}`+(j?.status?.message?` - ${String(j.status.message).slice(0,150)}`:``);
     else{
       let q=j.requestStatus||j.status&&typeof j.status==`object`&&j.status.requestStatus||{};
       s.step=String(q.currentStep??``).trim(),s.progress=typeof q.progress==`number`?q.progress:null,
       s.tooltip=String(q.tooltip??``).replace(/\s*\n\s*/g,` `).trim().slice(0,400),s.taskId=String(q.taskId??``),s.type=String(q.exportTaskType??``),
+      run.mode===`rpc`&&run.serial&&s.taskId.startsWith(run.serial)&&(s.taskId=``),   // our own serial, not a task
       keys=[...Object.keys(j).filter(k=>k!==`requestStatus`),...Object.keys(q).map(k=>`requestStatus.`+k)]
     }
   }catch(e){
     // "Failed to fetch" alone says nothing: name the call so the report shows what was refused.
     s.err=e?.name===`AbortError`?(run.stop?`Stopped`:`no reply in ${LK_TMO/1e3}s`)
-      :`Request failed (${(e?.message||String(e)).slice(0,160)}) - model status call, ${lkToken?`token`:`browser login`}`
+      :`Request failed (${(e?.message||String(e)).slice(0,160)}) - ${run.mode===`api`?`API model status, ${lkToken?`token`:`browser login`}`:`session status check`}`
   }finally{run.kill=run.abort=null}
   s.ms=Date.now()-s.t;
   // 423 / 424 are the API's "model locked" / "model offline".
   s.status=s.http===423?`Locked`:s.http===424?`Offline`:s.err?(auth?`Login refused`:`No reply`)
     :!s.step?`Unknown`   // a reply without currentStep: the view lists the fields it did hold
-    :/^open\b/i.test(s.step)&&!s.taskId?(s.ms>=LK_SLOW?`Slow reply`:`Available`)
+    :/^open\b/i.test(s.step)?(s.ms>=LK_SLOW?`Slow reply`:`Available`)   // REQUEST_STATUS echoes our serial as taskId even when open
     :/clos|unload/i.test(s.step)?`Not loaded`:`Busy`;
   return{s,keys,auth}
 }
@@ -517,7 +553,7 @@ async function lkLoop(tab,ids,key,run){
       setBusy(tab,page,!1);
       return push({type:`ia_page_error`,page,to:tab,message:had
         ?`Anaplan's API refused the model status call: ${p.s.err}. ${why2}`
-        :`Anaplan's API didn't accept your browser login (${p.s.err}). Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
+        :`Anaplan's session status check didn't answer (${run.rpcWhy||`unknown`}), and its API didn't accept your browser login (${p.s.err}). Paste an AnaplanAuthToken, or sign in with your user ID and password below, and start again.`},page)
     }
     S.push(p.s),keys=keys||p.keys;
     p.s.status!==cur&&(cur=p.s.status,label=`${cur} since ${new Date(p.s.t).toLocaleTimeString()}`);
@@ -530,7 +566,8 @@ async function lkLoop(tab,ids,key,run){
   }
   if(!S.length)return void(busy.has(r)&&setBusy(tab,page,!1));
   let hit=await cacheSet(page,key,{modelName:ids.name||``,workspaceId:ids.w,modelId:ids.m,started:t0,ended:Date.now(),every:LK_EVERY,
-    slow:LK_SLOW,why,samples:S,keys:keys||[],login:lkToken?`token`:`browser`});
+    slow:LK_SLOW,why,samples:S,keys:keys||[],login:run.mode===`rpc`?`session`:lkToken?`token`:`browser`,
+    rpcWhy:run.rpcWhy||``});
   setBusy(tab,page,!1);
   push({type:`ia_state`,page,ts:hit.ts,key,to:tab},page)
 }

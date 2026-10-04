@@ -234,8 +234,21 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   shell, which is up even while the model is busy. A missing or bad token is **401** (checked).
   Two page-reading attempts failed live and were removed: Workspace's summary call said Unlocked while
   busy, and the "Model is busy" banner needs the page up and dropped back to Available while shown.
-  **Login:** the page's own cookies first (the API allows credentials from Anaplan origins - whether it
-  honours the session is **not confirmed**); on 401/403 the run stops with `ia_page_error` and the
+  **Session first (`lkRpc`):** before the API, each run tries the call Anaplan's own client uses to
+  show "Model is busy" (read off a live HAR): jsonrpc `requestType: "REQUEST_STATUS"`
+  (`{requestSerialNumber: "<GUID>-<n>", requestStatusRequestCount, workspaceId, modelId}`) POSTed to
+  the model's core, `…/coreNNNN/anaplan/jsonrpc`, via `api.js` (`ia_lk_rpc`; the top frame is
+  same-origin with the core, so the session cookie goes and no token is needed). The reply is
+  `{requestStatus: {currentStep "Open" | "Updating" | "Processing ...", tooltip "…processing change(s)
+  by user … Submitted at 08:10 (UTC)", taskId = the serial asked about, …}}`. `api.js` finds the core
+  from the framework.jsp frame or the page's resource timings and follows a wrong core's
+  `redirectUrl`; it relays nothing but REQUEST_STATUS. Anaplan's client only asks about its *own*
+  pending request (2s after sending it, then every ~5s) - whether the server reports the model's real
+  state for our own serial is **not confirmed**. A run whose first REQUEST_STATUS has no
+  `requestStatus` moves to the API for good (`run.mode`, `run.rpcWhy` saved in the report).
+  **API login:** the API does **not** honour the session (confirmed: from the page it gets only
+  Cloudflare/consent cookies -> 401; region URLs `us1a.app.anaplan.com/2/0/…` answer 503 "deprecated");
+  on 401/403 the run stops with `ia_page_error` and the
   panel's login form (`#empty-token`, Lock tab only) takes an AnaplanAuthToken or a user ID +
   password, which `lkLogin` swaps for a token at `auth.anaplan.com/token/authenticate` from the worker
   (auth.anaplan.com accepts the extension origin; the password is used once and never kept - SSO
