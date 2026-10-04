@@ -152,6 +152,10 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   are committed Svelte build output (actions, action_usages, pages, sv_filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
+  One hand patch: in the shared Svelte runtime `chunks/style-Xzc7Y0WM.js`, the template function
+  (`Xr`) builds its fragment with `DOMParser` instead of `template.innerHTML`, because AMO's validator
+  flags that `innerHTML` as unsafe. Same nodes either way (checked on every template the views use).
+  Re-apply it if those chunks are ever rebuilt.
 - `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
   `modules`, `line_items`, `lists`, `revisions` and `lock_monitor` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
