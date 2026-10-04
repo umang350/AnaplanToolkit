@@ -600,7 +600,12 @@
     summary.deadline = 0;
     var was = VIEWS.filter(function (x) { return state[x.page].busy; });
     send({ type: 'ia_cancel' }).catch(function () {});
-    was.forEach(function (x) { fail(x.page, 'Stopped.'); });
+    // Stop is how a live view (Lock Monitor) finishes, not a failure: keep its
+    // report on screen until the worker's saved copy arrives (ia_state).
+    was.forEach(function (x) {
+      if (x.live) { state[x.page].busy = false; state[x.page].steps = []; render(); }
+      else fail(x.page, 'Stopped.');
+    });
   }
 
   // Pushes for one page are latest-wins, so ignore anything that arrives late.

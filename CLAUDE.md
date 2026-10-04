@@ -271,7 +271,11 @@ status) and `auth.anaplan.com` (token renewal). No non-Anaplan server is ever co
   (10s). The view shows Anaplan's "(UTC)" times in local time (`localTip`; CSV keeps
   `TooltipAsSent`) and its note says which method the run used.
   Stop is how it ends: `ia_cancel` stops the run (waking it from its interval wait) and the worker
-  caches what it gathered (`LIVE`) where other stopped runs are dropped. It also ends after its
+  caches what it gathered (`LIVE`) where other stopped runs are dropped. The panel's `stop()` keeps a
+  live view's report up (no `fail()`) until that saved copy arrives; a run stopped before its first
+  check answers with `ia_page_error`. `modelKey` never caches the page's `""` (what a busy model gives
+  after 3s): it falls back to the key in the new UX URL (`lkIds`), the same `<customer>:<model>` the
+  page gives - an empty key once made a just-saved run read as "no longer cached". It also ends after its
   length, about two minutes of failed checks in a row, or a refused login mid-run. `live` in `VIEWS` / `REPORTS` keeps it out of Get all data and the loaded
   count.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:

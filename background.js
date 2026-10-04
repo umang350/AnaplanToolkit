@@ -182,8 +182,16 @@ async function modelKey(tabId){
     if(known!=null)return known;
     try{
       let key=await api.tabs.sendMessage(tabId,{type:`model_key`});
-      if(typeof key==`string`)return keyByTab.set(tabId,key),rememberKey(key),key
+      if(typeof key==`string`&&key)return keyByTab.set(tabId,key),rememberKey(key),key
     }catch(e){}
+    /* The page couldn't name its model in time - its answer is "" after 3s,
+       which is what a busy model gives. That "" used to be cached and used:
+       stopping the Lock Monitor during a busy spell (after Anaplan had changed
+       the tab's URL, which drops keyByTab) looked the saved run up under no
+       model and called it "no longer cached". The new UX URL names the model
+       (customers/<c>/…/models/<m>), so use that, the same key the page gives,
+       and don't cache it - the page's own answer wins once it can give one. */
+    try{let ids=lkIds((await api.tabs.get(tabId))?.url);if(ids&&ids.c)return `${ids.c}:${ids.m}`}catch(e){}
   }
   // A tab that cannot name its model yet is still loading one - possibly not the
   // last model we saw, so falling back to lastKey there showed the previous
@@ -614,7 +622,10 @@ async function lkLoop(tab,ids,key,run){
     let w=run.every-(Date.now()-a);
     w>0&&await new Promise(z=>{let t=setTimeout(z,w);run.kill=()=>{clearTimeout(t),z()}})
   }
-  if(!S.length)return void(busy.has(r)&&setBusy(tab,page,!1));
+  // Stopped before any check came back: nothing to save, and the panel (which
+  // keeps a live view up on Stop, waiting for the saved copy) must hear so.
+  if(!S.length)return busy.has(r)&&setBusy(tab,page,!1),void push({type:`ia_page_error`,page,to:tab,
+    message:`Stopped before the first check came back - nothing to save.`},page);
   let hit=await cacheSet(page,key,snap(why,!1));
   setBusy(tab,page,!1);
   push({type:`ia_state`,page,ts:hit.ts,key,to:tab},page)
