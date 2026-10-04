@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Fourteen read-only report views, each
+the structure of the Anaplan model open in the active tab. Fifteen read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -116,9 +116,12 @@ front changes it pushes `ia_context` and the panel drops every iframe and re-syn
 **Caching.** `chrome.storage.session` + an in-memory `Map`, keyed `ia:<page>:<customerId>:<modelId>`
 with a 6h max age, so switching model never shows stale data. `storage.session` holds 10 MB in all
 and Line Items on a large model is more than that alone, so `cacheSet` stores any result over
-`ZIP_AT` (256 KB of JSON) gzipped as base64 (`pack`/`unpack`), and on a quota error drops other
-models' then older cached reports (`evict`) and retries. A result that only lives in `mem` is lost
-when the worker idles out (~30s) - Summary then shows it "Not loaded". `inner.js` probes with `cache_get`
+`ZIP_AT` (32 KB of JSON) gzipped as base64 (`pack`/`unpack`), and on a quota error drops other
+models' then this model's older cached reports from storage (`evict`) and retries - this model's
+stay in `mem`, which serves them while the worker lives. A result that only lives in `mem` is lost
+when the worker idles out (~30s) - Summary then shows it "Not loaded", and the panel, told
+`{hit:false}` by `ia_serve`, drops that view back to Get data with a note (`maybeServe`) rather
+than leave it on its loader. `inner.js` probes with `cache_get`
 *before* making Anaplan calls, so a hit skips the expensive work entirely. Separately, `IA_vc` in
 `inner.js` memoizes the jsonrpc saved-view fetch within a page session (cleared on force-refresh).
 
@@ -131,7 +134,8 @@ would leave the spinner up forever. `background.js` arms `FIRST_SIGN` (15s) on t
 gateway's model list (`/a/springboard-platform-gateway-service/customer/…/models?limit=50000`, the
 list behind Anaplan's Models menu - Workspace's All Workspaces tab), the
 springboard definition service (`/a/springboard-definition-service/customer/…/pages`, and `/boards|reports|grid-pages/<guid>`
-per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions (and, for Workspace, model summaries), batched
+per page) and `/jsonrpc` with `requestType: VIEW_REQUEST_SET` for saved-view definitions (and, for Workspace, model summaries;
+for Revisions, the read-only `GET_MODEL_REVISIONS` system action), batched
 10 views at a time (`IA_VB`), 4 batches in flight (`IA_VW`). `IA_pool()` caps concurrency at 8 for
 page definitions. Opening a saved view makes Anaplan evaluate its filters, and a few views on large
 modules cost a minute or more however little is requested — small parallel batches keep the cheap
@@ -153,7 +157,7 @@ No other server is ever contacted.
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all fourteen views are expected to export and search
+  rebuilt. Keep the two implementations in step; all fifteen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Every table sorts by clicking a column header (ascending, descending, back to original order).
@@ -172,7 +176,15 @@ No other server is ever contacted.
   is probed under several likely key names (`IA_pick`) and left empty when none matches.
   Confirmed on a live model (a console dump): line item info holds `format` (`dataType`, …),
   `formula`, `fullAppliesTo` (array of list ids), `isSummary` and `leafPeriodType.entityLabel`
-  (time scale; "Not Applicable" when unset) - there is no summary-method field. A list's info holds
+  (time scale; "Not Applicable" when unset) - there is no summary-method field. `fullAppliesTo` also
+  carries Time (`20000000003`) and Versions, which Anaplan's Applies To column leaves out (they have
+  columns of their own): ids the name index can't resolve are dropped when shorter than 12 digits
+  (lists and subsets are 12), and a module's own `appliesTo` is read before its `fullAppliesTo`.
+  A module's info also holds `leafPeriodType` (Time Scale), `timeRangeLabel` and `versionSelection`
+  (`IA_modTime`): the Modules view shows Time Scale and Time Range columns, Versions is CSV only.
+  `timeRangeLabel` is "Time" where Anaplan's grid says "Model Calendar", and only counts when the
+  module has a time scale - otherwise the grid says "Not Applicable". That mapping is inferred
+  from the grid, not confirmed field by field. A list's info holds
   `parentHierarchyEntityLongId` (`-1` = none), `itemCount`, and `propertiesLabelPage` +
   `propertiesInfo` (`{format, formula}` per property, same order). That label page's arrays are
   **flat** (`labels: [...]`), unlike every other label page (`[[...]]`); `IA_page` reads both. Names and
@@ -195,6 +207,13 @@ No other server is ever contacted.
   "Copy API call" buttons copy an Integration API v2 `curl` (`/processes|imports|exports|actions/
   <id>/tasks`) for the user to run with their own token - the extension itself never calls
   `api.anaplan.com` and never runs anything.
+- **Revisions** (`revisions`, `IA_grev`, `chunks/revisions.js`) is one `/jsonrpc` call with no view
+  requests and `systemActions: [{actionId: "GET_MODEL_REVISIONS", params: {modelId, workspaceId}}]`,
+  as Anaplan's own Revision tags page sends it; the tags are in `result.systemActionResults[].revisions`
+  (title, description, created by/on/in, `revisionTargetModels` = the models it was applied to and
+  how). "Synced" mirrors that page's icon: this model is a target by sync/import/copy rather than
+  "User added revision". "Current": the tag's `metadataId` equals the reply's, i.e. the model's
+  definition is unchanged since. Two tabs - Revision Tags and Applied To.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state
@@ -214,7 +233,7 @@ No other server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the fifteenth view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the sixteenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button

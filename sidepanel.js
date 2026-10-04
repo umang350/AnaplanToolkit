@@ -89,7 +89,7 @@
       desc: 'Every module with its ID, dimensions, line item and saved view counts, and the App pages that use it.',
       preview: ['All', 'Not on a page'],
       heading: 'Modules', search: 'Search by module, ID or dimension...',
-      cols: ['Module', 'Dimensions', 'Contents', 'Pages'] },
+      cols: ['Module', 'Dimensions', 'Time Scale', 'Time Range', 'Pages'] },
     { page: 'line_items', tab: 'Line Items', group: 'Structure', sub: 'Line Items', title: 'Line Items',
       desc: 'Every line item in every module with its ID, format, applies-to and formula. Search matches formulas too.',
       heading: 'Line Items', search: 'Search by module, line item, format or formula...',
@@ -99,6 +99,11 @@
       preview: ['Lists', 'Properties'],
       heading: 'Lists', search: 'Search by list, ID or parent...',
       cols: ['List', 'Parent', 'Items', 'Properties'] },
+    { page: 'revisions', tab: 'Revisions', title: 'Revision Tags',
+      desc: 'The model\'s revision tags - who created each and when - and every model each one was applied to.',
+      preview: ['Revision Tags', 'Applied To'],
+      heading: 'Revision Tags', search: 'Search by title, description, user or model...',
+      cols: ['Title', 'Created by', 'Created on', 'Created in'] },
     { page: 'workspace', tab: 'Workspace', group: 'Workspace', sub: 'Current', title: 'Workspace Models & Storage',
       desc: 'Every model in this workspace with its size and state, and how much of the workspace allowance is used.',
       preview: ['Active', 'Archived', 'Deleted'],
@@ -244,8 +249,22 @@
   function maybeServe(page) {
     var st = state[page];
     if (!st.frame || !st.loaded || !st.ts || st.served === st.ts) return;
-    st.served = st.ts;
-    send({ type: 'ia_serve', page: page }).catch(function () {
+    var ts = st.served = st.ts;
+    /* The worker can answer that it no longer has the report: its storage is
+       10 MB, and making room for a big one (Line Items) can push older ones
+       out. That answer used to be ignored, leaving the view on its loader for
+       good. Fall back to Get data and say why. */
+    send({ type: 'ia_serve', page: page }).then(function (r) {
+      if (!r || r.hit !== false || st.ts !== ts) return;
+      if (page === 'summary') { st.ts = 0; st.served = 0; startSummary(); return; }
+      if (st.frame) st.frame.remove();
+      st.frame = null;
+      st.loaded = false;
+      st.served = 0;
+      st.ts = 0;
+      st.note = 'This report is no longer cached - the extension\'s storage was full. Get data to gather it again.';
+      render();
+    }, function () {
       st.served = 0;
     });
   }

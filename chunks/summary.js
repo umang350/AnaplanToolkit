@@ -39,6 +39,7 @@ var REPORTS = [
   { page: 'modules', name: 'Module List', unit: 'modules', key: 'modules' },
   { page: 'line_items', name: 'Line Items', unit: 'line items', key: 'lineItems' },
   { page: 'lists', name: 'Lists', keys: [['lists', 'lists'], ['properties', 'properties']] },
+  { page: 'revisions', name: 'Revision Tags', keys: [['revisions', 'tags'], ['applied', 'models applied to']] },
   { page: 'workspace', name: 'Workspace', unit: 'models', key: 'models' },
   { page: 'workspace_all', name: 'All Workspaces', unit: 'workspaces', key: 'workspaces' }
 ];
