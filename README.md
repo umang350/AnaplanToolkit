@@ -3,12 +3,27 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
+**Version:** 2.6.0
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
 extension; you may not copy, redistribute, or reuse its code.
 
 ---
+
+## What's new in 2.6.0
+
+- **Structure** tab: Modules (with time scale and time range), Line Items (formulas searchable)
+  and Lists (with properties), read from Anaplan's in-page model data.
+- **Actions › Steps**: each process's actions in order, with *Copy API call*.
+- **Revisions**: revision tags and every model each was applied to.
+- **Lock Monitor**: watches whether the model is available, busy, locked or offline, and says
+  what is running when it's busy.
+- **Workspace**: deleted models (with purge date) on Current, and storage across every workspace
+  on All.
+- **Summary**: *Get all data* and *Download all as CSV (.zip)*.
+- Every table sorts by clicking a column header.
+- Large cached reports are compressed, so they survive the background worker idling out.
 
 ## What it does
 
@@ -31,7 +46,7 @@ demand, grouped as in the panel's tab bar:
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
-| **Lock** | | Checks once a second whether the model is available, busy, locked or offline, until you press Stop; then shows the timeline and every check, exportable to CSV |
+| **Lock** | | Checks at an interval you choose whether the model is available, busy, locked or offline, and what is running; shows a timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
 | | All | Storage for every workspace you can access, and every active model across them |
 
@@ -174,6 +189,7 @@ content-scripts/
   outer.js               keyboard shortcuts in the modelling UI frame
   inner.js               report engine (fetches and assembles every report)
   main.js                MAIN-world reader for Anaplan's in-page model cache
+  api.js                 relays the Lock Monitor's status calls from the Anaplan tab
 chunks/                  report renderers (see below) and shared helpers:
                          sv_shared.js (table, search, sort, CSV), export_all.js
                          (Download all), table_sort.js (sorting for compiled views)
