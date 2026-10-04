@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "Anaplan Toolkit",
   "short_name": "Anaplan Toolkit",
-  "description": "Analyze the structure of an Anaplan model: actions, usages, modules, filters, and saved views. Not affiliated with Anaplan, Inc.",
-  "version": "2.5.0",
-  "version_name": "2.5.0",
+  "description": "Analyze the structure of an Anaplan model: actions, process steps, modules, line items, lists, filters, and saved views. Not affiliated with Anaplan, Inc.",
+  "version": "2.6.0",
+  "version_name": "2.6.0",
   "author": "Umang Chauhan",
   "icons": {
     "16": "icon-16.png",

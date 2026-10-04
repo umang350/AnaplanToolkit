@@ -12,20 +12,28 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ## What it does
 
-Opens a side panel with seven reports, each gathered on demand from the Anaplan
+Opens a side panel of reports, each gathered on demand from the Anaplan
 model in the active tab:
 
 | View | What it shows |
 |---|---|
 | **Actions** | Internal IDs for Processes, Imports and Files, for API integrations |
 | **Usages** | Where Actions are used across Apps and Pages |
+| **Steps** | The actions each process runs, in order, with each import's source and target; actions no process runs; a *Copy API call* button (Integration API `curl`) per process and action |
 | **Modules** | Which Apps and Pages consume each module (backend → frontend lineage) |
 | **Filters** | Line Items used as page filters or for conditional formatting |
 | **SV Filters** | *Disabled* — Line Items used as filters in Saved Views (too slow on large models, see below) |
 | **SV Screens** | Which Saved View each App Page widget reads from |
 | **SV Actions** | Imports whose source is a Saved View — see the caveats below |
+| **Structure › Modules** | Every module with its ID, dimensions, line item and saved view counts, and the App pages that use it |
+| **Structure › Line Items** | Every line item with its ID, format, applies-to, time scale, summary and formula — search matches formulas |
+| **Structure › Lists** | Every list with its ID and parent, and every list property with its format and formula |
+| **Workspace** | Models and storage in this workspace, and across every workspace you can access |
 
-Every view exports to CSV and has a search box. Results are cached per model
+Every view exports to CSV and has a search box. The Structure reports read Anaplan's in-page
+model data, so they make no extra requests (Modules also reads the App page list). Fields Anaplan
+doesn't expose there for a given model show as empty, and the page says which. The *Copy API call*
+buttons only copy a request to the clipboard — the extension never runs a process or action. Results are cached per model
 for 6 hours; the refresh icon re-gathers.
 
 **SV Filters and SV Items are disabled** (shown greyed out, tagged *Slow*). Both have to open

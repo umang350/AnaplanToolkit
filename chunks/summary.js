@@ -27,6 +27,7 @@ var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chro
 var REPORTS = [
   { page: 'actions', name: 'Actions', unit: null },
   { page: 'action_usages', name: 'Usages', unit: 'usages' },
+  { page: 'process_steps', name: 'Process Steps', keys: [['steps', 'steps'], ['loose', 'not in a process']] },
   { page: 'pages', name: 'Modules', unit: 'modules' },
   { page: 'filter_items', name: 'Filters', unit: 'rows' },
   { page: 'sv_views', name: 'SV List', unit: 'saved views' },
@@ -34,6 +35,9 @@ var REPORTS = [
   { page: 'sv_actions', name: 'SV Actions', unit: 'imports' },
   { page: 'sv_filter_items', name: 'SV Filters', unit: 'rows', off: true },
   { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true },
+  { page: 'modules', name: 'Module List', unit: 'modules', key: 'modules' },
+  { page: 'line_items', name: 'Line Items', unit: 'line items', key: 'lineItems' },
+  { page: 'lists', name: 'Lists', keys: [['lists', 'lists'], ['properties', 'properties']] },
   { page: 'workspace', name: 'Workspace', unit: 'models', key: 'models' },
   { page: 'workspace_all', name: 'All Workspaces', unit: 'workspaces', key: 'workspaces' }
 ];
@@ -97,7 +101,7 @@ function sizeText(r, size) {
   if (size == null) return '';
   if (typeof size === 'number') return num(size) + ' ' + r.unit;
   if (r.key) return typeof size[r.key] === 'number' ? num(size[r.key]) + ' ' + r.unit : '';
-  return ACTION_LISTS
+  return (r.keys || ACTION_LISTS)
     .filter(function (a) { return typeof size[a[0]] === 'number'; })
     .map(function (a) { return num(size[a[0]]) + ' ' + a[1]; })
     .join(' · ');

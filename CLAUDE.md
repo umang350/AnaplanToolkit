@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Ten read-only report views, each
+the structure of the Anaplan model open in the active tab. Fourteen read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -74,7 +74,7 @@ Three separate JS worlds cooperate; understanding the split is the key to this c
 
 ```
 sidepanel.html/js/css   side panel shell: tab bar, "Get data" button, progress list,
-  └─ <iframe> ×7        one lazily created iframe per view (actions.html, pages.html, …)
+  └─ <iframe> ×n        one lazily created iframe per view (actions.html, pages.html, …)
 background.js           service worker: message router, per-model cache, watchdogs
 content-scripts/
   outer.js              ISOLATED world on the modeling-ui frame — keyboard shortcuts only
@@ -138,19 +138,43 @@ No other server is ever contacted.
 
 ## Editing constraints
 
-- **Four of the nine view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
+- **Four of the view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
   are committed Svelte build output (actions, action_usages, pages, sv_filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
-- `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens` and `sv_actions` are hand-written ES
-  modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
+- `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
+  `modules`, `line_items` and `lists` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all ten views are expected to export and search
-  identically.
+  rebuilt. Keep the two implementations in step; all fourteen views are expected to export and search
+  identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
+  (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
+- **Structure** is a panel group of three reports read off the in-page model cache by
+  `IA_structure()` in `main.js`: `modules` (`IA_gmod`), `line_items` (`IA_gli`) and `lists`
+  (`IA_glst`, Lists and Properties tabs), sharing `chunks/structure_shared.js`. That detail
+  (formulas especially) is megabytes on a large model, so `main.js` only builds it when asked with
+  `REQUEST_ANAPLAN_DATA {IA_want:"structure"}` - `P(0, "structure")` in `inner.js`, which keeps
+  waiting if a reply meant for another concurrent gather arrives without `IA_struct`. Anaplan's
+  cache shape for per-object detail is **not confirmed against a live model**: every field
+  (format, applies-to, formula, summary, time scale, list parent, item count, properties) is
+  probed under several likely key names (`IA_pick`) and left empty when none matches. Names and
+  IDs come from the label pages the other reports already rely on, so those are solid.
+  `IA_shape` carries the keys the cache actually held, and a view with an empty column says so
+  with those keys in its note - that list is what to use to fix a probe. Line Items and Lists
+  make no Anaplan calls; Modules also reads the `/pages` list (as Linked Pages does) for the App
+  pages each module feeds, and still reports modules if that call fails.
+- **Process Steps** (`process_steps`, Actions group, `IA_gps`/`IA_procSteps`) reuses
+  `IA_actionDefs(ctx, true)`, which then keeps every cell of the process and export rows
+  (`IA_cells`; the Actions views' cache stays small). Which `PROCESS_PROPERTY` column lists a
+  process's actions is not documented either: the row's cells are read in order and the first one
+  naming known action ids (or, failing that, exact action names) is the step list. A process
+  whose steps can't be found gets a "No actions found" row and is counted in the page note. Its
+  "Copy API call" buttons copy an Integration API v2 `curl` (`/processes|imports|exports|actions/
+  <id>/tasks`) for the user to run with their own token - the extension itself never calls
+  `api.anaplan.com` and never runs anything.
 - **Workspace** is a panel group of two reports sharing `chunks/workspace_shared.js`:
   `workspace` (Current - `chunks/workspace.js`, gathered by `IA_gws()`) lists the current
   workspace's models (Active / Archived / Deleted tabs - a deleted model keeps its row, state
@@ -170,7 +194,7 @@ No other server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the eleventh view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the fifteenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. It and the Actions tab counts

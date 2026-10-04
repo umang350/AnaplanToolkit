@@ -46,6 +46,11 @@
     { page: 'action_usages', tab: 'Usages', group: 'Actions', sub: 'Usages', title: 'Action Usages',
       desc: 'Where your Actions are used across Apps and Pages.',
       heading: 'Action Dependencies', search: 'Search Line Items...', cols: ['App', 'Page', 'Widget', 'Actions'] },
+    { page: 'process_steps', tab: 'Steps', group: 'Actions', sub: 'Steps', title: 'Process Steps',
+      desc: 'The actions each process runs, in order, with each import\'s source and target - and the actions no process runs.',
+      preview: ['Steps', 'Not in a process'],
+      heading: 'Process Steps', search: 'Search by process, action, source or target...',
+      cols: ['Process', '#', 'Action', 'Source', 'Target'] },
     { page: 'pages', tab: 'Modules', group: 'Pages', sub: 'Modules', title: 'Linked Pages',
       desc: 'Which Apps and Pages use your modules, to track lineage from backend to frontend.',
       heading: 'Module Usage in Pages', search: 'Search Modules...', cols: ['Module', 'Used in Pages'] },
@@ -78,6 +83,22 @@
       desc: 'Which Line Items are selected to display inside each Saved View.',
       heading: 'Line Items in Saved Views', search: 'Search by module, saved view or line item...',
       cols: ['Module', 'Saved View', 'Line Item'] },
+    /* Structure: read off Anaplan's in-page model cache, so Line Items and
+       Lists make no Anaplan calls; Modules adds the app page list. */
+    { page: 'modules', tab: 'Modules', group: 'Structure', sub: 'Modules', title: 'Modules',
+      desc: 'Every module with its ID, dimensions, line item and saved view counts, and the App pages that use it.',
+      preview: ['All', 'Not on a page'],
+      heading: 'Modules', search: 'Search by module, ID or dimension...',
+      cols: ['Module', 'Dimensions', 'Contents', 'Pages'] },
+    { page: 'line_items', tab: 'Line Items', group: 'Structure', sub: 'Line Items', title: 'Line Items',
+      desc: 'Every line item in every module with its ID, format, applies-to and formula. Search matches formulas too.',
+      heading: 'Line Items', search: 'Search by module, line item, format or formula...',
+      cols: ['Module', 'Line Item', 'Format', 'Applies To', 'Formula'] },
+    { page: 'lists', tab: 'Lists', group: 'Structure', sub: 'Lists', title: 'Lists & Properties',
+      desc: 'Every list with its ID and parent, and every list property with its format and formula.',
+      preview: ['Lists', 'Properties'],
+      heading: 'Lists', search: 'Search by list, ID or parent...',
+      cols: ['List', 'Parent', 'Items', 'Properties'] },
     { page: 'workspace', tab: 'Workspace', group: 'Workspace', sub: 'Current', title: 'Workspace Models & Storage',
       desc: 'Every model in this workspace with its size and state, and how much of the workspace allowance is used.',
       preview: ['Active', 'Archived', 'Deleted'],
@@ -134,8 +155,9 @@
   }
 
   /* Views sharing a `group` get one button in the top bar plus a second row
-     of sub-tabs (Actions: IDs | Usages; Pages: Modules | Filters;
-     Saved View: Filters | List | Items | Screens | Actions). Each is still
+     of sub-tabs (Actions: IDs | Usages | Steps; Pages: Modules | Filters;
+     Saved View: Filters | List | Items | Screens | Actions; Structure:
+     Modules | Line Items | Lists). Each is still
      its own page, gather and iframe - only the navigation is merged. `last`
      remembers which member the group button returns to. */
   var groups = {};

@@ -3,7 +3,8 @@
  * Author: Umang Chauhan
  */
 /*
- * Shared shell for the hand-written report pages (Workspace, Filters, SV List, SV Items, SV Screens, SV Actions).
+ * Shared shell for the hand-written report pages (Workspace, Filters, SV List, SV Items, SV Screens, SV Actions,
+ * Process Steps, Modules, Line Items, Lists).
  *
  * The other five views are compiled Svelte (chunks/<page>-<hash>.js) and there
  * is no Svelte source in this repository - the chunks are committed build
@@ -248,8 +249,12 @@ function noMatchState() {
      filename    CSV file name
      top         optional data -> Node, shown under the heading, above the note and
                  table (Workspace's storage meter); not searched or exported
+     rows        optional data -> [row], when the data is not the row array itself
+     max         optional row cap: only this many rows are drawn, with a button to
+                 draw more - for reports that run to tens of thousands of rows.
+                 Search and Export to CSV still cover every row.
      tabs        optional [{label, rows: data -> [row], heading, note, top, placeholder,
-                 cols, headers, key, cells, csvRow | csv, filename}] - one table
+                 cols, headers, key, cells, csvRow | csv, filename, max}] - one table
                  per tab, under a tab bar, with a row count beside the heading.
                  Without it the page is a single table over the data array,
                  described by the fields above.
@@ -258,12 +263,12 @@ function noMatchState() {
 export function renderPage(opts) {
   var mount = document.getElementById('app'),
       data = null, error = '', query = '', scrolled = false,
-      tabs = opts.tabs || [opts], active = 0;
+      tabs = opts.tabs || [opts], active = 0, shown = 0;
 
   try {
     api.runtime.onMessage.addListener(function (msg) {
       if (!msg || !msg.type) return;
-      if (msg.type === opts.page + '_data') { data = msg.data || []; error = ''; render(); }
+      if (msg.type === opts.page + '_data') { data = msg.data || []; error = ''; shown = 0; render(); }
       if (msg.type === 'error') { error = msg.message; render(); }
     });
   } catch (e) { /* not in an extension page; the states below still render */ }
@@ -291,6 +296,7 @@ export function renderPage(opts) {
 
   function buildTable(rows) {
     var t = tabs[active],
+        lim = t.max ? Math.max(shown, t.max) : rows.length,
         card = el('div', 'rounded-md border border-border'),
         head = el('div', 'grid ' + t.cols + ' border-b border-border px-2 py-3');
     t.headers.forEach(function (h) {
@@ -299,14 +305,26 @@ export function renderPage(opts) {
     card.appendChild(head);
 
     var frag = document.createDocumentFragment();
-    rows.forEach(function (row) {
+    rows.slice(0, lim).forEach(function (row) {
       var line = el('div', 'grid items-center ' + t.cols +
         ' px-2 py-1 hover:bg-muted border-border not-last:border-b group');
       t.cells(row).forEach(function (c) { line.appendChild(c); });
       frag.appendChild(line);
     });
     card.appendChild(frag);
-    return card;
+    if (rows.length <= lim) return card;
+
+    var box = el('div'), rest = rows.length - lim,
+        more = el('button', 'ia-more', 'Show ' + Math.min(t.max, rest).toLocaleString() + ' more · ' +
+                  rest.toLocaleString() + ' not shown');
+    more.type = 'button';
+    more.addEventListener('click', function () {
+      shown = lim + t.max;
+      box.replaceWith(buildTable(rows));
+    });
+    box.appendChild(card);
+    box.appendChild(more);
+    return box;
   }
 
   function render() {
@@ -343,6 +361,7 @@ export function renderPage(opts) {
         b.addEventListener('click', function () {
           if (i === active) return;
           active = i;
+          shown = 0;
           render();
         });
         list.appendChild(b);
@@ -409,6 +428,7 @@ export function renderPage(opts) {
     input.value = query;
     input.addEventListener('input', function () {
       query = input.value;
+      shown = 0;
       // Redraw in place so the caret and focus survive the keystroke.
       var fresh = matches();
       count.textContent = fresh.length + ' results';
