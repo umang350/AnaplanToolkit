@@ -385,13 +385,35 @@ function lkSaid(j){
   return typeof m==`string`?m.replace(/\s+/g,` `).trim().slice(0,160):``
 }
 
+/* api.anaplan.com answers any request from an extension origin with an empty
+   403 (checked with a valid token: Origin chrome-extension:// -> 403, Origin
+   https://us1a.app.anaplan.com -> 200, and its preflight allows GET with an
+   Authorization header from every Anaplan page). So each API call is made by
+   content-scripts/api.js in the tab's top frame and goes out as the page's.
+   Resolves to {status, ok, j}; a timeout or Stop rejects as AbortError. */
+var lkSeq=0;
+function lkFetch(tab,url,run){
+  let id=++lkSeq,
+      call=api.tabs.sendMessage(tab,{type:`ia_lk_fetch`,id,url,token:lkToken,ms:LK_TMO},{frameId:0}).then(r=>{
+        if(!r)throw Error(`the Anaplan tab didn't answer`);
+        if(r.error){let e=Error(r.error);r.error===`timeout`&&(e.name=`AbortError`);throw e}
+        let j=null;try{j=JSON.parse(r.text)}catch(e){}
+        return{status:r.status,ok:r.status>=200&&r.status<300,j}
+      },e=>{throw Error(/Receiving end does not exist|Could not establish/i.test(e?.message||``)
+        ?`the Toolkit isn't running in that Anaplan tab yet - reload the Anaplan tab`:e?.message||String(e))});
+  if(!run)return call;
+  call.catch(()=>{});   // a Stop below wins the race; this one may still fail later
+  run.abort=()=>api.tabs.sendMessage(tab,{type:`ia_lk_abort`,id},{frameId:0}).catch(()=>{});
+  return Promise.race([call,new Promise((z,no)=>{run.kill=()=>{let e=Error(`Stopped`);e.name=`AbortError`;no(e)}})])
+}
+
 /* A refused status call says only "Forbidden". The first live run got that
    with a token that had just signed in fine, so before giving up the worker
    works out which part was refused: the token itself (auth.anaplan.com's own
    validate call), the API as a whole (GET /users/me, the simplest call there
    is), or only the model status call - a permission on that call or model,
    not the login. The answer goes into the panel's message. */
-async function lkDiagnose(){
+async function lkDiagnose(tab){
   let h={Authorization:`AnaplanAuthToken ${lkToken}`,Accept:`application/json`},
       get=async u=>{
         let ac=new AbortController(),tm=setTimeout(()=>ac.abort(),1e4);
@@ -401,7 +423,8 @@ async function lkDiagnose(){
       },
       v=await get(`https://auth.anaplan.com/token/validate`);
   if(!v.ok)return `The token itself was refused by Anaplan's sign-in service (${v.code?`HTTP ${v.code}`:v.e}${lkSaid(v.j)?` - ${lkSaid(v.j)}`:``}): it has expired or was not copied whole.`;
-  let me=await get(`${LK_API}/users/me`),who=me.j?.user?.email||me.j?.user?.id||``;
+  let me;try{let r=await lkFetch(tab,`${LK_API}/users/me`);me={ok:r.ok,code:r.status,j:r.j}}catch(e){me={ok:!1,code:0,j:null,e:e?.message||String(e)}}
+  let who=me.j?.user?.email||me.j?.user?.id||``;
   if(!me.ok)return `The token is valid, but Anaplan's API refused even its simplest call, /users/me (${me.code?`HTTP ${me.code}`:me.e}${lkSaid(me.j)?` - ${lkSaid(me.j)}`:``}). Your account may not be allowed to use the Integration API, or the API isn't receiving the token from the extension.`;
   return `The token is valid and the API accepts it${who?` (signed in as ${who})`:``}, but Anaplan won't give this account the model's status. It is likely limited to workspace administrators of this model's workspace - ask one to run the monitor, or to grant you workspace admin.`
 }
@@ -418,30 +441,16 @@ async function lkRenew(){
 
 // One check. `auth` is set when the API refused the login (401/403, or a
 // login page instead of JSON) - the run stops and the panel asks for a token.
-async function lkProbe(ids,run){
+async function lkProbe(tab,ids,run){
   let s={t:Date.now(),ms:0,http:0,step:``,progress:null,tooltip:``,taskId:``,type:``,err:``,status:``},keys=null,auth=!1;
-  let ac=run.ac=new AbortController(),tm=setTimeout(()=>ac.abort(),LK_TMO);
   try{
     await lkRenew();
-    /* The first live run signed in fine, then the status call itself failed
-       with no HTTP answer (DevTools' red cross). So: with a token, the
-       browser's cookies stay home (credentials plus Anaplan's cookie jar can
-       turn a token request into a refused credentialed cross-origin one), no
-       Content-Type on a body-less call (it forces a CORS pre-check), and if
-       POST fails outright or is refused as 404/405, GET is tried once and
-       whichever answers is kept for the rest of the run (run.m). */
-    let h={Accept:`application/json`};
-    lkToken&&(h.Authorization=`AnaplanAuthToken ${lkToken}`);
-    let url=`${LK_API}/workspaces/${ids.w}/models/${ids.m}/status`,
-        go=m=>fetch(url,{method:m,headers:h,credentials:lkToken?`omit`:`include`,cache:`no-store`,signal:ac.signal}),
-        r=null,first=null;
-    try{r=await go(run.m||`POST`)}catch(e){if(e?.name===`AbortError`||run.m)throw e;first=e}
-    if(!run.m&&(!r||r.status===404||r.status===405)){
-      let r2=null;try{r2=await go(`GET`)}catch(e){if(e?.name===`AbortError`)throw e;if(!r)throw first}
-      r2&&(r2.ok||r2.status===401||r2.status===403||!r)?(r=r2,run.m=`GET`):r&&(run.m=`POST`)
-    }else run.m=run.m||`POST`;
+    /* GET - checked live: POST answers 415 without a Content-Type and 405
+       with one; GET gives {requestStatus:{currentStep, progress, tooltip,
+       taskId, creationTime, exportTaskType, ...}}. */
+    let r=await lkFetch(tab,`${LK_API}/workspaces/${ids.w}/models/${ids.m}/status`,run);
     s.http=r.status;
-    let j=null;try{j=await r.json()}catch(e){}
+    let j=r.j;
     let said=lkSaid(j);
     /* 401 is a missing or bad login; 403 is a login Anaplan accepted that may
        not do this (checked against api.anaplan.com: no token and a bad token
@@ -452,14 +461,14 @@ async function lkProbe(ids,run){
     else{
       let q=j.requestStatus||j.status&&typeof j.status==`object`&&j.status.requestStatus||{};
       s.step=String(q.currentStep??``).trim(),s.progress=typeof q.progress==`number`?q.progress:null,
-      s.tooltip=String(q.tooltip??``).slice(0,200),s.taskId=String(q.taskId??``),s.type=String(q.exportTaskType??``),
+      s.tooltip=String(q.tooltip??``).replace(/\s*\n\s*/g,` `).trim().slice(0,400),s.taskId=String(q.taskId??``),s.type=String(q.exportTaskType??``),
       keys=[...Object.keys(j).filter(k=>k!==`requestStatus`),...Object.keys(q).map(k=>`requestStatus.`+k)]
     }
   }catch(e){
     // "Failed to fetch" alone says nothing: name the call so the report shows what was refused.
     s.err=e?.name===`AbortError`?(run.stop?`Stopped`:`no reply in ${LK_TMO/1e3}s`)
-      :`Request failed (${(e?.message||String(e)).slice(0,120)}) - api.anaplan.com status call, ${lkToken?`token`:`browser login`}`
-  }finally{clearTimeout(tm),run.ac=null}
+      :`Request failed (${(e?.message||String(e)).slice(0,160)}) - model status call, ${lkToken?`token`:`browser login`}`
+  }finally{run.kill=run.abort=null}
   s.ms=Date.now()-s.t;
   // 423 / 424 are the API's "model locked" / "model offline".
   s.status=s.http===423?`Locked`:s.http===424?`Offline`:s.err?(auth?`Login refused`:`No reply`)
@@ -484,7 +493,7 @@ async function lkStart(msg){
   let r=rid(tab,page);
   if(lkRuns.has(r))return{ok:!0};
   stopped.delete(r),setBusy(tab,page,!0);
-  let run={ac:null,stop:!1};lkRuns.set(r,run);
+  let run={stop:!1};lkRuns.set(r,run);
   ids.name=title.split(` | `)[0].trim();   // "UQJP_20260621 | Anaplan"
   lkLoop(tab,ids,key,run).catch(()=>{}).finally(()=>lkRuns.delete(r));
   return{ok:!0}
@@ -498,12 +507,12 @@ async function lkLoop(tab,ids,key,run){
   tick(lkToken?`with your API token`:`with your browser login`);
   while(busy.has(r)&&!run.stop){
     if(Date.now()-t0>=LK_MAX){why=`limit`;break}
-    let a=Date.now(),p=await lkProbe(ids,run);
+    let a=Date.now(),p=await lkProbe(tab,ids,run);
     if(run.stop||!busy.has(r))break;
     if(p.auth&&!S.length){
       // Refused on the very first check: nothing to save. Without a token,
       // ask for one; with one, say which part Anaplan refused (lkDiagnose).
-      let had=!!lkToken,why2=had?await lkDiagnose():``;
+      let had=!!lkToken,why2=had?await lkDiagnose(tab):``;
       had&&!/^The token is valid/.test(why2)&&(lkToken=``);   // keep a good token for the next try
       setBusy(tab,page,!1);
       return push({type:`ia_page_error`,page,to:tab,message:had
@@ -584,7 +593,7 @@ async function handle(msg,sender){
     let was=runsOf(msg.forTab),tabs=new Set(was.map(w=>w.tab));
     for(let w of was){
       let r=rid(w.tab,w.page),lk=lkRuns.get(r);
-      lk&&(lk.stop=!0,lk.ac?.abort());
+      lk&&(lk.stop=!0,lk.kill?.(),lk.abort?.());
       LIVE.has(w.page)||stopped.add(r),setBusy(w.tab,w.page,!1)
     }
     if(!tabs.size){let t=await tabFor(msg);t!=null&&tabs.add(t)}
