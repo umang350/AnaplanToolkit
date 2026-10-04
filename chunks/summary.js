@@ -20,6 +20,7 @@
  * compiled stylesheet only contains the utilities the bundled views use.
  */
 import { LOGO, el } from './sv_shared.js';
+import { buildFiles, zip, save } from './export_all.js';
 
 var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
@@ -52,7 +53,8 @@ var STRUCTURE = [
 ];
 
 var mount = document.getElementById('app'),
-    model = null, status = null, overview = null, asking = false, again = false;
+    model = null, status = null, overview = null, asking = false, again = false,
+    dl = { busy: false, note: '' };
 
 /* --- formatting ----------------------------------------------------------- */
 
@@ -203,7 +205,62 @@ function reportsCard() {
   });
   s.appendChild(list);
   if (!overview) s.appendChild(el('p', 'ia-note', 'Checking…'));
+  s.appendChild(downloadAll(loaded));
   return s;
+}
+
+/* "Download all": every loaded report's CSV files in one .zip, plus the model
+   facts above as summary.csv (chunks/export_all.js). */
+function downloadAll(loaded) {
+  var wrap = el('div', 'ia-dl'),
+      b = el('button', 'ia-dl-btn', dl.busy ? 'Preparing…' : 'Download all as CSV (.zip)');
+  b.type = 'button';
+  b.disabled = dl.busy || !loaded;
+  b.title = loaded ? 'Every loaded report\'s CSV files, zipped' : 'Load a report first';
+  b.addEventListener('click', downloadAllNow);
+  wrap.appendChild(b);
+  if (dl.note) wrap.appendChild(el('span', 'ia-note' + (dl.error ? ' ia-error' : ''), dl.note));
+  return wrap;
+}
+
+function summaryRows() {
+  if (!model) return [];
+  var c = model.counts || {}, rows = [
+    { Field: 'Model', Value: model.modelName || '' },
+    { Field: 'Model ID', Value: model.modelId || '' },
+    { Field: 'Workspace', Value: model.workspaceName || '' },
+    { Field: 'Workspace ID', Value: model.workspaceId || '' },
+    { Field: 'Customer ID', Value: model.customerId || '' },
+    { Field: 'Cell count', Value: firstNumber(model.cellCount) ?? '' },
+    { Field: 'Model size (bytes)', Value: firstNumber(model.memory) ?? '' }
+  ];
+  STRUCTURE.forEach(function (x) { rows.push({ Field: x[1], Value: c[x[0]] ?? '' }); });
+  return rows;
+}
+
+function fileStamp() {
+  var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+}
+
+function downloadAllNow() {
+  if (dl.busy) return;
+  dl = { busy: true, note: '' };
+  render();
+  api.runtime.sendMessage({ type: 'ia_dump' }).then(function (r) {
+    if (!r || !r.pages) throw new Error((r && r.error) || 'The cached reports could not be read.');
+    return buildFiles(r.pages, REPORTS.map(function (x) { return x.page; }),
+                      [{ name: 'summary.csv', rows: summaryRows() }]);
+  }).then(function (files) {
+    if (!files.length) throw new Error('No loaded report has any rows to export.');
+    return zip(files).then(function (blob) {
+      var name = String((model && model.modelName) || 'model').replace(/[\\/:*?"<>|]+/g, '_').trim();
+      save(blob, name + ' - Anaplan Toolkit ' + fileStamp() + '.zip');
+      dl = { busy: false, note: files.length + ' files' };
+    });
+  }).catch(function (e) {
+    dl = { busy: false, note: (e && e.message) || 'Download failed.', error: true };
+  }).then(render);
 }
 
 function render() {

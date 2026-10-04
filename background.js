@@ -339,6 +339,17 @@ async function handle(msg,sender){
     return{pages}
   }
 
+  // Summary's "Download all": every cached payload for this model at once.
+  if(msg.type===`ia_dump`){
+    let tab=await tabFor(msg),key=await modelKey(tab),pages={};
+    for(let p of PAGES){
+      if(p===`summary`)continue;
+      let hit=await cacheGet(p,key);
+      hit&&(pages[p]={data:hit.data,ts:hit.ts});
+    }
+    return{pages}
+  }
+
   // The iframe for this view is up: hand it the cached payload.
   if(msg.type===`ia_serve`){
     sawShell=!0;

@@ -211,7 +211,12 @@ No other server is ever contacted.
 - `summary` (`chunks/summary.js`) is the fifteenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
-  `sidepanel.js` — keep the two in step. It and the Actions tab counts
+  `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button
+  (`chunks/export_all.js`) asks the worker for every cached payload (`ia_dump`) and zips one CSV
+  per view tab plus `summary.csv`, built entirely in the page (a small ZIP writer, raw DEFLATE via
+  `CompressionStream`). The hand-written views are imported with `globalThis.IA_COLLECT` set, which
+  makes `renderPage` register their options instead of drawing, so their CSV columns are defined
+  once; the four compiled views' columns are mirrored in `COMPILED` there - keep those in step. It and the Actions tab counts
   (`chunks/actions_counts.js`) are styled with `ia-*` classes in `views.css`, because the compiled
   Tailwind CSS only contains utilities the bundled views already use.
 - **`background.js`, `inner.js`, `outer.js` and `main.js` are minified vendor output with

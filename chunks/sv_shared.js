@@ -38,13 +38,17 @@ function csvCell(v) {
     : s;
 }
 
+// The file's text, BOM included - also what Summary's "Download all" zips up.
+export function csvText(rows) {
+  var cols = Object.keys(rows[0]);
+  return '﻿' + [cols.map(csvCell).join(',')]
+    .concat(rows.map(function (r) { return cols.map(function (c) { return csvCell(r[c]); }).join(','); }))
+    .join('\r\n');
+}
+
 export function csv(rows, filename) {
   if (!rows || !rows.length) return;
-  var cols = Object.keys(rows[0]),
-      body = [cols.map(csvCell).join(',')]
-        .concat(rows.map(function (r) { return cols.map(function (c) { return csvCell(r[c]); }).join(','); }))
-        .join('\r\n'),
-      url = window.URL.createObjectURL(new Blob(['﻿' + body], { type: 'text/csv;charset=utf-8;' })),
+  var url = window.URL.createObjectURL(new Blob([csvText(rows)], { type: 'text/csv;charset=utf-8;' })),
       a = document.createElement('a');
   a.href = url;
   a.download = filename;
@@ -261,6 +265,10 @@ function noMatchState() {
    }
    --------------------------------------------------------------------------- */
 export function renderPage(opts) {
+  /* Summary's "Download all" (chunks/export_all.js) imports the view modules to
+     reuse their CSV definitions: with IA_COLLECT set, a view hands its options
+     over instead of drawing itself, so each report's columns live in one place. */
+  if (globalThis.IA_COLLECT) { globalThis.IA_COLLECT[opts.page] = opts; return; }
   var mount = document.getElementById('app'),
       data = null, error = '', query = '', scrolled = false,
       tabs = opts.tabs || [opts], active = 0, shown = 0;
