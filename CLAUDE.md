@@ -207,7 +207,11 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
 - **Line Items on Pages** (`page_line_items`, Pages group, `IA_gpli`/`IA_pliBuild`) scans only the
   pages picked on its start screen. The panel's picker (`#empty-pg`, `paintPicker` in `sidepanel.js`)
   asks the worker for `ia_pg_list`, which `tabs.sendMessage`es the report engine (`IA_pgList`: one
-  `/pages` call, answered directly) and shows the pages grouped by app, then category (`IA_pgCat`
+  `/pages` call). The answer comes back as `ia_pg_list_result` runtime messages (`started`, then
+  `result`; the worker's `pgWaits`), **not** `sendResponse`: the request reaches every frame, and a
+  frame without the listener (api.js, outer.js) closes the channel unanswered before the model
+  frame's reply arrives - the first build used sendResponse and the picker always said the tab did
+  not answer. No `started` within `PG_START` (8s) means no report engine in the tab. The panel shows the pages grouped by app, then category (`IA_pgCat`
   probes a few key names - **not confirmed** which one Anaplan uses). Ticks and the saved-views option
   are remembered per model in the panel's localStorage `ia_pli:<key>`, and `ia_load` carries
   `pages` + `sv` through to the trigger (`n(e.force, e)` in `p()`). There is no cache probe (the

@@ -24,6 +24,11 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     // so their result after an ia_cancel is the report, not a late leftover.
     LIVE=new Set([`lock_monitor`]);
 
+// Page Line Items' picker requests waiting for their page list (ia_pg_list).
+var pgWaits=new Map(),pgSeq=0,
+    PG_START=8e3,         // the tab has this long to say a report engine took the request
+    PG_MAX=15e4;          // ...and this long to send the list (model context wait + one /pages call)
+
 // Results are cached per page *and* per model, so switching model never shows stale data.
 // storage.session survives service-worker restarts and is dropped when the browser closes.
 var store=api.storage?.session||api.storage?.local,
@@ -627,13 +632,31 @@ async function handle(msg,sender){
   }
 
   // Page Line Items' picker: the model's App pages (name, app, category) from
-  // the report engine in the tab - one quick /pages call, answered directly.
+  // the report engine in the tab - one quick /pages call. The answer comes
+  // back as ia_pg_list_result messages (see IA_pgList in inner.js for why not
+  // sendResponse): `started` within PG_START says a report engine is there,
+  // then the list itself.
   if(msg.type===`ia_pg_list`){
     let tab=await tabFor(msg);
     if(tab==null)return{error:`Open an Anaplan model tab, then try again.`};
-    let r=await api.tabs.sendMessage(tab,{type:`ia_pg_list`}).catch(e=>({error:/Receiving end does not exist|Could not establish connection/i.test(e?.message||``)
-      ?`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`:e?.message||String(e)}));
-    return r||{error:`The Anaplan tab did not answer. Wait for the model to finish loading, then try again.`}
+    let id=`${Date.now()}-${++pgSeq}`,w={tab,started:!1};
+    let got=new Promise(ok=>{w.done=ok}),wait=(ms,why)=>new Promise(ok=>setTimeout(()=>ok({error:why}),ms));
+    pgWaits.set(id,w);
+    try{
+      let gone=await deliver(tab,{type:`ia_pg_list`,id});
+      if(gone)return{error:`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`};
+      let r=await Promise.race([got,wait(PG_START,``)]);
+      if(r&&r.error===``&&!w.started)return{error:`This tab has no model open for the report engine. Open the model in Anaplan (the modelling view, not only an App page), or reload the Anaplan page, then try again.`};
+      if(r&&r.error===``)r=await Promise.race([got,wait(PG_MAX,`Anaplan took too long to list the pages. Try again.`)]);
+      return r||{error:`The page list could not be loaded.`}
+    }finally{pgWaits.delete(id)}
+  }
+  if(msg.type===`ia_pg_list_result`){
+    let w=pgWaits.get(msg.id);
+    if(!w||(tabId!=null&&tabId!==w.tab))return;
+    msg.started&&(w.started=!0);
+    msg.result&&w.done(msg.result);
+    return
   }
 
   // Lock Monitor's Clear button (in its view): forget the saved run so the
