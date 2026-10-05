@@ -160,7 +160,12 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   `modules`, `line_items`, `lists`, `revisions`, `lock_monitor` and `page_line_items` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
-  option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
+  option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. Anaplan keeps a
+  formatting rule (and a column width) after its line item is hidden from the grid, so `IA_onGrid`
+  reads the widget's line item axis (dimension `20000000012`: `shows`, or `hides` when `shows` is
+  empty) and a rule whose target is off the grid gets `onGrid: false` - tagged "Hidden on grid", not
+  dropped (confirmed on a live model). Line Items on Pages uses it too: such a target counts as
+  Hidden, and that rule's source isn't counted at all. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
   rebuilt. Keep the two implementations in step; all seventeen views are expected to export and search
