@@ -252,3 +252,37 @@ body {
   font: inherit; color: var(--foreground); background: var(--background);
 }
 #empty-lk .lk-check { display: flex; align-items: center; gap: .375rem; flex-basis: 100%; justify-content: center; }
+
+/* Page Line Items' page picker: a scrolling checklist grouped by app, then
+   category, under a filter box. The card grows to hold it. */
+.sk-card:has(#empty-pg:not([hidden])) { min-height: 40rem; }
+#empty-cta:has(#empty-pg:not([hidden])) { justify-content: flex-start; background: var(--background); }
+#empty-pg { display: flex; flex-direction: column; gap: .375rem; width: 100%; max-width: 30rem; font-size: .75rem; color: var(--muted-foreground); text-align: left; }
+#empty-pg[hidden] { display: none; }
+#empty-pg .pg-bar { display: flex; align-items: center; gap: .375rem; }
+#empty-pg input[type="search"] {
+  flex: 1 1 auto; min-width: 0; padding: .3125rem .5rem; border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - .25rem); font: inherit; color: var(--foreground); background: var(--background);
+}
+#empty-pg button {
+  padding: .25rem .5rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - .25rem);
+  font: inherit; color: var(--foreground); background: var(--background); cursor: pointer; white-space: nowrap;
+}
+#empty-pg button:hover:not(:disabled) { background: var(--muted); }
+#empty-pg button:disabled { opacity: .5; cursor: default; }
+#pg-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+#pg-list {
+  height: 17rem; overflow-y: auto; border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - .25rem); padding: .25rem .375rem;
+}
+#pg-list .pg-msg { padding: 1rem .5rem; text-align: center; }
+#pg-list details { margin: .125rem 0; }
+#pg-list summary { display: flex; align-items: center; gap: .375rem; padding: .1875rem 0; cursor: pointer; color: var(--foreground); font-weight: 600; }
+#pg-list details details { margin-left: 1rem; }
+#pg-list details details summary { font-weight: 500; }
+#pg-list summary .pg-n { margin-left: auto; font-weight: 400; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+#pg-list label { display: flex; align-items: flex-start; gap: .375rem; padding: .125rem 0 .125rem 1.25rem; color: var(--foreground); cursor: pointer; }
+#pg-list details details label { padding-left: 1.25rem; }
+#pg-list input { margin: .125rem 0 0; flex: none; }
+#empty-pg .lk-check { display: flex; align-items: center; gap: .375rem; }
+#pg-back { align-self: center; }

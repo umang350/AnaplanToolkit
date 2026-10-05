@@ -18,7 +18,14 @@ import { renderPage, el, linkCell, textCell } from './sv_shared.js';
                                   `conditions` existed carry
      conditionalFormattingItems[] one per rule
        pegs[]                     {value, color, icon} - each source value and
-                                  the colour Anaplan paints at it */
+                                  the colour Anaplan paints at it
+       onGrid                     false when the formatted line item is hidden
+                                  from the grid: Anaplan keeps the rule, but it
+                                  paints nothing. A string (the filter line
+                                  items) when it is on the grid but a filter on
+                                  its axis decides, per data and often per user,
+                                  whether it shows. null when there is no grid
+                                  to judge by, and on results cached before it */
 
 function conditionsOf(r) {
   if (Array.isArray(r.conditions)) return r.conditions;
@@ -81,6 +88,24 @@ function formattingRows(d) {
   return (d && !Array.isArray(d) && d.conditionalFormattingItems) || [];
 }
 
+var HIDDEN = 'Hidden on grid';
+
+function hidden(r) { return r.onGrid === false; }
+
+function filtered(r) { return typeof r.onGrid === 'string' ? 'Filtered: ' + r.onGrid : ''; }
+
+function onGridText(r) { return r.onGrid == null ? '' : hidden(r) ? 'No' : filtered(r) || 'Yes'; }
+
+function tagText(r) { return hidden(r) ? HIDDEN : filtered(r); }
+
+function formattedCell(r, cls) {
+  var p = el('div', cls);
+  p.appendChild(document.createTextNode(r.formattedLineItem));
+  if (hidden(r)) p.appendChild(el('span', 'ia-hidden', HIDDEN));
+  else if (filtered(r)) p.appendChild(el('span', 'ia-hidden ia-filtered', filtered(r)));
+  return p;
+}
+
 function base(r) {
   return [textCell(r.appName), linkCell(r.pageName, r.pageUrl), textCell(r.widgetTitle || 'Unnamed')];
 }
@@ -137,11 +162,12 @@ var FORMATTING = {
             { label: 'Values From', cls: 'col-span-2' }, { label: 'Colours', cls: 'col-span-2' }],
   key: function (r) {
     return r.appName + ' ' + r.pageName + ' ' + r.widgetTitle + ' ' + r.formattedLineItem + ' ' +
-      r.sourceLineItem + ' ' + r.ruleType + ' ' + (r.pegs || []).map(pegText).join(' ');
+      r.sourceLineItem + ' ' + r.ruleType + ' ' + (r.pegs || []).map(pegText).join(' ') +
+      ' ' + tagText(r);
   },
   cells: function (r) {
     var c = base(r).concat([
-      textCell(r.formattedLineItem, 'text-sm text-muted-foreground font-mono leading-none'),
+      formattedCell(r, 'text-sm text-muted-foreground font-mono leading-none'),
       textCell(r.sourceLineItem, 'text-sm text-muted-foreground font-mono leading-none'),
       pegsCell(r)
     ]);
@@ -155,6 +181,7 @@ var FORMATTING = {
       'Page URL': r.pageUrl,
       Widget: r.widgetTitle || 'Unnamed',
       'Formatted Line Item': r.formattedLineItem,
+      'On Grid': onGridText(r),
       'Values From': r.sourceLineItem,
       'Rule Type': r.ruleType,
       Colours: (r.pegs || []).map(pegText).join('; ')
@@ -183,7 +210,7 @@ var ALL = {
     c.forEach(function (n) { n.classList.add('col-span-2'); });
     if (x.kind === 'Filter') return c.concat([conditionsCell(r, true)]);
     var items = el('div', 'col-span-2 space-y-1'), details = pegsCell(r);
-    items.appendChild(el('p', 'text-sm text-muted-foreground font-mono leading-none', r.formattedLineItem));
+    items.appendChild(formattedCell(r, 'text-sm text-muted-foreground font-mono leading-none'));
     items.appendChild(el('p', 'text-xs text-muted-foreground', 'values from ' + r.sourceLineItem));
     details.classList.add('col-span-2');
     return c.concat([items, details]);
@@ -205,7 +232,7 @@ var ALL = {
         out.push(Object.assign({}, head, {
           'Line Item': r.formattedLineItem,
           'Values From': r.sourceLineItem,
-          Details: [r.ruleType].concat((r.pegs || []).map(pegText)).filter(Boolean).join('; ')
+          Details: [tagText(r), r.ruleType].concat((r.pegs || []).map(pegText)).filter(Boolean).join('; ')
         }));
       }
     });

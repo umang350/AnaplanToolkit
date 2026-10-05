@@ -47,6 +47,7 @@ demand, grouped as in the panel's tab bar:
 | | Steps | The actions each process runs, in order, with each import's source and target, plus the actions no process runs. A *Copy API call* button gives an Integration API `curl` per process and action. |
 | **Pages** | Modules | Which Apps and Pages use each module (backend → frontend lineage) |
 | | Filters | Line items used as page filters or for conditional formatting, each beside its condition, with the formatting colours |
+| | Line Items | Every line item the widgets on the App pages you choose show, and where (rows, columns, page selector, filter, formatting), by page and by line item. You pick the pages first, by app and category, so a big model only scans what you need. |
 | **Saved View** | List | Every saved view, grouped by module, with its ID |
 | | Screens | Which saved view each App page widget reads from |
 | | Actions | Imports whose source is a saved view (see the caveats below) |

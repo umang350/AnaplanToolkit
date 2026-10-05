@@ -30,7 +30,7 @@ mkdir -p "$OUT"
 # default_popup, so the side panel is the only UI and they are dead code.
 for f in manifest.json background.js \
          sidepanel.html sidepanel.js sidepanel.css views.css \
-         actions.html action_usages.html pages.html filter_items.html sv_filter_items.html \
+         actions.html action_usages.html pages.html filter_items.html page_line_items.html sv_filter_items.html \
          sv_views.html sv_line_items.html sv_screens.html sv_actions.html summary.html workspace.html workspace_all.html \
          process_steps.html modules.html line_items.html lists.html revisions.html lock_monitor.html \
          icon-16.png icon-32.png icon-48.png icon-128.png \

@@ -24,6 +24,7 @@ import { csvText } from './sv_shared.js';
    computed path ("Unsafe call to import"). */
 var HAND = [
   function () { return import('./filter_items.js'); },
+  function () { return import('./page_line_items.js'); },
   function () { return import('./sv_views.js'); },
   function () { return import('./sv_line_items.js'); },
   function () { return import('./sv_screens.js'); },

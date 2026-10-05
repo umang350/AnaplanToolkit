@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`,`page_line_items`],
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -23,6 +23,11 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     // Runs that go on until stopped (the Lock Monitor): Stop is how they end,
     // so their result after an ia_cancel is the report, not a late leftover.
     LIVE=new Set([`lock_monitor`]);
+
+// Page Line Items' picker requests waiting for their page list (ia_pg_list).
+var pgWaits=new Map(),pgSeq=0,
+    PG_START=8e3,         // the tab has this long to say a report engine took the request
+    PG_MAX=15e4;          // ...and this long to send the list (model context wait + one /pages call)
 
 // Results are cached per page *and* per model, so switching model never shows stale data.
 // storage.session survives service-worker restarts and is dropped when the browser closes.
@@ -626,6 +631,34 @@ async function handle(msg,sender){
     return push({type:`${msg.page}_data`,data:hit.data,ts:hit.ts,cached:!0,to:msg.forTab??tab},msg.page),{hit:!0,ts:hit.ts}
   }
 
+  // Page Line Items' picker: the model's App pages (name, app, category) from
+  // the report engine in the tab - one quick /pages call. The answer comes
+  // back as ia_pg_list_result messages (see IA_pgList in inner.js for why not
+  // sendResponse): `started` within PG_START says a report engine is there,
+  // then the list itself.
+  if(msg.type===`ia_pg_list`){
+    let tab=await tabFor(msg);
+    if(tab==null)return{error:`Open an Anaplan model tab, then try again.`};
+    let id=`${Date.now()}-${++pgSeq}`,w={tab,started:!1};
+    let got=new Promise(ok=>{w.done=ok}),wait=(ms,why)=>new Promise(ok=>setTimeout(()=>ok({error:why}),ms));
+    pgWaits.set(id,w);
+    try{
+      let gone=await deliver(tab,{type:`ia_pg_list`,id});
+      if(gone)return{error:`The extension is not running in that Anaplan tab yet - reload the Anaplan page, then try again.`};
+      let r=await Promise.race([got,wait(PG_START,``)]);
+      if(r&&r.error===``&&!w.started)return{error:`This tab has no model open for the report engine. Open the model in Anaplan (the modelling view, not only an App page), or reload the Anaplan page, then try again.`};
+      if(r&&r.error===``)r=await Promise.race([got,wait(PG_MAX,`Anaplan took too long to list the pages. Try again.`)]);
+      return r||{error:`The page list could not be loaded.`}
+    }finally{pgWaits.delete(id)}
+  }
+  if(msg.type===`ia_pg_list_result`){
+    let w=pgWaits.get(msg.id);
+    if(!w||(tabId!=null&&tabId!==w.tab))return;
+    msg.started&&(w.started=!0);
+    msg.result&&w.done(msg.result);
+    return
+  }
+
   // Lock Monitor's Clear button (in its view): forget the saved run so the
   // next start is a new one. Not while it runs - Stop first.
   if(msg.type===`ia_clear`&&msg.page===`lock_monitor`){
@@ -665,8 +698,10 @@ async function handle(msg,sender){
     if(tab==null){let m=`Open an Anaplan model tab, then try again.`;if(quiet)return{error:m};throw Error(m)}
     stopped.delete(rid(tab,page));
     setBusy(tab,page,!0);
-    let trigger={type:`trigger_${page}`,force:msg.type===`ia_refresh`},
-        gone=await deliver(tab,trigger);
+    let trigger={type:`trigger_${page}`,force:msg.type===`ia_refresh`},gone;
+    // Page Line Items scans only the pages picked in the panel.
+    if(page===`page_line_items`)trigger.pages=(Array.isArray(msg.pages)?msg.pages:[]).slice(0,1e4).map(String),trigger.sv=!!msg.sv;
+    gone=await deliver(tab,trigger);
     // A tab opened moments ago has no report engine until its model frame has
     // loaded. Give it a few seconds before calling the script missing - the
     // first click in a fresh tab used to fail with "reload the page". (Summary

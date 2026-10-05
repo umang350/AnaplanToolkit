@@ -65,6 +65,23 @@
                             <label class="lk-check"><input id="lk-notify" type="checkbox">
                                 Notify me when the model is busy, and when it's free again</label>
                         </div>
+                        <!-- Page Line Items only: choose the pages to scan, by app
+                             and category (sidepanel.js, the picker section). -->
+                        <div id="empty-pg" hidden>
+                            <div class="pg-bar">
+                                <input id="pg-q" type="search" placeholder="Filter pages, apps or categories..." aria-label="Filter pages">
+                                <button id="pg-reload" type="button" title="Load the page list again">Reload list</button>
+                            </div>
+                            <div class="pg-bar">
+                                <button id="pg-all" type="button">Select shown</button>
+                                <button id="pg-none" type="button">Clear</button>
+                                <span id="pg-count"></span>
+                            </div>
+                            <div id="pg-list" role="group" aria-label="App pages"></div>
+                            <label class="lk-check"><input id="pg-sv" type="checkbox">
+                                Also read the saved views behind widgets (slower)</label>
+                            <button id="pg-back" type="button" hidden>Back to the report</button>
+                        </div>
                         <p id="empty-note"></p>
                     </div>
                 </div>
