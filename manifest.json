@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Anaplan Toolkit",
+  "name": "Anaplan Toolkit – Model Audit & Documentation",
   "short_name": "Anaplan Toolkit",
-  "description": "Anaplan reports: actions, pages, filters, structure, saved views, revisions, workspaces, lock status. Not affiliated with Anaplan.",
+  "description": "Audit Anaplan models: action IDs, pages, filters, line items, saved views, revisions, locks, CSV. Not affiliated with Anaplan.",
   "version": "2.7.0",
   "version_name": "2.6.0",
   "author": "Umang Chauhan",
