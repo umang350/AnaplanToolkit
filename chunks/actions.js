@@ -27,25 +27,25 @@ function sourceOf(x) { return x.importDefinition && x.importDefinition.source; }
 
 // The ID in mono with a copy button that shows on row hover (rows carry `group`).
 function copyId(id, label) {
-  var text = bare(id), wrap = el('div', 'ia-id');
+  var text = bare(id), wrap = el('div', 'ia-act-id');
   if (!text) return wrap;
   wrap.appendChild(el('span', 'text-sm text-muted-foreground font-mono', text));
-  var b = el('button', 'ia-copy');
+  var b = el('button', 'ia-act-copy');
   b.type = 'button';
   b.title = 'Copy ' + (label || 'ID');
   b.setAttribute('aria-label', b.title);
   b.appendChild(icon('copy', null, 14));
   b.addEventListener('click', function () {
     navigator.clipboard.writeText(text);
-    b.replaceChildren(icon('check', 'ia-copied', 14));
-    b.classList.add('ia-done');
-    setTimeout(function () { b.replaceChildren(icon('copy', null, 14)); b.classList.remove('ia-done'); }, 1200);
+    b.replaceChildren(icon('check', 'ia-act-copied', 14));
+    b.classList.add('ia-act-done');
+    setTimeout(function () { b.replaceChildren(icon('copy', null, 14)); b.classList.remove('ia-act-done'); }, 1200);
   });
   wrap.appendChild(b);
   return wrap;
 }
 
-function nameCell(t) { return el('p', 'text-sm text-foreground ia-name', t); }
+function nameCell(t) { return el('p', 'text-sm text-foreground ia-act-name', t); }
 function nameOf(x) { return x.label || ''; }
 function idOf(x) { return bare(x.entityLongId); }
 function nameId(x) { return { Name: x.label, Id: x.entityLongId }; }

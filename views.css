@@ -24,16 +24,16 @@
 .ia-acts-2 { grid-template-columns: minmax(0, 1fr) 9.5rem; column-gap: .5rem; }
 .ia-acts-3 { grid-template-columns: minmax(0, 1fr) 9.5rem 9.5rem; column-gap: .5rem; }
 .ia-acts-all { grid-template-columns: 4rem minmax(0, 1fr) 11rem; column-gap: .5rem; }
-.ia-name { overflow-wrap: anywhere; }
-.ia-id { display: flex; align-items: center; gap: .25rem; min-height: 1.75rem; }
-.ia-copy {
+.ia-act-name { overflow-wrap: anywhere; }
+.ia-act-id { display: flex; align-items: center; gap: .25rem; min-height: 1.75rem; }
+.ia-act-copy {
   display: inline-flex; align-items: center; justify-content: center;
   width: 1.75rem; height: 1.75rem; border-radius: .375rem;
   color: var(--muted-foreground); opacity: 0; transition: opacity .2s; cursor: pointer;
 }
-.ia-copy:hover { background: var(--background); color: var(--foreground); }
-.group:hover .ia-copy, .ia-copy:focus-visible, .ia-copy.ia-done { opacity: 1; }
-.ia-copied { stroke: #16a34a; }
+.ia-act-copy:hover { background: var(--background); color: var(--foreground); }
+.group:hover .ia-act-copy, .ia-act-copy:focus-visible, .ia-act-copy.ia-act-done { opacity: 1; }
+.ia-act-copied { stroke: #16a34a; }
 
 /* Item counts on the Actions view's tabs (renderPage's `counts`). The
    badges make the tab bar wider than a narrow side panel, and it must stay one
