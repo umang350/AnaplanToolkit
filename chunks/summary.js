@@ -31,6 +31,9 @@ var REPORTS = [
   { page: 'process_steps', name: 'Process Steps', keys: [['steps', 'steps'], ['loose', 'not in a process']] },
   { page: 'pages', name: 'Modules', unit: 'modules' },
   { page: 'filter_items', name: 'Filters', unit: 'rows' },
+  // pick: gathers only the pages chosen in its picker, so like live it is not
+  // counted in "loaded" or run by Get all data.
+  { page: 'page_line_items', name: 'Line Items on Pages', unit: 'rows', key: 'rows', pick: true },
   { page: 'sv_views', name: 'SV List', unit: 'saved views' },
   { page: 'sv_screens', name: 'SV Screens', unit: 'rows' },
   { page: 'sv_actions', name: 'SV Actions', unit: 'imports' },
@@ -182,7 +185,7 @@ function structureCard() {
 
 function reportsCard() {
   var s = section('Reports'), pages = overview && overview.pages || {};
-  var on = REPORTS.filter(function (r) { return !r.off && !r.live; });
+  var on = REPORTS.filter(function (r) { return !r.off && !r.live && !r.pick; });
   var has = function (r) { return pages[r.page] && pages[r.page].ts; };
   var loaded = on.filter(has).length;
   s.querySelector('h2').appendChild(el('span', 'ia-h-count', loaded + ' / ' + on.length + ' loaded'));
@@ -201,7 +204,7 @@ function reportsCard() {
     head.appendChild(el('span', 'ia-report-name', r.name));
     head.appendChild(el('span', 'ia-report-when',
       r.off ? 'Disabled - too slow' : p.busy ? (r.live ? 'Monitoring…' : 'Loading…') : p.ts ? ago(p.ts)
-        : r.live ? 'Not run' : 'Not loaded'));
+        : r.live ? 'Not run' : r.pick ? 'Choose pages' : 'Not loaded'));
     b.appendChild(head);
     var size = p.ts && !r.off ? sizeText(r, p.size) : '';
     if (size) b.appendChild(el('span', 'ia-report-size', size));

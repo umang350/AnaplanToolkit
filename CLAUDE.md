@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Sixteen read-only report views, each
+the structure of the Anaplan model open in the active tab. Seventeen read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
@@ -157,13 +157,13 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   flags that `innerHTML` as unsafe. Same nodes either way (checked on every template the views use).
   Re-apply it if those chunks are ever rebuilt.
 - `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
-  `modules`, `line_items`, `lists`, `revisions` and `lock_monitor` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
+  `modules`, `line_items`, `lists`, `revisions`, `lock_monitor` and `page_line_items` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
   option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all sixteen views are expected to export and search
+  rebuilt. Keep the two implementations in step; all seventeen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Every table sorts by clicking a column header (ascending, descending, back to original order).
@@ -204,6 +204,24 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   page (or labelled objects), with a model-wide one split by a parallel list-id array. Line Items and Lists
   make no Anaplan calls; Modules also reads the `/pages` list (as Linked Pages does) for the App
   pages each module feeds, and still reports modules if that call fails.
+- **Line Items on Pages** (`page_line_items`, Pages group, `IA_gpli`/`IA_pliBuild`) scans only the
+  pages picked on its start screen. The panel's picker (`#empty-pg`, `paintPicker` in `sidepanel.js`)
+  asks the worker for `ia_pg_list`, which `tabs.sendMessage`es the report engine (`IA_pgList`: one
+  `/pages` call, answered directly) and shows the pages grouped by app, then category (`IA_pgCat`
+  probes a few key names - **not confirmed** which one Anaplan uses). Ticks and the saved-views option
+  are remembered per model in the panel's localStorage `ia_pli:<key>`, and `ia_load` carries
+  `pages` + `sv` through to the trigger (`n(e.force, e)` in `p()`). There is no cache probe (the
+  cached report is for whichever pages were picked last), it is `pick` in `VIEWS`/`REPORTS` (left
+  out of Get all data and the loaded count), and its refresh button - and the view's "Choose other
+  pages" (`ia_pli_pick` to the panel) - reopen the picker rather than re-run. Widget definitions are
+  undocumented and differ per widget type, so `IA_pliWalk` walks each definition whole, reports every
+  id that is a line item of the model, and names the placement from the key path to it
+  (`IA_pliWhere`: hidden > filter > formatting > sort > columns > rows > page/context > chart >
+  "Shown"); `paths` in the report lists the key paths that matched, which is what to check this
+  against on a live model. A widget naming a module but no line item gets that module's line items
+  as "All (module default)" (minus any found under a hidden key). A widget on a saved view takes the
+  view's explicit line item selection per axis (`IA_pliAxes`) when the option is on - that loads only
+  the views behind the picked pages, through `IA_views`.
 - **Process Steps** (`process_steps`, Actions group, `IA_gps`/`IA_procSteps`) reuses
   `IA_actionDefs(ctx, true)`, which then keeps every cell of the process and export rows
   (`IA_cells`; the Actions views' cache stays small). Which `PROCESS_PROPERTY` column lists a
@@ -306,7 +324,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the seventeenth view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the eighteenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button

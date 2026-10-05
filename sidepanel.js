@@ -18,6 +18,7 @@
  *   -> ia_serve   {page}                <- {hit,ts}; pushes <page>_data at the iframe
  *   -> ia_overview {}                   <- {pages:{page:{ts,busy,size}}} (sent by summary.html)
  *   -> ia_cancel  {}                    stop every gather under way (the Stop button)
+ *   -> ia_pg_list {}                    <- {pages:[{guid,name,app,category}], key} (Line Items on Pages' picker)
  *   <- ia_select  {page}                a keyboard shortcut picked a view
  *   <- ia_state   {page, ts, key}       data is cached as of ts, for model key
  *   <- ia_busy    {page, busy, seq}     gathering started / finished
@@ -58,6 +59,14 @@
       desc: 'Line Items used as filters or for conditional formatting in your App Pages.',
       preview: ['Filters', 'Conditional Formatting', 'All'],
       heading: 'Filter Line Items', search: 'Search...', cols: ['App', 'Page', 'Widget', 'Line Item', 'Condition'] },
+    /* `pick`: gathers only the pages chosen on its start screen (the picker
+       below), so it is left out of Get all data, and its refresh button goes
+       back to the picker rather than re-running. */
+    { page: 'page_line_items', tab: 'Line Items', group: 'Pages', sub: 'Line Items', title: 'Line Items on Pages', pick: true,
+      desc: 'Choose App pages - by app and category - then see every line item their widgets show, and where: rows, columns, page selector, filter or formatting.',
+      preview: ['By Page', 'By Line Item', 'Pages'],
+      heading: 'Line Items on Pages', search: 'Search by app, page, widget, line item or module...',
+      cols: ['Page', 'Widget', 'Line Item', 'Module', 'Where'] },
     { page: 'sv_views', tab: 'SV List', group: 'Saved View', sub: 'List', title: 'All Saved Views',
       desc: 'Every Saved View defined in your model, grouped by Module.',
       heading: 'Saved Views', search: 'Search by module or saved view...', cols: ['Module', 'Saved View'] },
@@ -137,6 +146,15 @@
       lkEvery = document.getElementById('lk-every'),
       lkHours = document.getElementById('lk-hours'),
       lkNotify = document.getElementById('lk-notify'),
+      emptyPg = document.getElementById('empty-pg'),
+      pgQ = document.getElementById('pg-q'),
+      pgReload = document.getElementById('pg-reload'),
+      pgAll = document.getElementById('pg-all'),
+      pgNone = document.getElementById('pg-none'),
+      pgCount = document.getElementById('pg-count'),
+      pgList = document.getElementById('pg-list'),
+      pgSv = document.getElementById('pg-sv'),
+      pgBack = document.getElementById('pg-back'),
       skPlaceholder = document.getElementById('sk-placeholder'),
       skHeading = document.getElementById('sk-heading'),
       skHead = document.getElementById('sk-head'),
@@ -369,7 +387,7 @@
     VIEWS.forEach(function (x) {
       var s = state[x.page];
       paintTab(x.sbtn || x.btn, x.page === active, [x.page]);
-      if (s.frame) s.frame.hidden = x.page !== active;
+      if (s.frame) s.frame.hidden = x.page !== active || !!s.picking;
     });
     Object.keys(groups).forEach(function (name) {
       var g = groups[name];
@@ -386,22 +404,27 @@
 
     // While this view gathers, the refresh button becomes Stop (all gathers).
     var running = VIEWS.filter(function (x) { return state[x.page].busy; }).length;
-    refreshBtn.hidden = !st.frame;
+    refreshBtn.hidden = !st.frame || !!st.picking;
     refreshBtn.disabled = false;
     refreshBtn.dataset.busy = st.busy ? '1' : '0';
     refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : v.live ? 'Stop and save' : 'Stop')
       : v.live ? 'Continue monitoring - adds to this report (Clear, in the report, starts over)'
+      : v.pick ? 'Choose pages and get data again'
       : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
     refreshBtn.setAttribute('aria-label', st.busy ? 'Stop' : 'Refresh');
 
-    empty.hidden = !!st.frame;
-    if (!st.frame) {
+    empty.hidden = !!st.frame && !st.picking;
+    if (!empty.hidden) {
       emptyTitle.textContent = v.title;
       emptyDesc.textContent = v.desc;
-      emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring' : 'Get data';
-      emptyLoad.disabled = !!st.busy;
+      emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring'
+        : v.pick ? (pick.sel.size ? 'Get data for ' + pick.sel.size + (pick.sel.size === 1 ? ' page' : ' pages') : 'Choose pages first')
+        : 'Get data';
+      emptyLoad.disabled = !!st.busy || (!!v.pick && !pick.sel.size);
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
       emptyLk.hidden = !v.live;
+      emptyPg.hidden = !v.pick;
+      if (v.pick) paintPicker(st);
       paintPreview(v);
     }
     paintProgress();
@@ -446,6 +469,12 @@
     st.steps = [];
     render();
     var msg = { type: force ? 'ia_refresh' : 'ia_load', page: page };
+    // Page Line Items: the pages ticked in the picker, and whether to read saved views.
+    if (byPage[page].pick) {
+      msg.pages = Array.from(pick.sel);
+      msg.sv = pgSv.checked;
+      st.picking = false;
+    }
     // Lock Monitor: how often, how long, and whether to notify.
     if (byPage[page].live) {
       msg.every = +lkEvery.value;
@@ -495,6 +524,167 @@
 
   emptyLoad.addEventListener('click', function () { start(active, false); });
 
+  /* Page Line Items' picker. The page list (name, app, category) comes from
+     the report engine in the tab (ia_pg_list - one quick /pages call) and is
+     loaded when the picker is first shown for a model. Pages are grouped by
+     app, then by category where Anaplan gives one; ticking a group ticks every
+     page in it that the filter shows. What was ticked, and the saved views
+     option, are remembered per model in this browser. */
+  var PG_OPTS = 'ia_pli:';
+  var pick = { key: null, skey: '', pages: null, loading: false, error: '', sel: new Set() };
+
+  function savePick() {
+    if (!pick.skey) return;
+    try { localStorage.setItem(PG_OPTS + pick.skey, JSON.stringify({ sel: Array.from(pick.sel), sv: pgSv.checked })); } catch (e) {}
+  }
+
+  function loadPages() {
+    if (pick.loading) return;
+    pick.loading = true;
+    pick.error = '';
+    paintPicker(state.page_line_items);
+    var want = myKey;
+    send({ type: 'ia_pg_list' }).then(function (r) {
+      pick.loading = false;
+      if (myKey !== want) return;
+      if (!r || r.error || !Array.isArray(r.pages)) {
+        pick.error = (r && r.error) || 'The page list could not be loaded.';
+        pick.key = myKey;
+        pick.pages = null;
+      } else {
+        // key: the model this list is for, as the panel names it (re-asked when
+        // that changes); skey: as the tab names it, for the remembered ticks.
+        pick.key = myKey;
+        pick.skey = r.key || myKey || '';
+        pick.pages = r.pages;
+        var have = new Set(r.pages.map(function (p) { return p.guid; })), o = {};
+        try { o = JSON.parse(localStorage.getItem(PG_OPTS + pick.skey) || '{}'); } catch (e) {}
+        pick.sel = new Set((o.sel || []).filter(function (g) { return have.has(g); }));
+        pgSv.checked = !!o.sv;
+      }
+      render();
+    }, function (e) {
+      pick.loading = false;
+      pick.key = myKey;
+      pick.pages = null;
+      pick.error = (e && e.message) || 'The page list could not be loaded.';
+      render();
+    });
+  }
+
+  function pageShown(p, q) {
+    return !q || (p.name + ' ' + p.app + ' ' + p.category).toLowerCase().indexOf(q) >= 0;
+  }
+
+  function shownPages() {
+    var q = pgQ.value.trim().toLowerCase();
+    return (pick.pages || []).filter(function (p) { return pageShown(p, q); });
+  }
+
+  function groupBox(pages) {
+    var box = document.createElement('input'), on = pages.filter(function (p) { return pick.sel.has(p.guid); }).length;
+    box.type = 'checkbox';
+    box.checked = on > 0 && on === pages.length;
+    box.indeterminate = on > 0 && on < pages.length;
+    box.addEventListener('click', function (e) { e.stopPropagation(); });
+    box.addEventListener('change', function () {
+      pages.forEach(function (p) { box.checked ? pick.sel.add(p.guid) : pick.sel.delete(p.guid); });
+      savePick();
+      render();
+    });
+    return box;
+  }
+
+  function group(label, pages, open, fill) {
+    var d = document.createElement('details'), sm = document.createElement('summary'), n = document.createElement('span');
+    d.open = open;
+    d.dataset.g = label;
+    sm.appendChild(groupBox(pages));
+    sm.appendChild(document.createTextNode(label));
+    n.className = 'pg-n';
+    n.textContent = pages.filter(function (p) { return pick.sel.has(p.guid); }).length + ' / ' + pages.length;
+    sm.appendChild(n);
+    d.appendChild(sm);
+    fill(d);
+    return d;
+  }
+
+  function pageBox(p) {
+    var l = document.createElement('label'), b = document.createElement('input');
+    b.type = 'checkbox';
+    b.checked = pick.sel.has(p.guid);
+    b.addEventListener('change', function () {
+      b.checked ? pick.sel.add(p.guid) : pick.sel.delete(p.guid);
+      savePick();
+      render();
+    });
+    l.appendChild(b);
+    l.appendChild(document.createTextNode(p.name));
+    return l;
+  }
+
+  function msgLine(text) {
+    var m = document.createElement('p');
+    m.className = 'pg-msg';
+    m.textContent = text;
+    return m;
+  }
+
+  function paintPicker(st) {
+    pgBack.hidden = !st.frame;
+    if (hasTab && !pick.loading && (pick.key !== myKey || (!pick.pages && !pick.error))) { loadPages(); return; }
+    var q = pgQ.value.trim().toLowerCase(), shown = shownPages(),
+        open = {}, y = pgList.scrollTop;
+    pgList.querySelectorAll('details').forEach(function (d) { open[d.dataset.g] = d.open; });
+    pgReload.disabled = pick.loading || !hasTab;
+    pgAll.disabled = pgNone.disabled = !pick.pages;
+    pgCount.textContent = pick.pages ? pick.sel.size + ' of ' + pick.pages.length + ' selected' : '';
+    pgList.textContent = '';
+    if (!hasTab) { pgList.appendChild(msgLine('Open an Anaplan model tab first.')); return; }
+    if (pick.loading) { pgList.appendChild(msgLine('Loading the page list…')); return; }
+    if (pick.error) { pgList.appendChild(msgLine(pick.error)); return; }
+    if (!pick.pages.length) { pgList.appendChild(msgLine('This model has no App pages.')); return; }
+    if (!shown.length) { pgList.appendChild(msgLine('No pages match the filter.')); return; }
+    var apps = new Map();
+    shown.forEach(function (p) {
+      var a = p.app || 'No app';
+      if (!apps.has(a)) apps.set(a, new Map());
+      var cats = apps.get(a), c = p.category || '';
+      if (!cats.has(c)) cats.set(c, []);
+      cats.get(c).push(p);
+    });
+    var few = apps.size <= 1;
+    apps.forEach(function (cats, a) {
+      var all = [];
+      cats.forEach(function (ps) { all = all.concat(ps); });
+      var key = 'a:' + a;
+      pgList.appendChild(group(a, all, q ? true : key in open ? open[key] : few, function (d) {
+        d.dataset.g = key;
+        cats.forEach(function (ps, c) {
+          if (!c) { ps.forEach(function (p) { d.appendChild(pageBox(p)); }); return; }
+          var ck = key + '\u0000c:' + c;
+          var sub = group(c, ps, q ? true : ck in open ? open[ck] : false, function (d2) {
+            ps.forEach(function (p) { d2.appendChild(pageBox(p)); });
+          });
+          sub.dataset.g = ck;
+          d.appendChild(sub);
+        });
+      }));
+    });
+    pgList.scrollTop = y;
+  }
+
+  pgQ.addEventListener('input', function () { paintPicker(state.page_line_items); });
+  pgReload.addEventListener('click', function () { pick.key = null; pick.pages = null; loadPages(); });
+  pgAll.addEventListener('click', function () {
+    shownPages().forEach(function (p) { pick.sel.add(p.guid); });
+    savePick();
+    render();
+  });
+  pgNone.addEventListener('click', function () { pick.sel.clear(); savePick(); render(); });
+  pgSv.addEventListener('change', savePick);
+  pgBack.addEventListener('click', function () { state.page_line_items.picking = false; render(); });
+
   /* Lock Monitor options, remembered in this browser (they're used by "Monitor
      again" too, where the form isn't shown). Notifications are off unless
      ticked, and ticking asks for the permission then - it is optional in the
@@ -520,6 +710,7 @@
   });
   refreshBtn.addEventListener('click', function () {
     if (state[active].busy) stop();
+    else if (byPage[active].pick) { state[active].picking = true; render(); }
     else if (active === 'summary') startSummary();
     else start(active, true);
   });
@@ -546,7 +737,7 @@
   function getAll() {
     if (queue.current) return;
     queue.pages = VIEWS.filter(function (v) {
-      return v.page !== 'summary' && !v.off && !v.live && !state[v.page].ts && !state[v.page].busy;
+      return v.page !== 'summary' && !v.off && !v.live && !v.pick && !state[v.page].ts && !state[v.page].busy;
     }).map(function (v) { return v.page; });
     queue.total = queue.pages.length;
     pump();
@@ -574,6 +765,12 @@
   }
 
   window.addEventListener('message', function (e) {
+    // Page Line Items' own "Choose other pages" button.
+    var pf = state.page_line_items.frame;
+    if (pf && e.source === pf.contentWindow && e.origin === location.origin && e.data && e.data.type === 'ia_pli_pick') {
+      if (!state.page_line_items.busy) { state.page_line_items.picking = true; render(); }
+      return;
+    }
     var f = state.summary.frame;
     if (!f || e.source !== f.contentWindow || e.origin !== location.origin || !e.data) return;
     if (e.data.type === 'ia_getall') getAll();
@@ -672,7 +869,13 @@
       st.ts = 0;
       st.note = '';
       st.steps = [];
+      st.picking = false;
     });
+    pick.key = null;
+    pick.skey = '';
+    pick.pages = null;
+    pick.error = '';
+    pick.sel = new Set();
     sync(false);
   }
 
