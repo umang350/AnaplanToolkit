@@ -259,7 +259,9 @@ function noMatchState() {
      rows        optional data -> [row], when the data is not the row array itself
      max         optional row cap: only this many rows are drawn, with a button to
                  draw more - for reports that run to tens of thousands of rows.
-                 Search and Export to CSV still cover every row.
+                 Search and Export to CSV still cover every row. Defaults to
+                 DEFAULT_MAX: drawing every row on each keystroke and sort hung the
+                 browser on 8,000 filter rows.
      tabs        optional [{label, rows: data -> [row], heading, note, top, placeholder,
                  cols, headers, key, cells, csvRow | csv, filename, max}] - one table
                  per tab, under a tab bar, with a row count beside the heading.
@@ -267,6 +269,8 @@ function noMatchState() {
                  described by the fields above.
    }
    --------------------------------------------------------------------------- */
+var DEFAULT_MAX = 400, SEARCH_WAIT = 150;
+
 export function renderPage(opts) {
   /* Summary's "Download all" (chunks/export_all.js) imports the view modules to
      reuse their CSV definitions: with IA_COLLECT set, a view hands its options
@@ -311,9 +315,25 @@ export function renderPage(opts) {
       'z-10 sticky top-0 flex flex-col gap-4 p-4 bg-background' + (scrolled ? ' shadow-md' : '');
   }
 
+  /* Rows and search keys are worked out once per tab per payload. The rows must
+     stay the same objects: the sort's cell-text cache is keyed by row, and the
+     All tab's rows are built fresh by t.rows() on every call. */
+  var rowsOf = new Map(), keysOf = new Map();
   function tabRows(t) {
+    var hit = rowsOf.get(t);
+    if (hit && hit.data === data) return hit.rows;
     var rows = t.rows ? t.rows(data) : data;
-    return Array.isArray(rows) ? rows : [];
+    rows = Array.isArray(rows) ? rows : [];
+    rowsOf.set(t, { data: data, rows: rows });
+    keysOf.set(t, new WeakMap());
+    return rows;
+  }
+  function keyFn(t) {
+    var m = keysOf.get(t);
+    return function (row) {
+      if (!m.has(row)) m.set(row, String(t.key(row) || '').toLowerCase());
+      return m.get(row);
+    };
   }
 
   /* Column sort, per tab: {col, dir} with dir 1 / -1. Applied after search,
@@ -348,12 +368,14 @@ export function renderPage(opts) {
 
   function matches() {
     var t = tabs[active];
-    return sorted(t, search(tabRows(t), query, t.key));
+    var rows = tabRows(t);
+    return sorted(t, search(rows, query, keyFn(t)));
   }
 
   function buildTable(rows) {
     var t = tabs[active],
-        lim = t.max ? Math.max(shown, t.max) : rows.length,
+        max = t.max || DEFAULT_MAX,
+        lim = Math.max(shown, max),
         card = el('div', 'rounded-md border border-border'),
         head = el('div', 'grid ' + t.cols + ' border-b border-border px-2 py-3');
     var st = sorts[active];
@@ -389,11 +411,11 @@ export function renderPage(opts) {
     if (rows.length <= lim) return card;
 
     var box = el('div', 'ia-table'), rest = rows.length - lim,
-        more = el('button', 'ia-more', 'Show ' + Math.min(t.max, rest).toLocaleString() + ' more · ' +
+        more = el('button', 'ia-more', 'Show ' + Math.min(max, rest).toLocaleString() + ' more · ' +
                   rest.toLocaleString() + ' not shown');
     more.type = 'button';
     more.addEventListener('click', function () {
-      shown = lim + t.max;
+      shown = lim + max;
       box.replaceWith(buildTable(rows));
     });
     box.appendChild(card);
@@ -500,7 +522,13 @@ export function renderPage(opts) {
     input.type = 'text';
     input.placeholder = tab.placeholder || opts.placeholder;
     input.value = query;
+    /* Waits for a pause in typing: each search scores every row. */
+    var wait = 0;
     input.addEventListener('input', function () {
+      clearTimeout(wait);
+      wait = setTimeout(runSearch, SEARCH_WAIT);
+    });
+    function runSearch() {
       query = input.value;
       shown = 0;
       // Redraw in place so the caret and focus survive the keystroke.
@@ -509,7 +537,7 @@ export function renderPage(opts) {
       count.hidden = !query;
       if (chip) chip.textContent = fresh.length;
       body.replaceChildren(fresh.length ? buildTable(fresh) : noMatchState());
-    });
+    }
     group.appendChild(input);
 
     count.className = addonBase + ' pe-3 text-xs';

@@ -110,15 +110,24 @@ function base(r) {
   return [textCell(r.appName), linkCell(r.pageName, r.pageUrl), textCell(r.widgetTitle || 'Unnamed')];
 }
 
+/* Every column sorts on a value, not its cell's text: the fallback builds every
+   row's cells, which on 8,000 rows froze the panel. */
+function by(f) { return function (r) { return f(r) || ''; }; }
+var APP = by(function (r) { return r.appName; }),
+    PAGE = by(function (r) { return r.pageName; }),
+    WIDGET = by(function (r) { return r.widgetTitle || 'Unnamed'; });
+function inAll(f) { return function (x) { return f(x.r); }; }
+
 var FILTERS = {
   label: 'Filters',
   heading: 'Filter Line Items',
   placeholder: 'Search by app, page, widget, line item or condition...',
   rows: filterRows,
   cols: 'grid-cols-12',
-  headers: [{ label: 'App', cls: 'col-span-2' }, { label: 'Page', cls: 'col-span-2' },
-            { label: 'Widget', cls: 'col-span-2' }, { label: 'Line Item', cls: 'col-span-3' },
-            { label: 'Condition', cls: 'col-span-3' }],
+  headers: [{ label: 'App', cls: 'col-span-2', sort: APP }, { label: 'Page', cls: 'col-span-2', sort: PAGE },
+            { label: 'Widget', cls: 'col-span-2', sort: WIDGET },
+            { label: 'Line Item', cls: 'col-span-3', sort: by(function (r) { return (conditionsOf(r)[0] || {}).lineItem; }) },
+            { label: 'Condition', cls: 'col-span-3', sort: by(function (r) { return conditionText(conditionsOf(r)[0] || {}); }) }],
   key: function (r) {
     return r.appName + ' ' + r.pageName + ' ' + r.widgetTitle + ' ' +
       conditionsOf(r).map(function (c) { return c.lineItem + ' ' + conditionText(c); }).join(' ');
@@ -157,9 +166,11 @@ var FORMATTING = {
   placeholder: 'Search by app, page, widget, line item or colour...',
   rows: formattingRows,
   cols: 'grid-cols-12',
-  headers: [{ label: 'App', cls: 'col-span-2' }, { label: 'Page', cls: 'col-span-2' },
-            { label: 'Widget', cls: 'col-span-2' }, { label: 'Formatted Line Item', cls: 'col-span-2' },
-            { label: 'Values From', cls: 'col-span-2' }, { label: 'Colours', cls: 'col-span-2' }],
+  headers: [{ label: 'App', cls: 'col-span-2', sort: APP }, { label: 'Page', cls: 'col-span-2', sort: PAGE },
+            { label: 'Widget', cls: 'col-span-2', sort: WIDGET },
+            { label: 'Formatted Line Item', cls: 'col-span-2', sort: by(function (r) { return r.formattedLineItem; }) },
+            { label: 'Values From', cls: 'col-span-2', sort: by(function (r) { return r.sourceLineItem; }) },
+            { label: 'Colours', cls: 'col-span-2', sort: by(function (r) { return r.ruleType; }) }],
   key: function (r) {
     return r.appName + ' ' + r.pageName + ' ' + r.widgetTitle + ' ' + r.formattedLineItem + ' ' +
       r.sourceLineItem + ' ' + r.ruleType + ' ' + (r.pegs || []).map(pegText).join(' ') +
@@ -201,9 +212,14 @@ var ALL = {
       .concat(formattingRows(d).map(function (r) { return { kind: 'Conditional Formatting', r: r }; }));
   },
   cols: 'grid-cols-12',
-  headers: [{ label: 'Type', cls: 'col-span-2' }, { label: 'App', cls: 'col-span-2' },
-            { label: 'Page', cls: 'col-span-2' }, { label: 'Widget', cls: 'col-span-2' },
-            { label: 'Line Item(s)', cls: 'col-span-2' }, { label: 'Details', cls: 'col-span-2' }],
+  headers: [{ label: 'Type', cls: 'col-span-2', sort: function (x) { return x.kind; } },
+            { label: 'App', cls: 'col-span-2', sort: inAll(APP) },
+            { label: 'Page', cls: 'col-span-2', sort: inAll(PAGE) },
+            { label: 'Widget', cls: 'col-span-2', sort: inAll(WIDGET) },
+            { label: 'Line Item(s)', cls: 'col-span-2', sort: function (x) {
+              return x.kind === 'Filter' ? (conditionsOf(x.r)[0] || {}).lineItem || '' : x.r.formattedLineItem || ''; } },
+            { label: 'Details', cls: 'col-span-2', sort: function (x) {
+              return x.kind === 'Filter' ? conditionText(conditionsOf(x.r)[0] || {}) : x.r.ruleType || ''; } }],
   key: function (x) { return x.kind + ' ' + (x.kind === 'Filter' ? FILTERS : FORMATTING).key(x.r); },
   cells: function (x) {
     var r = x.r, c = [textCell(x.kind)].concat(base(r));

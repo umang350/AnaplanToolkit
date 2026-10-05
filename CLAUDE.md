@@ -173,6 +173,9 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   rebuilt. Keep the two implementations in step; all seventeen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
+  Without it a tab gets `DEFAULT_MAX` (400): drawing all 8,000 Filters rows on every keystroke and
+  sort hung the browser. Search waits for a 150ms pause in typing, and each tab's rows and search
+  keys are worked out once per payload.
   Every table sorts by clicking a column header (ascending, descending, back to original order).
   In `renderPage` the sort applies to the matches before the row cap and to Export to CSV; a
   header's `sort: row => value` gives the value (needed for numbers shown as text like "1.2 GB",
