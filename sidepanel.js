@@ -531,6 +531,7 @@
      page in it that the filter shows. What was ticked, and the saved views
      option, are remembered per model in this browser. */
   var PG_OPTS = 'ia_pli:';
+  var pgSort = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
   var pick = { key: null, skey: '', pages: null, loading: false, error: '', sel: new Set() };
 
   function savePick() {
@@ -660,7 +661,13 @@
       var key = 'a:' + a;
       pgList.appendChild(group(a, all, q ? true : key in open ? open[key] : few, function (d) {
         d.dataset.g = key;
-        cats.forEach(function (ps, c) {
+        /* Categories in name order, numbers as numbers ("01. Sales Inventory
+           Plan" before "02. …", "2" before "10"); pages without one stay at
+           the top in Anaplan's order. */
+        Array.from(cats.keys()).sort(function (x, y) {
+          return !y - !x || (!x ? 0 : pgSort.compare(x, y));
+        }).forEach(function (c) {
+          var ps = cats.get(c);
           if (!c) { ps.forEach(function (p) { d.appendChild(pageBox(p)); }); return; }
           var ck = key + '\u0000c:' + c;
           var sub = group(c, ps, q ? true : ck in open ? open[ck] : false, function (d2) {
