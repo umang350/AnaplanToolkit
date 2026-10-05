@@ -3,18 +3,17 @@
  * Author: Umang Chauhan
  */
 /*
- * Column sorting for the compiled views (Actions IDs, Usages, Linked Pages,
- * SV Filters), which are Svelte build output with no source in this
+ * Column sorting for the compiled views (Usages, Linked Pages, SV Filters),
+ * which are Svelte build output with no source in this
  * repository. The hand-written views sort in renderPage (chunks/sv_shared.js);
- * this gives these four the same click-a-header behaviour from outside.
+ * this gives these three the same click-a-header behaviour from outside.
  *
  * A table here is a card whose first child is the header row (`grid ...
  * border-b ... py-3` of <h3>s) followed by one `grid ... py-1` div per row,
  * each cell an element in header order. Rows are reordered with CSS `order`
  * on a flex column, never moved in the DOM, because Svelte keeps its own
- * references to those nodes (as chunks/actions_counts.js does for the tab
- * bar). The views redraw on search and tab changes, so a MutationObserver
- * re-binds new headers and re-applies the sort to new rows. Sort state is
+ * references to those nodes. The views redraw on search and tab changes, so a
+ * MutationObserver re-binds new headers and re-applies the sort to new rows. Sort state is
  * kept per table (keyed by its header labels), so it survives a redraw.
  */
 (function () {
@@ -51,7 +50,11 @@
     heads(head).forEach(function (h, i) {
       var on = st && st.col === i, mark = h.querySelector('.ia-sort-mark');
       h.setAttribute('aria-sort', on ? (st.dir > 0 ? 'ascending' : 'descending') : 'none');
-      if (mark) mark.textContent = on ? (st.dir > 0 ? ' ▲' : ' ▼') : '';
+      /* Only when it changes: rewriting the same text is still a childList
+         mutation, which re-ran this observer every frame and re-sorted every
+         row for as long as a column stayed sorted. */
+      var want = on ? (st.dir > 0 ? ' ▲' : ' ▼') : '';
+      if (mark && mark.textContent !== want) mark.textContent = want;
     });
     if (!st) { rs.forEach(function (r) { r.style.order = ''; }); return; }
     var keyed = rs.map(function (r, ix) { return { r: r, ix: ix, v: cellText(r, st.col) }; });

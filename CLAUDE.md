@@ -148,19 +148,23 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
 
 ## Editing constraints
 
-- **Four of the view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
-  are committed Svelte build output (actions, action_usages, pages, sv_filter_items).
+- **Three of the view renderers have no source in this repository.** `chunks/<page>-<hash>.js`
+  are committed Svelte build output (action_usages, pages, sv_filter_items).
   You cannot meaningfully edit them. Styling changes for those pages go in `views.css`, which is
   loaded after the compiled Tailwind CSS specifically to override it.
   One hand patch: in the shared Svelte runtime `chunks/style-Xzc7Y0WM.js`, the template function
   (`Xr`) builds its fragment with `DOMParser` instead of `template.innerHTML`, because AMO's validator
   flags that `innerHTML` as unsafe. Same nodes either way (checked on every template the views use).
   Re-apply it if those chunks are ever rebuilt.
-- `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
+- `actions`, `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
   `modules`, `line_items`, `lists`, `revisions`, `lock_monitor` and `page_line_items` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
   `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
-  option. Its rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. Anaplan keeps a
+  option. `actions` replaced the compiled Actions view (kept as `chunks/actions-DpK-UuAO.js.retired`)
+  because that drew every row of every list, each with a copy-button component, on its All tab and on
+  every keystroke, hanging the browser on large models; it keeps the old tabs (All first), CSV files and
+  columns, shows each tab's total on the tab bar (`renderPage`'s `counts`, replacing
+  `chunks/actions_counts.js`) and leaves its All tab out of Download all (`zip: false`). Filters' rows carry `conditions` (and still `lineItems`) and `pegs` from `S()`/`T()` in `inner.js`. Anaplan keeps a
   formatting rule (and a column width) after its line item is hidden from the grid, so `IA_onGrid`
   reads the widget's line item axis (dimension `20000000012`: `shows`, or `hides` when `shows` is
   empty) and a rule whose target is off the grid gets `onGrid: false` - tagged "Hidden on grid", not
@@ -179,7 +183,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   Every table sorts by clicking a column header (ascending, descending, back to original order).
   In `renderPage` the sort applies to the matches before the row cap and to Export to CSV; a
   header's `sort: row => value` gives the value (needed for numbers shown as text like "1.2 GB",
-  and for big tables, since the fallback reads each cell's text). The four compiled views get it
+  and for big tables, since the fallback reads each cell's text). The three compiled views get it
   from `chunks/table_sort.js` (loaded in their HTML), which reorders rows with CSS `order` on a
   flex column - never moving Svelte's nodes - and re-applies through a MutationObserver.
 - **Structure** is a panel group of three reports read off the in-page model cache by
@@ -346,14 +350,14 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   per view tab plus `summary.csv`, built entirely in the page (a small ZIP writer, raw DEFLATE via
   `CompressionStream`). The hand-written views are imported with `globalThis.IA_COLLECT` set, which
   makes `renderPage` register their options instead of drawing, so their CSV columns are defined
-  once; the four compiled views' columns are mirrored in `COMPILED` there - keep those in step.
+  once; the three compiled views' columns are mirrored in `COMPILED` there - keep those in step.
   Beside it, **Get all data** asks the panel (`window.postMessage` `ia_getall` / `ia_getall_stop`)
   to gather every report not yet loaded **one after another** (`getAll`/`pump` in `sidepanel.js`:
   `IA_step`'s progress page is one global per frame, and parallel gathers would also all load the
   model at once). The queue moves on when the running report stops being busy, ignores the
   `ia_select` each gather sends so the panel stays on Summary, reports back with
-  `ia_getall_status`, and is dropped by Stop and by a model switch. It and the Actions tab counts
-  (`chunks/actions_counts.js`) are styled with `ia-*` classes in `views.css`, because the compiled
+  `ia_getall_status`, and is dropped by Stop and by a model switch. It and the Actions view's columns, copy buttons
+  and tab counts are styled with `ia-*` classes in `views.css`, because the compiled
   Tailwind CSS only contains utilities the bundled views already use.
 - **`background.js`, `inner.js`, `outer.js` and `main.js` are minified vendor output with
   hand-written additions merged in.** Identifiers added by this project are prefixed `IA_`

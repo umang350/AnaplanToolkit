@@ -117,6 +117,9 @@ var ICONS = {
                    ['path', { d: 'M15.17 2.21a1.67 1.67 0 0 1 1.63 0L21 4.57a1.93 1.93 0 0 1 0 3.36L8.82 14.79a1.655 1.655 0 0 1-1.64 0L3 12.43a1.93 1.93 0 0 1 0-3.36z' }],
                    ['path', { d: 'M20 13v3.87a2.06 2.06 0 0 1-1.11 1.83l-6 3.08a1.93 1.93 0 0 1-1.78 0l-6-3.08A2.06 2.06 0 0 1 4 16.87V13' }],
                    ['path', { d: 'M21 12.43a1.93 1.93 0 0 0 0-3.36L8.83 2.2a1.64 1.64 0 0 0-1.63 0L3 4.57a1.93 1.93 0 0 0 0 3.36l12.18 6.86a1.636 1.636 0 0 0 1.63 0z' }]],
+  copy: [['rect', { width: '14', height: '14', x: '8', y: '8', rx: '2', ry: '2' }],
+         ['path', { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }]],
+  check: [['path', { d: 'M20 6 9 17l-5-5' }]],
   'external-link': [['path', { d: 'M15 3h6v6' }],
                     ['path', { d: 'M10 14 21 3' }],
                     ['path', { d: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6' }]]
@@ -263,8 +266,11 @@ function noMatchState() {
                  DEFAULT_MAX: drawing every row on each keystroke and sort hung the
                  browser on 8,000 filter rows.
      tabs        optional [{label, rows: data -> [row], heading, note, top, placeholder,
-                 cols, headers, key, cells, csvRow | csv, filename, max}] - one table
+                 cols, headers, key, cells, csvRow | csv, filename, max, zip}] - one table
                  per tab, under a tab bar, with a row count beside the heading.
+                 zip: false leaves a tab out of Summary's Download all (Actions'
+                 All tab, which only repeats the others).
+     counts      optional: each tab's row total on the tab bar (Actions)
                  Without it the page is a single table over the data array,
                  described by the fields above.
    }
@@ -452,6 +458,7 @@ export function renderPage(opts) {
         b.type = 'button';
         b.setAttribute('role', 'tab');
         b.setAttribute('data-slot', 'tabs-trigger');
+        if (opts.counts) b.appendChild(el('span', 'ia-count', tabRows(t).length.toLocaleString()));
         b.setAttribute('data-state', i === active ? 'active' : 'inactive');
         b.setAttribute('aria-selected', i === active ? 'true' : 'false');
         b.addEventListener('click', function () {

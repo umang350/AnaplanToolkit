@@ -207,8 +207,8 @@ chunks/                  report renderers (see Notes for maintainers) and shared
 
 ## Notes for maintainers
 
-- Four report pages are compiled Svelte (`chunks/<page>-<hash>.js`): Actions IDs, Usages,
-  Pages › Modules and SV Filters. There is no Svelte source in this repository; those chunks are
+- Three report pages are compiled Svelte (`chunks/<page>-<hash>.js`): Usages, Pages › Modules
+  and SV Filters. There is no Svelte source in this repository; those chunks are
   committed build output. Every other report is a plain ES module on `chunks/sv_shared.js`, which
   carries its own copies of the CSV writer and the search scorer so all views behave the same.
 - `popup.html` and `chunks/popup-*.js` are **not referenced by the manifest**. The side panel

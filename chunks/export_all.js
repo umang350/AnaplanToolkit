@@ -12,7 +12,7 @@ import { csvText } from './sv_shared.js';
  * The hand-written views keep their CSV columns in their renderPage options,
  * so rather than copy them here they are imported in "collect" mode
  * (IA_COLLECT, see renderPage in sv_shared.js): each module hands its options
- * over instead of drawing. The four compiled views can't be imported that
+ * over instead of drawing. The three compiled views can't be imported that
  * way, so COMPILED mirrors the columns their own Export buttons write
  * (read off chunks/<page>-<hash>.js) - keep them in step if those change.
  *
@@ -23,6 +23,7 @@ import { csvText } from './sv_shared.js';
 /* One literal import() per view: AMO's validator rejects import() with a
    computed path ("Unsafe call to import"). */
 var HAND = [
+  function () { return import('./actions.js'); },
   function () { return import('./filter_items.js'); },
   function () { return import('./page_line_items.js'); },
   function () { return import('./sv_views.js'); },
@@ -39,22 +40,7 @@ var HAND = [
   function () { return import('./workspace_all.js'); }
 ];
 
-function nameId(x) { return { Name: x.label, Id: x.entityLongId }; }
-
 var COMPILED = {
-  actions: function (d) {
-    d = d || {};
-    return [
-      ['processes.csv', (d.processes || []).map(nameId)],
-      ['imports.csv', (d.imports || []).map(function (x) {
-        var s = x.importDefinition && x.importDefinition.source;
-        return { Name: x.label, Id: x.entityLongId, SourceID: s == null ? '' : String(s).replaceAll('_', '') };
-      })],
-      ['exports.csv', (d.exports || []).map(nameId)],
-      ['actions.csv', (d.actions || []).map(nameId)],
-      ['files.csv', (d.files || []).map(nameId)]
-    ];
-  },
   action_usages: function (d) {
     return [['action_usages.csv', (d || []).flatMap(function (w) {
       var rest = Object.assign({}, w);
@@ -91,7 +77,7 @@ async function viewDefs() {
 
 // [filename, rows] per tab of one hand-written view, as its Export button writes them.
 function handFiles(opts, data) {
-  return (opts.tabs || [opts]).map(function (t) {
+  return (opts.tabs || [opts]).filter(function (t) { return t.zip !== false; }).map(function (t) {
     var rows = t.rows ? t.rows(data) : data;
     rows = Array.isArray(rows) ? rows : [];
     return [t.filename || opts.filename || opts.page + '.csv', t.csv ? t.csv(rows) : rows.map(t.csvRow),
