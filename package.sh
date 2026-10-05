@@ -53,6 +53,12 @@ if find "$OUT" -name '*.bak' -o -name '*.pre-*' -o -name '*.retired' | grep -q .
   echo "development snapshots leaked into $OUT" >&2; exit 1
 fi
 
+# Chrome build: minus Firefox's sidebar_action and background.scripts, which
+# Chrome reports on the extensions page ("Unrecognized manifest key",
+# "'background.scripts' requires manifest version of 2 or lower"). Loading
+# the repository root unpacked still shows both - it has the shared manifest.
+jq 'del(.sidebar_action) | del(.background.scripts)' manifest.json > "$OUT/manifest.json"
+
 ( cd "$OUT" && zip -qr "../$ZIP" . )
 echo "built $ZIP  ($(find "$OUT" -type f | wc -l | tr -d ' ') files, $(du -sh "$OUT" | cut -f1))"
 

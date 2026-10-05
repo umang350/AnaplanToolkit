@@ -51,7 +51,10 @@ Chrome and Firefox disagree on how the side panel works, and both accommodations
   doesn't recognise it. Two things aren't silently ignored, so `package.sh` strips them from
   `dist-firefox/manifest.json` with `jq`: the `sidePanel` *permission string* (Firefox's manifest
   validator rejects it outright) and `background.service_worker` (Firefox just falls back to
-  `background.scripts`, but AMO's validator warns on the unsupported key's presence).
+  `background.scripts`, but AMO's validator warns on the unsupported key's presence). The Chrome
+  build gets the mirror image: `dist/manifest.json` drops `sidebar_action` and `background.scripts`,
+  which Chrome lists as warnings on its extensions page. Loading the repository root unpacked still
+  shows those two warnings - harmless, but load `dist/` to avoid them.
 - **Opening the panel.** Chrome opens the side panel via `chrome.sidePanel.open()` (wired to the
   toolbar icon with `setPanelBehavior({openPanelOnActionClick:true})`). Firefox has no equivalent
   API — `openPanel()` in `background.js` falls back to `api.sidebarAction.open()`, and `main()`
