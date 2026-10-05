@@ -21,8 +21,11 @@ import { renderPage, el, linkCell, textCell } from './sv_shared.js';
                                   the colour Anaplan paints at it
        onGrid                     false when the formatted line item is hidden
                                   from the grid: Anaplan keeps the rule, but it
-                                  paints nothing. null when there is no grid to
-                                  judge by, and on results cached before it */
+                                  paints nothing. A string (the filter line
+                                  items) when it is on the grid but a filter on
+                                  its axis decides, per data and often per user,
+                                  whether it shows. null when there is no grid
+                                  to judge by, and on results cached before it */
 
 function conditionsOf(r) {
   if (Array.isArray(r.conditions)) return r.conditions;
@@ -89,12 +92,17 @@ var HIDDEN = 'Hidden on grid';
 
 function hidden(r) { return r.onGrid === false; }
 
-function onGridText(r) { return r.onGrid == null ? '' : r.onGrid ? 'Yes' : 'No'; }
+function filtered(r) { return typeof r.onGrid === 'string' ? 'Filtered: ' + r.onGrid : ''; }
+
+function onGridText(r) { return r.onGrid == null ? '' : hidden(r) ? 'No' : filtered(r) || 'Yes'; }
+
+function tagText(r) { return hidden(r) ? HIDDEN : filtered(r); }
 
 function formattedCell(r, cls) {
   var p = el('div', cls);
   p.appendChild(document.createTextNode(r.formattedLineItem));
   if (hidden(r)) p.appendChild(el('span', 'ia-hidden', HIDDEN));
+  else if (filtered(r)) p.appendChild(el('span', 'ia-hidden ia-filtered', filtered(r)));
   return p;
 }
 
@@ -155,7 +163,7 @@ var FORMATTING = {
   key: function (r) {
     return r.appName + ' ' + r.pageName + ' ' + r.widgetTitle + ' ' + r.formattedLineItem + ' ' +
       r.sourceLineItem + ' ' + r.ruleType + ' ' + (r.pegs || []).map(pegText).join(' ') +
-      (hidden(r) ? ' ' + HIDDEN : '');
+      ' ' + tagText(r);
   },
   cells: function (r) {
     var c = base(r).concat([
@@ -224,7 +232,7 @@ var ALL = {
         out.push(Object.assign({}, head, {
           'Line Item': r.formattedLineItem,
           'Values From': r.sourceLineItem,
-          Details: [hidden(r) ? HIDDEN : '', r.ruleType].concat((r.pegs || []).map(pegText)).filter(Boolean).join('; ')
+          Details: [tagText(r), r.ruleType].concat((r.pegs || []).map(pegText)).filter(Boolean).join('; ')
         }));
       }
     });

@@ -159,6 +159,12 @@
   color: #b45309;
   background: color-mix(in srgb, #f59e0b 14%, transparent);
 }
+/* On the grid, but a filter on its axis decides per data (often per user) whether it shows. */
+.ia-filtered {
+  white-space: normal;
+  color: var(--muted-foreground);
+  background: var(--secondary);
+}
 .ia-peg { display: flex; align-items: center; gap: .375rem; font-size: .75rem; }
 .ia-swatch {
   width: .875rem;

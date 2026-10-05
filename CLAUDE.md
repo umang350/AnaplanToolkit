@@ -164,7 +164,9 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   formatting rule (and a column width) after its line item is hidden from the grid, so `IA_onGrid`
   reads the widget's line item axis (dimension `20000000012`: `shows`, or `hides` when `shows` is
   empty) and a rule whose target is off the grid gets `onGrid: false` - tagged "Hidden on grid", not
-  dropped (confirmed on a live model). Line Items on Pages uses it too: such a target counts as
+  dropped (confirmed on a live model). A line item in `shows` whose axis carries a filter gets `onGrid` = the
+  filter line items' names, tagged "Filtered: …": whether it shows depends on data, often per user
+  (confirmed live: a boolean by Users x a line item subset), so the report doesn't guess. Line Items on Pages uses it too: such a target counts as
   Hidden, and that rule's source isn't counted at all. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
