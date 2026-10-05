@@ -22,6 +22,13 @@ ZIP=anaplan-toolkit.zip
 FF_OUT=dist-firefox
 FF_ZIP=anaplan-toolkit-firefox.zip
 
+# Chrome shows version_name instead of version when it is set, so a bump
+# that misses it ships under the old number (2.7.0 first went out as "2.6.0").
+V=$(jq -r .version manifest.json); VN=$(jq -r '.version_name // empty' manifest.json)
+if [ -n "$VN" ] && [ "$VN" != "$V" ]; then
+  echo "manifest.json: version_name $VN does not match version $V" >&2; exit 1
+fi
+
 rm -rf "$OUT" "$ZIP" "$FF_OUT" "$FF_ZIP"
 mkdir -p "$OUT"
 
