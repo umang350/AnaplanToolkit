@@ -12,7 +12,7 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
-**Version:** 2.6.0
+**Version:** 2.7.0
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
@@ -20,19 +20,18 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ---
 
-## What's new in 2.6.0
+## What's new in 2.7.0
 
-- **Structure** tab: Modules (with time scale and time range), Line Items (formulas searchable)
-  and Lists (with properties), read from Anaplan's in-page model data.
-- **Actions › Steps**: each process's actions in order, with *Copy API call*.
-- **Revisions**: revision tags and every model each was applied to.
-- **Lock Monitor**: watches whether the model is available, busy, locked or offline, and says
-  what is running when it's busy.
-- **Workspace**: deleted models (with purge date) on Current, and storage across every workspace
-  on All.
-- **Summary**: *Get all data* and *Download all as CSV (.zip)*.
-- Every table sorts by clicking a column header.
-- Large cached reports are compressed, so they survive the background worker idling out.
+- **Pages › Line Items**: pick App pages and see every line item their widgets show, and where
+  (rows, columns, page selector, filter, formatting, sort, hidden), optionally through saved views.
+- **Filters › Conditional Formatting** no longer counts rules Anaplan keeps after a line item is
+  hidden: they are tagged *Hidden on grid*. A line item whose grid axis is filtered by data (often
+  per user) is tagged *Filtered: <line item>* instead of reported as shown. CSV gains *On Grid*.
+- **Actions** rebuilt for large models: opens instantly on thousands of items, searches names and
+  IDs, sorts every column, and copies an ID with one click.
+- **Large tables** no longer hang the browser: 400 rows are drawn at a time with *Show more*
+  (search, sort and CSV still cover every row), and search waits for a pause in typing.
+- The Chrome package no longer shows manifest warnings on the extensions page.
 
 ## What it does
 
