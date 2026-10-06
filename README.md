@@ -12,7 +12,7 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
-**Version:** 2.7.0
+**Version:** 2.8.0
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
@@ -20,18 +20,21 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ---
 
-## What's new in 2.7.0
+## What's new in 2.8.0
 
-- **Pages › Line Items**: pick App pages and see every line item their widgets show, and where
-  (rows, columns, page selector, filter, formatting, sort, hidden), optionally through saved views.
-- **Filters › Conditional Formatting** no longer counts rules Anaplan keeps after a line item is
-  hidden: they are tagged *Hidden on grid*. A line item whose grid axis is filtered by data (often
-  per user) is tagged *Filtered: <line item>* instead of reported as shown. CSV gains *On Grid*.
-- **Actions** rebuilt for large models: opens instantly on thousands of items, searches names and
-  IDs, sorts every column, and copies an ID with one click.
-- **Large tables** no longer hang the browser: 400 rows are drawn at a time with *Show more*
-  (search, sort and CSV still cover every row), and search waits for a pause in typing.
-- The Chrome package no longer shows manifest warnings on the extensions page.
+- **Structure › Delete** (new, and the first report that changes the model): delete the line items
+  listed in a CSV - module, line item and ID; the Line Items report's own export works as is - across
+  any number of modules.
+  - **Check first**: every row is matched against the model as Anaplan holds it (ID, module and
+    name must all agree), and line items still used by formulas outside the CSV are marked
+    *In use* and left alone. Nothing is deleted until you type the count to confirm.
+  - **Planned order**: one request per module, ordered from the formulas so nothing is deleted
+    while a formula still uses it. What Anaplan refuses is set aside with its reason and retried
+    once other deletes free it.
+  - **Live report** with each line item's status as the run goes; **Pause / Resume**; and the
+    report can **save itself to Downloads** every 5-30 minutes and when the run ends (optional
+    *downloads* permission).
+- New optional permission: `downloads`, asked for only if you turn on auto-save when deleting.
 
 ## What it does
 
