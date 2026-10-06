@@ -108,6 +108,15 @@
       preview: ['Lists', 'Properties'],
       heading: 'Lists', search: 'Search by list, ID or parent...',
       cols: ['List', 'Parent', 'Items', 'Properties'] },
+    /* `upload`: the one view that changes the model. It starts from a CSV
+       chosen on its start screen and checks it (nothing deleted); the report
+       then asks before deleting (ia_dl_delete below). Like `pick`, it is left
+       out of Get all data, and its refresh button goes back to the upload. */
+    { page: 'delete_line_items', tab: 'Delete', group: 'Structure', sub: 'Delete', title: 'Delete Line Items', upload: true,
+      desc: 'Delete line items from any number of modules, listed in a CSV of module, line item and ID. Each row is checked against the model first, and nothing is deleted until you confirm.',
+      preview: ['All', 'Matched', 'Skipped'],
+      heading: 'Delete Line Items', search: 'Search by module, line item, ID or status...',
+      cols: ['Module', 'Line Item', 'Status'] },
     { page: 'revisions', tab: 'Revisions', title: 'Revision Tags',
       desc: 'The model\'s revision tags - who created each and when - and every model each one was applied to.',
       preview: ['Revision Tags', 'Applied To'],
@@ -155,6 +164,10 @@
       pgList = document.getElementById('pg-list'),
       pgSv = document.getElementById('pg-sv'),
       pgBack = document.getElementById('pg-back'),
+      emptyDl = document.getElementById('empty-dl'),
+      dlFile = document.getElementById('dl-file'),
+      dlInfo = document.getElementById('dl-info'),
+      dlBack = document.getElementById('dl-back'),
       skPlaceholder = document.getElementById('sk-placeholder'),
       skHeading = document.getElementById('sk-heading'),
       skHead = document.getElementById('sk-head'),
@@ -410,6 +423,7 @@
     refreshBtn.title = st.busy ? (running > 1 ? 'Stop all ' + running + ' running gathers' : v.live ? 'Stop and save' : 'Stop')
       : v.live ? 'Continue monitoring - adds to this report (Clear, in the report, starts over)'
       : v.pick ? 'Choose pages and get data again'
+      : v.upload ? 'Choose another CSV'
       : st.ts ? 'Refresh · gathered ' + ago(st.ts) : 'Refresh';
     refreshBtn.setAttribute('aria-label', st.busy ? 'Stop' : 'Refresh');
 
@@ -419,12 +433,15 @@
       emptyDesc.textContent = v.desc;
       emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring'
         : v.pick ? (pick.sel.size ? 'Get data for ' + pick.sel.size + (pick.sel.size === 1 ? ' page' : ' pages') : 'Choose pages first')
+        : v.upload ? (dl.rows ? 'Check ' + dl.rows.length + (dl.rows.length === 1 ? ' line item' : ' line items') : 'Choose a CSV first')
         : 'Get data';
-      emptyLoad.disabled = !!st.busy || (!!v.pick && !pick.sel.size);
+      emptyLoad.disabled = !!st.busy || (!!v.pick && !pick.sel.size) || (!!v.upload && !dl.rows);
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
       emptyLk.hidden = !v.live;
       emptyPg.hidden = !v.pick;
       if (v.pick) paintPicker(st);
+      emptyDl.hidden = !v.upload;
+      if (v.upload) paintUpload(st);
       paintPreview(v);
     }
     paintProgress();
@@ -461,7 +478,7 @@
     start('summary', true);
   }
 
-  function start(page, force) {
+  function start(page, force, extra) {
     var st = state[page];
     if (st.busy || byPage[page].off) return;
     st.busy = true;
@@ -473,6 +490,14 @@
     if (byPage[page].pick) {
       msg.pages = Array.from(pick.sel);
       msg.sv = pgSv.checked;
+      st.picking = false;
+    }
+    // Delete Line Items: the report's own Delete button sends its rows (extra,
+    // mode delete); Check sends the uploaded CSV's.
+    if (byPage[page].upload) {
+      msg.mode = extra ? 'delete' : 'check';
+      msg.rows = extra ? extra.rows : dl.rows || [];
+      if (extra) msg.modelId = extra.modelId;
       st.picking = false;
     }
     // Lock Monitor: how often, how long, and whether to notify.
@@ -715,9 +740,86 @@
     Promise.resolve(api.permissions.request({ permissions: ['notifications'] }))
       .then(function (ok) { lkNotify.checked = !!ok; saveLk(); }, function () { lkNotify.checked = false; saveLk(); });
   });
+  /* Delete Line Items' upload. The CSV is read here, in the panel, and only its
+     module, line item and ID columns are kept (with each row's line number, so
+     the report can point back at it); it is not stored anywhere. Columns are
+     found by header name - the Line Items report's own export (Module,
+     ModuleId, LineItem, LineItemId, ...) works unchanged. */
+  var DL_MAX = 20000,
+      DL_COLS = { module: ['module', 'modulename'],
+                  name: ['lineitem', 'lineitemname', 'name', 'lineitems'],
+                  id: ['lineitemid', 'id', 'lineitemlongid', 'entitylongid', 'entityid'] };
+  var dl = { rows: null, file: '', info: '', error: false };
+
+  function csvParse(text) {
+    text = text.replace(/^\ufeff/, '');
+    var first = text.slice(0, text.search(/\r?\n|$/)),
+        sep = [',', ';', '\t'].reduce(function (a, b) { return first.split(b).length > first.split(a).length ? b : a; }),
+        rows = [], row = [], cell = '', q = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (q) {
+        if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+        else if (ch === '"') q = false;
+        else cell += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === sep) { row.push(cell); cell = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(cell); rows.push(row); row = []; cell = '';
+      } else cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+
+  function dlRead(name, text) {
+    var all = csvParse(text), head = (all[0] || []).map(function (h) { return h.toLowerCase().replace(/[^a-z0-9]/g, ''); }),
+        at = {};
+    Object.keys(DL_COLS).forEach(function (k) {
+      at[k] = -1;
+      DL_COLS[k].some(function (n) { at[k] = head.indexOf(n); return at[k] >= 0; });
+    });
+    dl.file = name;
+    dl.rows = null;
+    dl.error = true;
+    if (at.module < 0 || at.name < 0) {
+      dl.info = name + ': no Module and Line Item columns in the first row. The CSV needs a header row naming them.';
+      return;
+    }
+    var rows = [];
+    for (var i = 1; i < all.length; i++) {
+      var r = all[i], c = function (k) { return at[k] >= 0 ? String(r[at[k]] || '').trim() : ''; };
+      if (!c('module') && !c('name') && !c('id')) continue;
+      rows.push({ line: rows.length + 1, module: c('module'), name: c('name'), id: c('id') });
+    }
+    if (!rows.length) { dl.info = name + ': no line items listed under the header row.'; return; }
+    if (rows.length > DL_MAX) { dl.info = name + ': ' + rows.length + ' rows - at most ' + DL_MAX + ' at a time.'; return; }
+    var mods = new Set(rows.map(function (r) { return r.module.toLowerCase(); })).size;
+    dl.rows = rows;
+    dl.error = false;
+    dl.info = name + ': ' + rows.length + (rows.length === 1 ? ' line item' : ' line items') + ' from ' +
+      mods + (mods === 1 ? ' module' : ' modules') + (at.id < 0 ? ' (no ID column - matched by name)' : '');
+  }
+
+  function paintUpload(st) {
+    dlBack.hidden = !st.frame;
+    dlInfo.textContent = dl.info || '';
+    dlInfo.toggleAttribute('data-error', !!dl.error);
+  }
+
+  dlFile.addEventListener('change', function () {
+    var f = dlFile.files && dlFile.files[0];
+    dlFile.value = '';
+    if (!f) return;
+    f.text().then(function (t) { dlRead(f.name, t); render(); },
+      function () { dl.rows = null; dl.error = true; dl.info = f.name + ' could not be read.'; render(); });
+  });
+  dlBack.addEventListener('click', function () { state.delete_line_items.picking = false; render(); });
+
   refreshBtn.addEventListener('click', function () {
     if (state[active].busy) stop();
-    else if (byPage[active].pick) { state[active].picking = true; render(); }
+    else if (byPage[active].pick || byPage[active].upload) { state[active].picking = true; render(); }
     else if (active === 'summary') startSummary();
     else start(active, true);
   });
@@ -744,7 +846,7 @@
   function getAll() {
     if (queue.current) return;
     queue.pages = VIEWS.filter(function (v) {
-      return v.page !== 'summary' && !v.off && !v.live && !v.pick && !state[v.page].ts && !state[v.page].busy;
+      return v.page !== 'summary' && !v.off && !v.live && !v.pick && !v.upload && !state[v.page].ts && !state[v.page].busy;
     }).map(function (v) { return v.page; });
     queue.total = queue.pages.length;
     pump();
@@ -776,6 +878,16 @@
     var pf = state.page_line_items.frame;
     if (pf && e.source === pf.contentWindow && e.origin === location.origin && e.data && e.data.type === 'ia_pli_pick') {
       if (!state.page_line_items.busy) { state.page_line_items.picking = true; render(); }
+      return;
+    }
+    /* Delete Line Items' report: back to the upload, or delete the rows it
+       checked. The rows come from the report itself (it holds the check's
+       result); the report engine checks each of them again before deleting. */
+    var df = state.delete_line_items.frame, ds = state.delete_line_items;
+    if (df && e.source === df.contentWindow && e.origin === location.origin && e.data) {
+      if (e.data.type === 'ia_dl_pick' && !ds.busy) { ds.picking = true; render(); }
+      if (e.data.type === 'ia_dl_delete' && !ds.busy && Array.isArray(e.data.rows) && e.data.rows.length)
+        start('delete_line_items', true, { rows: e.data.rows, modelId: String(e.data.modelId || '') });
       return;
     }
     var f = state.summary.frame;

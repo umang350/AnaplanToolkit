@@ -34,6 +34,7 @@ var HAND = [
   function () { return import('./modules.js'); },
   function () { return import('./line_items.js'); },
   function () { return import('./lists.js'); },
+  function () { return import('./delete_line_items.js'); },
   function () { return import('./revisions.js'); },
   function () { return import('./lock_monitor.js'); },
   function () { return import('./workspace.js'); },

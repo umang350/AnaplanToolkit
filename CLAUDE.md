@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
 the structure of the Anaplan model open in the active tab. Seventeen read-only report views, each
-gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on. Proprietary internal tool — see `LICENSE.txt` and
+gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on - and one
+view that changes the model, Delete Line Items (see below). Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
 
@@ -146,6 +147,8 @@ modules cost a minute or more however little is requested — small parallel bat
 views flowing past them. View batches get a 5 min cap (`IA_VTMO`) rather than the usual 90s, are
 never retried, and a timeout stops new batches: Anaplan keeps working on an aborted request, so
 aborting or retrying only adds server load and leaves the model busy after the client has given up.
+The one write is Delete Line Items' `/jsonrpc` call, whose `submissions` carry `DeleteLineItem` model
+changes (see below); every other call only reads.
 Beyond those, only the Lock Monitor calls Anaplan's Integration API (`api.anaplan.com`, model
 status, with the page's cookies). No non-Anaplan server is ever contacted.
 
@@ -177,7 +180,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   Hidden, and that rule's source isn't counted at all. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all seventeen views are expected to export and search
+  rebuilt. Keep the two implementations in step; all eighteen views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Without it a tab gets `DEFAULT_MAX` (400): drawing all 8,000 Filters rows on every keystroke and
@@ -345,7 +348,55 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
-- `summary` (`chunks/summary.js`) is the eighteenth view and the odd one out: no CSV or search, gathered
+- **Delete Line Items** (`delete_line_items`, Structure group, `IA_gdl` in `inner.js`,
+  `chunks/delete_line_items.js`) is the one view that **changes the model**. The panel's start screen
+  (`#empty-dl`, `dlRead`/`csvParse` in `sidepanel.js`) reads a CSV, finding the Module, Line Item and
+  (optional) Line Item ID columns by header name - the Line Items report's own export works as is -
+  and keeps nothing but those (not stored). Check (`ia_load`, `mode: "check"`) changes nothing: it
+  reads the model's structure **from Anaplan** (`IA_dlRead`: `/jsonrpc`, no view requests,
+  `modelDefinitionSerialNumber: -1`, whose reply carries `modelInfo` - not the in-page cache, which can
+  lag the server) and marks each row ready only when its ID is a line item of this model, in the
+  module named, with the name given (case and spacing ignored); a row without an ID matches by module
+  + name. Anything else is skipped with the reason. The report then asks before deleting: the number
+  of line items must be typed. It posts `ia_dl_delete` (the ready rows and the model ID) to the panel,
+  which sends `ia_refresh` with `mode: "delete"`; `IA_gdl` refuses a model other than the checked one
+  (line item IDs are numbered per model) and matches every row again before deleting. The delete is
+  what Anaplan's own *Delete from Line Items* dialog sends (read off a live HAR): `VIEW_REQUEST_SET`
+  with `submissions: [{workspaceId, cellChanges: [], modelChanges: [{modelId, modelChangeXml:
+  '<ModelDefinition><DeleteLineItem entityLongId="…"/></ModelDefinition>'}, …]}]` and the
+  `modelDefinitionSerialNumber` the previous reply gave (the dialog's own `viewRequests` only refresh
+  the grids open on screen, so they are left out). **A change needs the page's session** (confirmed live: without it
+  Anaplan answers `{error: "The server did not recognise the request as originating from a page it
+  had recently delivered to you…"}` and applies nothing; reads don't need it): the body carries
+  `clientSessionId` (the page's 32-hex id, which also prefixes Anaplan's `Request-Serial-Number`
+  header) and `txid` (the previous reply's `txid` - they chain), with headers `X-Requested-With:
+  XMLHttpRequest` and `X-Client-Session-Id` (the frame URL's own `clientSessionId` parameter, a short
+  different id). `main.js` finds the 32-hex id (`IA_findSess`, asked with `IA_want: "session"`): from
+  the page's own outgoing jsonrpc bodies (`IA_hookSess` wraps XHR `send`/`fetch` to look - never to
+  change them), else under a key named like clientSessionId in `window`/`window.anaplan`; with
+  neither, the delete refuses before calling. `Request-Serial-Number` itself is **not** sent - a
+  number from the page's sequence could collide with its next request. **Order and batching** (confirmed live):
+  Anaplan applies one request's changes in order and all or nothing, and refuses a line item still
+  used by another - even one later in the same request ("Revenue cannot be deleted because it is in
+  use: Margin = …" with Margin further down). So rows go one request per module (up to `IA_DL_BATCH`,
+  100), line items bottom-up and modules last to first (`pos` in `IA_dlIndex`), since calculations
+  usually sit below their inputs and reports after data. A module Anaplan refuses is then tried one
+  line item at a time, in passes: a line item is retried only if something was deleted since it was
+  last refused alone (`seen`), and the passes end when none qualifies. Nothing is resent blindly. A
+  timeout or network failure stops the run (the request may still complete on Anaplan's side); Stop
+  takes effect between requests and never aborts one in flight (its fetch is not in `IA_ctl`). After
+  each request the engine sends `ia_live` (the report so far: rows `queued` / `deleted` / `failed`,
+  `running: true`), which the worker pushes as `delete_line_items_data` with `live: true` while the
+  run is busy, so the report fills in as it goes.
+  A final read decides each row's status (deleted / failed). It is in `LIVE` in `background.js` so a
+  stopped run's result is still cached, and once anything is deleted the worker drops `DL_STALE`
+  (Line Items, Modules, Filters, Line Items on Pages) for that model. The Anaplan tab's own cache is
+  stale until it is reloaded, which the report says. Confirmed live: the session fields above are
+  enough (157 line items across 18 modules deleted without `Request-Serial-Number`), and a refusal
+  arrives as `errorInfo.errorMessage` ("X cannot be deleted because it is in use: …") with the serial
+  unchanged and no `modelInfo`. Not confirmed: which of `IA_findSess`'s two ways found the id. `upload` in `VIEWS` / `REPORTS` keeps it out of
+  Get all data and the loaded count.
+- `summary` (`chunks/summary.js`) is the nineteenth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button

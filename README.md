@@ -54,6 +54,7 @@ demand, grouped as in the panel's tab bar:
 | **Structure** | Modules | Every module with its ID, dimensions, time scale, time range, line item and saved view counts, and the App pages that use it |
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
+| | Delete | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID) across any number of modules. Every row is checked against the model first and nothing is deleted until you type the count to confirm; the report shows what was deleted, what wasn't and why. |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
 | **Lock** | | Checks at an interval you choose whether the model is available, busy, locked or offline, and what is running; shows a timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
@@ -168,11 +169,12 @@ telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your 
 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
-- `/jsonrpc`: saved views, action definitions, workspace storage and revision tags
+- `/jsonrpc`: saved views, action definitions, workspace storage and revision tags, and - only
+  when you confirm a delete on Structure › Delete - deleting line items
 - `api.anaplan.com` (Integration API model status, sent from the Anaplan tab): the Lock Monitor
   only, and only if its session status check doesn't answer
 
-All of these calls only read. The extension never asks for or stores a password or API token.
+All of these calls only read, except that confirmed delete. The extension never asks for or stores a password or API token.
 Results are kept in `storage.session`, compressed when large, and are dropped when the browser
 closes. The Lock Monitor's interval, length and *Notify me* choice are remembered in the panel's
 local storage. Nothing is sent anywhere else.

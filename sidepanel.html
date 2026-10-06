@@ -82,6 +82,19 @@
                                 Also read the saved views behind widgets (slower)</label>
                             <button id="pg-back" type="button" hidden>Back to the report</button>
                         </div>
+                        <!-- Delete Line Items only: the CSV of line items to check,
+                             then delete (sidepanel.js, the upload section). -->
+                        <div id="empty-dl" hidden>
+                            <label id="dl-pick"><input id="dl-file" type="file" accept=".csv,.txt,text/csv">
+                                <span>Choose a CSV…</span></label>
+                            <p id="dl-info"></p>
+                            <p class="dl-hint">Columns: <b>Module</b>, <b>Line Item</b> and <b>Line Item ID</b>
+                                (a header row is needed; other columns are ignored). The Line Items report's
+                                Export to CSV works as it is - keep only the rows to delete.</p>
+                            <p class="dl-hint">Nothing is deleted at this step: every row is first checked against
+                                the model, and the report then asks before deleting.</p>
+                            <button id="dl-back" type="button" hidden>Back to the report</button>
+                        </div>
                         <p id="empty-note"></p>
                     </div>
                 </div>

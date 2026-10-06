@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`,`page_line_items`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`,`page_line_items`,`delete_line_items`],
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -22,7 +22,12 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     OFF=new Set([`sv_filter_items`,`sv_line_items`]),
     // Runs that go on until stopped (the Lock Monitor): Stop is how they end,
     // so their result after an ia_cancel is the report, not a late leftover.
-    LIVE=new Set([`lock_monitor`]);
+    // Delete Line Items too: Stop ends a delete between batches, and what it
+    // did delete must still be reported.
+    LIVE=new Set([`lock_monitor`,`delete_line_items`]),
+    // Reports a delete makes out of date, dropped from the cache once it has
+    // deleted anything (they are read off the model's structure).
+    DL_STALE=[`line_items`,`modules`,`page_line_items`,`filter_items`];
 
 // Page Line Items' picker requests waiting for their page list (ia_pg_list).
 var pgWaits=new Map(),pgSeq=0,
@@ -701,6 +706,9 @@ async function handle(msg,sender){
     let trigger={type:`trigger_${page}`,force:msg.type===`ia_refresh`},gone;
     // Page Line Items scans only the pages picked in the panel.
     if(page===`page_line_items`)trigger.pages=(Array.isArray(msg.pages)?msg.pages:[]).slice(0,1e4).map(String),trigger.sv=!!msg.sv;
+    // Delete Line Items: the CSV's rows, and whether this run checks them or deletes them.
+    if(page===`delete_line_items`)trigger.mode=msg.mode===`delete`?`delete`:`check`,trigger.modelId=String(msg.modelId??``),trigger.rows=(Array.isArray(msg.rows)?msg.rows:[]).slice(0,2e4)
+      .map(r=>({line:+r?.line||0,module:String(r?.module??``).slice(0,500),name:String(r?.name??``).slice(0,500),id:String(r?.id??``).slice(0,40)}));
     gone=await deliver(tab,trigger);
     // A tab opened moments ago has no report engine until its model frame has
     // loaded. Give it a few seconds before calling the script missing - the
@@ -774,7 +782,19 @@ async function handle(msg,sender){
     // Cached under its own model's key. The panel drops the ia_state if that is
     // not the model it shows - it would mark the current model's view as loaded.
     setBusy(tabId,page,!1);
+    // A delete changed the model: reports read off its structure no longer hold.
+    if(page===`delete_line_items`&&msg.data?.deleted>0)for(let p of DL_STALE)cacheDrop(p,msg.key),push({type:`ia_state`,page:p,ts:0,key:msg.key||``,to:tabId},p);
     return void push({type:`ia_state`,page,ts:hit.ts,key:msg.key||``,to:tabId},page)
+  }
+
+  // Delete Line Items' running state, after each request it makes: shown on
+  // the report straight away rather than only when the run ends. Dropped once
+  // the run is no longer busy (finished or stopped) - its ia_result follows.
+  if(msg.type===`ia_live`&&msg.page===`delete_line_items`){
+    let r=rid(tabId,msg.page);
+    if(stopped.has(r)||!busy.has(r))return;
+    learnKey(tabId,msg.key||``);
+    return void push({type:`${msg.page}_data`,data:{...msg.data,live:!0},to:tabId},`live`)
   }
 
   // A quiet page's own failure, reported by the content script.
