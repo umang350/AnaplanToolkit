@@ -49,7 +49,9 @@ var REPORTS = [
   // live: runs until stopped, so it is not counted in "loaded" or run by Get all data.
   { page: 'lock_monitor', name: 'Lock Monitor', unit: 'checks', key: 'samples', live: true },
   { page: 'workspace', name: 'Workspace', unit: 'models', key: 'models' },
-  { page: 'workspace_all', name: 'All Workspaces', unit: 'workspaces', key: 'workspaces' }
+  // solo: calls every workspace you can access, so it only runs when opened -
+  // not counted in "loaded" or run by Get all data.
+  { page: 'workspace_all', name: 'All Workspaces', unit: 'workspaces', key: 'workspaces', solo: true }
 ];
 var ACTION_LISTS = [['processes', 'processes'], ['imports', 'imports'], ['exports', 'exports'],
                     ['actions', 'actions'], ['files', 'files']];
@@ -188,7 +190,7 @@ function structureCard() {
 
 function reportsCard() {
   var s = section('Reports'), pages = overview && overview.pages || {};
-  var on = REPORTS.filter(function (r) { return !r.off && !r.live && !r.pick && !r.upload; });
+  var on = REPORTS.filter(function (r) { return !r.off && !r.live && !r.pick && !r.upload && !r.solo; });
   var has = function (r) { return pages[r.page] && pages[r.page].ts; };
   var loaded = on.filter(has).length;
   s.querySelector('h2').appendChild(el('span', 'ia-h-count', loaded + ' / ' + on.length + ' loaded'));

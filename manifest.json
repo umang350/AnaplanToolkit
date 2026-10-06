@@ -20,7 +20,8 @@
     "storage"
   ],
   "optional_permissions": [
-    "notifications"
+    "notifications",
+    "downloads"
   ],
   "background": {
     "service_worker": "background.js",

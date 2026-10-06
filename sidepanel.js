@@ -134,8 +134,10 @@
       preview: ['Active', 'Archived', 'Deleted'],
       heading: 'Active Models', search: 'Search by model, state or ID...', cols: ['Model', 'State', 'Size', 'Cells'] },
     /* Gathered apart from Current: a workspace on another Anaplan server can
-       take a minute or more to answer, and Current shouldn't wait on it. */
-    { page: 'workspace_all', tab: 'All Workspaces', group: 'Workspace', sub: 'All', title: 'All Workspaces',
+       take a minute or more to answer, and Current shouldn't wait on it.
+       `solo`: it calls every workspace you can access, so it only runs when
+       asked for - left out of Get all data (Current is enough there). */
+    { page: 'workspace_all', tab: 'All Workspaces', group: 'Workspace', sub: 'All', title: 'All Workspaces', solo: true,
       desc: 'Storage in use for every workspace you can access, and every active model across them.',
       preview: ['Workspaces', 'Models'],
       heading: 'Workspaces', search: 'Search by workspace or ID...', cols: ['Workspace', 'In use', 'Allowance', 'Full', 'Active models'] }
@@ -497,7 +499,7 @@
     if (byPage[page].upload) {
       msg.mode = extra ? 'delete' : 'check';
       msg.rows = extra ? extra.rows : dl.rows || [];
-      if (extra) msg.modelId = extra.modelId;
+      if (extra) { msg.modelId = extra.modelId; msg.tryInUse = extra.tryInUse; msg.autosave = extra.autosave; }
       st.picking = false;
     }
     // Lock Monitor: how often, how long, and whether to notify.
@@ -846,7 +848,7 @@
   function getAll() {
     if (queue.current) return;
     queue.pages = VIEWS.filter(function (v) {
-      return v.page !== 'summary' && !v.off && !v.live && !v.pick && !v.upload && !state[v.page].ts && !state[v.page].busy;
+      return v.page !== 'summary' && !v.off && !v.live && !v.pick && !v.upload && !v.solo && !state[v.page].ts && !state[v.page].busy;
     }).map(function (v) { return v.page; });
     queue.total = queue.pages.length;
     pump();
@@ -880,14 +882,18 @@
       if (!state.page_line_items.busy) { state.page_line_items.picking = true; render(); }
       return;
     }
-    /* Delete Line Items' report: back to the upload, or delete the rows it
-       checked. The rows come from the report itself (it holds the check's
+    /* Delete Line Items' report: back to the upload, delete the rows it
+       checked, or pause / resume a delete. The rows come from the report itself (it holds the check's
        result); the report engine checks each of them again before deleting. */
     var df = state.delete_line_items.frame, ds = state.delete_line_items;
     if (df && e.source === df.contentWindow && e.origin === location.origin && e.data) {
       if (e.data.type === 'ia_dl_pick' && !ds.busy) { ds.picking = true; render(); }
       if (e.data.type === 'ia_dl_delete' && !ds.busy && Array.isArray(e.data.rows) && e.data.rows.length)
-        start('delete_line_items', true, { rows: e.data.rows, modelId: String(e.data.modelId || '') });
+        start('delete_line_items', true, { rows: e.data.rows, modelId: String(e.data.modelId || ''), tryInUse: !!e.data.tryInUse,
+          autosave: +e.data.autosave || 0 });
+      // Pause / Resume, only while a delete runs.
+      if (e.data.type === 'ia_dl_pause' && ds.busy)
+        send({ type: 'ia_dl_pause', paused: !!e.data.paused }).catch(function () {});
       return;
     }
     var f = state.summary.frame;

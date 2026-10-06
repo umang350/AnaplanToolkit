@@ -30,6 +30,8 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     DL_STALE=[`line_items`,`modules`,`page_line_items`,`filter_items`];
 
 // Page Line Items' picker requests waiting for their page list (ia_pg_list).
+// Delete Line Items: when each run's report was last kept mid-run (ia_live).
+var dlKept=new Map();
 var pgWaits=new Map(),pgSeq=0,
     PG_START=8e3,         // the tab has this long to say a report engine took the request
     PG_MAX=15e4;          // ...and this long to send the list (model context wait + one /pages call)
@@ -673,6 +675,16 @@ async function handle(msg,sender){
     return push({type:`ia_state`,page:msg.page,ts:0,key,to:msg.forTab??tab},msg.page),{ok:!0}
   }
 
+  // Delete Line Items' Pause / Resume (from its report, through the panel):
+  // the run waits between requests while paused. Every frame hears it; only
+  // the one running the delete acts on it.
+  if(msg.type===`ia_dl_pause`){
+    let tab=await tabFor(msg);
+    if(tab==null)return{error:`Open the Anaplan model tab, then try again.`};
+    await api.tabs.sendMessage(tab,{type:`ia_dl_pause`,paused:!!msg.paused}).catch(()=>{});
+    return{ok:!0}
+  }
+
   // Stop button: end every gather under way. The worker clears the busy state
   // itself rather than waiting on the content script, so the panel frees up
   // even if the tab never answers; whatever the stopped runs send later is dropped.
@@ -707,7 +719,7 @@ async function handle(msg,sender){
     // Page Line Items scans only the pages picked in the panel.
     if(page===`page_line_items`)trigger.pages=(Array.isArray(msg.pages)?msg.pages:[]).slice(0,1e4).map(String),trigger.sv=!!msg.sv;
     // Delete Line Items: the CSV's rows, and whether this run checks them or deletes them.
-    if(page===`delete_line_items`)trigger.mode=msg.mode===`delete`?`delete`:`check`,trigger.modelId=String(msg.modelId??``),trigger.rows=(Array.isArray(msg.rows)?msg.rows:[]).slice(0,2e4)
+    if(page===`delete_line_items`)trigger.mode=msg.mode===`delete`?`delete`:`check`,trigger.modelId=String(msg.modelId??``),trigger.tryInUse=!!msg.tryInUse,trigger.autosave=+msg.autosave||0,trigger.rows=(Array.isArray(msg.rows)?msg.rows:[]).slice(0,2e4)
       .map(r=>({line:+r?.line||0,module:String(r?.module??``).slice(0,500),name:String(r?.name??``).slice(0,500),id:String(r?.id??``).slice(0,40)}));
     gone=await deliver(tab,trigger);
     // A tab opened moments ago has no report engine until its model frame has
@@ -794,6 +806,9 @@ async function handle(msg,sender){
     let r=rid(tabId,msg.page);
     if(stopped.has(r)||!busy.has(r))return;
     learnKey(tabId,msg.key||``);
+    // Saved as it goes (at most once a minute), so closing the panel or losing
+    // the worker mid-run keeps the report so far; the run's own result replaces it.
+    if(Date.now()-(dlKept.get(r)||0)>=6e4)dlKept.set(r,Date.now()),cacheSet(msg.page,msg.key,{...msg.data,running:!1,partial:!0}).catch(()=>{});
     return void push({type:`${msg.page}_data`,data:{...msg.data,live:!0},to:tabId},`live`)
   }
 

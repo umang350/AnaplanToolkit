@@ -54,7 +54,7 @@ demand, grouped as in the panel's tab bar:
 | **Structure** | Modules | Every module with its ID, dimensions, time scale, time range, line item and saved view counts, and the App pages that use it |
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
-| | Delete | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID) across any number of modules. Every row is checked against the model first and nothing is deleted until you type the count to confirm; the report shows what was deleted, what wasn't and why. |
+| | Delete | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID) across any number of modules. Every row is checked against the model first - including which line items formulas outside the CSV still use - and nothing is deleted until you type the count to confirm. Deletes go one request per module in an order worked out from the formulas; the run can be paused and resumed, and the report can save itself to Downloads every few minutes. |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
 | **Lock** | | Checks at an interval you choose whether the model is available, busy, locked or offline, and what is running; shows a timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
@@ -187,6 +187,7 @@ Permissions requested:
 | `sidePanel` (Chrome only; Firefox's sidebar needs no permission) | render the UI |
 | `storage` | cache results for the session |
 | `notifications` (optional, only if you tick *Notify me* on the Lock tab) | tell you when the model is busy or free again |
+| `downloads` (optional, only if you tick auto-save when deleting line items) | save the delete report to your Downloads folder as the run goes, overwriting one file per run |
 
 ## Layout
 

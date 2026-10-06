@@ -308,3 +308,6 @@
   background: color-mix(in srgb, #dc2626 6%, var(--background)); }
 .ia-dli-input { width: 10rem; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px);
   background: var(--background); color: var(--foreground); font-size: .8125rem; }
+.ia-dli-try { display: flex; gap: .375rem; align-items: flex-start; margin-top: .375rem; font-size: .75rem; color: var(--foreground); }
+.ia-dli-every { margin: 0 .25rem; padding: .0625rem .25rem; border: 1px solid var(--border); border-radius: calc(var(--radius) - 4px);
+  background: var(--background); color: var(--foreground); font: inherit; }

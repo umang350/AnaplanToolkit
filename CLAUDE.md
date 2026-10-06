@@ -348,6 +348,8 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   framework.jsp (https `*.anaplan.com` only). Cores move weekly - never store one. A workspace whose
   call still fails falls back to its rows from the model list (no sizes) and the view names it with
   the reason.
+  All is `solo` in `VIEWS` / `REPORTS`: it calls every workspace the user can access, so it is left
+  out of Get all data and the loaded count (Current is still gathered) and runs only when opened.
 - **Delete Line Items** (`delete_line_items`, Structure group, `IA_gdl` in `inner.js`,
   `chunks/delete_line_items.js`) is the one view that **changes the model**. The panel's start screen
   (`#empty-dl`, `dlRead`/`csvParse` in `sidepanel.js`) reads a CSV, finding the Module, Line Item and
@@ -378,16 +380,40 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   number from the page's sequence could collide with its next request. **Order and batching** (confirmed live):
   Anaplan applies one request's changes in order and all or nothing, and refuses a line item still
   used by another - even one later in the same request ("Revenue cannot be deleted because it is in
-  use: Margin = …" with Margin further down). So rows go one request per module (up to `IA_DL_BATCH`,
-  100), line items bottom-up and modules last to first (`pos` in `IA_dlIndex`), since calculations
-  usually sit below their inputs and reports after data. A module Anaplan refuses is then tried one
-  line item at a time, in passes: a line item is retried only if something was deleted since it was
-  last refused alone (`seen`), and the passes end when none qualifies. Nothing is resent blindly. A
+  use: Margin = …" with Margin further down); a refusal leaves the serial unchanged and carries no
+  `modelInfo`, so nothing is re-read after one. The order is **planned from the formulas**
+  (`IA_dlUsers`/`IA_dlPlan`): `modelInfo.moduleInfos[].lineItemInfos[].formula` (aligned with the line
+  item label page) is scanned for `'Module'.Line Item` / `Module.Line Item` references (longest name
+  first; string literals blanked) and bare names of the formula's own module (not after a `.`, so
+  list-qualified names don't count). Check marks a row `inuse` when a line item outside the CSV uses it
+  (or uses one that does) - left alone unless the confirmation's "Also try" box sends `tryInUse`.
+  The rest go **one request per module, whatever its size**: a module before the modules whose line
+  items it uses, and inside a request a line item before the ones it uses (ties bottom-up, last module
+  first). Modules that use each other in both directions can't both be whole: before each request the
+  line items still used by a line item this run deletes later are held back (`hold`, repeated until
+  nothing changes) for a later pass. A refusal (a use no formula shows, e.g. a saved view filter) sets
+  aside the line item Anaplan names (`IA_dlBlocker`) and resends the rest; set-aside line items are
+  retried in later passes while something has been deleted since (`seen`). Tested offline on a
+  generated 700-module, ~11,000-line-item model whose formulas are written from a known dependency
+  graph: references read 10,558/10,558, in-use flagged exactly, ~1,070 requests with only the hidden
+  uses refused; and the 12 real refusals from live runs all come out in the right order. Nothing is resent blindly. A
   timeout or network failure stops the run (the request may still complete on Anaplan's side); Stop
   takes effect between requests and never aborts one in flight (its fetch is not in `IA_ctl`). After
   each request the engine sends `ia_live` (the report so far: rows `queued` / `deleted` / `failed`,
   `running: true`), which the worker pushes as `delete_line_items_data` with `live: true` while the
-  run is busy, so the report fills in as it goes.
+  run is busy, so the report fills in as it goes. **Pause / Resume** (the report's button; `ia_dl_pause`
+  view -> panel -> worker -> every frame of the tab, `IA_dlPaused` in `inner.js`): the run waits before
+  its next request - one already sent is never cut short - ticking a "Paused" step every second so the
+  worker's `STALL` watchdog stays quiet; Stop still ends it. Snapshots carry `paused`. **Saving the
+  report:** the confirmation's auto-save option sends `autosave` (minutes, 5-30) with the delete; the
+  view (`autoSave` in `chunks/delete_line_items.js`) saves the report as a CSV in each new
+  `autosave`-minute slot from the run's start (`at`) - a view opened mid-run waits for the next slot -
+  and once when it ends (remembered per run in localStorage as `ia_dl_final:<at>`), plus a "Save report
+  now" button while running. It uses the **optional `downloads` permission** (requested inside the Delete
+  now click) to one file per run, `conflictAction: "overwrite"`, falling back to an ordinary download; it
+  needs the panel open. The module skips this when Summary imports it (`IA_COLLECT`). Separately the
+  worker keeps the latest snapshot in the cache at most once a minute (`dlKept`, `partial: true`), so a
+  closed panel or a restarted worker still has the report so far; the view flags a `partial` report.
   A final read decides each row's status (deleted / failed). It is in `LIVE` in `background.js` so a
   stopped run's result is still cached, and once anything is deleted the worker drops `DL_STALE`
   (Line Items, Modules, Filters, Line Items on Pages) for that model. The Anaplan tab's own cache is
