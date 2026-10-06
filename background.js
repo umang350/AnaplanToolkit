@@ -2,6 +2,10 @@
  * Anaplan Toolkit
  * Author: Umang Chauhan
  */
+// ExtPay (ExtensionPay.com) handles payments. Chrome's service worker imports
+// it here; Firefox's background page lists it before this file in
+// background.scripts, where importScripts does not exist.
+typeof ExtPay>`u`&&typeof importScripts==`function`&&importScripts(`ExtPay.js`);
 var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
@@ -28,6 +32,19 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     // Reports a delete makes out of date, dropped from the cache once it has
     // deleted anything (they are read off the model's structure).
     DL_STALE=[`line_items`,`modules`,`page_line_items`,`filter_items`];
+
+// Payments (ExtPay). Free: every read-only report. Pro (paid, or a trial):
+// IA_PRO's views, Get all data and Download all. IA_PAY_ID is the extension's
+// id on extensionpay.com - a placeholder until it is registered there.
+// Keep IA_PRO in step with `pro` in VIEWS (sidepanel.js).
+var IA_PAY_ID=`anaplan-toolkit`,
+    IA_PRO=new Set([`delete_line_items`,`lock_monitor`]),
+    IA_TRIAL=7*864e5,     // a trial lasts this long from when it was confirmed
+    IA_PAY_TTL=6e4,       // a status is re-read from extensionpay.com after this long
+    IA_PAY_GRACE=7*864e5, // ...and, offline, the last one read is trusted for this long
+    IA_PAY_MSG=`This is a Pro feature. Start a free trial or upgrade below.`;
+var IA_ep=null,IA_pay=null,IA_payAt=0;
+try{typeof ExtPay==`function`&&(IA_ep=ExtPay(IA_PAY_ID))}catch(e){}
 
 // Page Line Items' picker requests waiting for their page list (ia_pg_list).
 // Delete Line Items: when each run's report was last kept mid-run (ia_live).
@@ -590,8 +607,48 @@ async function lkLoop(tab,ids,key,run,prev){
   push({type:`ia_state`,page,ts:hit.ts,key,to:tab},page)
 }
 
+/* What the user has paid for. user.paid is only true for an active
+   subscription (or a one-off payment); a trial is active for IA_TRIAL from
+   trialStartedAt. getUser() is a network call, so its answer is kept for
+   IA_PAY_TTL, and the last good one is saved: offline, it is trusted for
+   IA_PAY_GRACE rather than locking out a paying user. */
+async function IA_payStatus(force){
+  if(!force&&IA_pay&&Date.now()-IA_payAt<IA_PAY_TTL)return IA_pay;
+  let s;
+  try{
+    if(!IA_ep)throw Error(`Payments could not be loaded.`);
+    let u=await IA_ep.getUser(),t=u.trialStartedAt?+new Date(u.trialStartedAt):0;
+    s={paid:!!u.paid,trialEnds:t?t+IA_TRIAL:0,trialUsed:!!t,email:u.email||``,
+       sub:u.subscriptionStatus||``,cancelAt:u.subscriptionCancelAt?+new Date(u.subscriptionCancelAt):0,at:Date.now()};
+    api.storage.local.set({ia_pay:s}).catch(()=>{});
+  }catch(e){
+    let o=(await api.storage.local.get(`ia_pay`).catch(()=>({})))?.ia_pay;
+    s=o&&Date.now()-o.at<IA_PAY_GRACE?{...o,offline:!0}:{paid:!1,trialEnds:0,trialUsed:!1,at:0,offline:!0};
+    s.why=typeof e==`string`?e:e?.message||`extensionpay.com could not be reached.`;
+  }
+  s.trial=!s.paid&&s.trialEnds>Date.now();
+  s.pro=s.paid||s.trial;
+  return IA_pay=s,IA_payAt=Date.now(),s
+}
+
 async function handle(msg,sender){
   let tabId=sender?.tab?.id;
+
+  // --- payments ---
+
+  if(msg.type===`ia_pay_status`)return IA_payStatus(!!msg.force);
+  // Opens extensionpay.com's page in a tab or popup. The status is read
+  // again when the panel comes back into view, or on "Check again".
+  if(msg.type===`ia_pay_open`){
+    if(!IA_ep)return{error:`Payments could not be loaded.`};
+    IA_payAt=0;
+    try{
+      msg.what===`trial`?await IA_ep.openTrialPage(`${IA_TRIAL/864e5}-day`)
+        :msg.what===`login`?await IA_ep.openLoginPage()
+        :await IA_ep.openPaymentPage();
+      return{ok:!0}
+    }catch(e){return{error:`extensionpay.com could not be reached - try again in a moment.`}}
+  }
 
   // --- from the side panel shell ---
 
@@ -621,6 +678,7 @@ async function handle(msg,sender){
 
   // Summary's "Download all": every cached payload for this model at once.
   if(msg.type===`ia_dump`){
+    if(!(await IA_payStatus()).pro)return{error:IA_PAY_MSG,pay:!0};
     let tab=await tabFor(msg),key=await modelKey(tab),pages={};
     for(let p of PAGES){
       if(p===`summary`)continue;
@@ -707,6 +765,7 @@ async function handle(msg,sender){
   if(msg.type===`ia_load`||msg.type===`ia_refresh`){
     sawShell=!0;
     if(OFF.has(msg.page))return{error:`This report is disabled - it is too slow to run on large models.`};
+    if(IA_PRO.has(msg.page)&&!(await IA_payStatus()).pro)return{error:IA_PAY_MSG,pay:!0};
     if(msg.page===`lock_monitor`)return lkStart(msg);   // runs here, not in the page
     let page=msg.page,
         quiet=QUIET.has(page),
@@ -838,6 +897,8 @@ function report(e,sender,msg){
 }
 
 function onMessage(msg,sender,respond){
+  // ExtPay's own messages ("extpay-…" strings) are answered by its listener.
+  if(typeof msg!=`object`||!msg)return;
   handle(msg,sender).then(
     r=>{try{respond(r)}catch(e){}},
     e=>{try{respond({error:e?.message})}catch(e2){}report(e,sender,msg)}
@@ -858,6 +919,7 @@ var main=wxt(()=>{
   // to the sidebar directly. (No-op on Chrome, which already opened above.)
   if(!api.sidePanel&&api.sidebarAction)api.action?.onClicked?.addListener(()=>{try{api.sidebarAction.toggle()}catch(e){}});
   api.runtime.onMessage.addListener(onMessage);
+  try{IA_ep?.startBackground()}catch(e){}
   api.tabs.onRemoved.addListener(id=>{
     keyByTab.delete(id),route?.tabId===id&&(route=null);
     // Its panel went with it: forget its runs without telling anyone.

@@ -65,9 +65,11 @@ Chrome and Firefox disagree on how the side panel works, and both accommodations
   need Firefox 128+ — but see below, the effective floor is higher.
 - **Data collection disclosure.** AMO has required `gecko.data_collection_permissions` on every
   new extension since November 2025 — omitting it is a hard validation failure, not a warning.
-  This extension talks to Anaplan only and stores nothing anywhere else, so it's set to
-  `{"required": ["none"]}`. If that ever stops being true (e.g. an analytics call is added), this
-  key must be updated to match or AMO will reject the submission on the mismatch. That key itself
+  Since payments went through ExtPay (see Payments below) it is
+  `{"required": ["personallyIdentifyingInfo", "financialAndPaymentInfo"]}`: extensionpay.com holds
+  the payer's email and payment status, and the extension reads them back. If what is sent ever
+  changes (e.g. an analytics call is added), this key must be updated to match or AMO will reject
+  the submission on the mismatch. That key itself
   needs a newer Firefox than `world: "MAIN"` does, so it - not the content script world - sets the
   actual floor: `strict_min_version: "140.0"` under `gecko`, `strict_min_version: "142.0"` under
   `gecko_android`. Bump both together if this key's own minimum version ever changes.
@@ -150,7 +152,26 @@ aborting or retrying only adds server load and leaves the model busy after the c
 The one write is Delete Line Items' `/jsonrpc` call, whose `submissions` carry `DeleteLineItem` model
 changes (see below); every other call only reads.
 Beyond those, only the Lock Monitor calls Anaplan's Integration API (`api.anaplan.com`, model
-status, with the page's cookies). No non-Anaplan server is ever contacted.
+status, with the page's cookies). The only non-Anaplan server is `extensionpay.com`, for payments.
+
+**Payments (ExtPay).** `ExtPay.js` is the unmodified ExtPay 3.1.2 build (with Mozilla's
+webextension-polyfill inside; it does not set `globalThis.browser`). Chrome's worker loads it with
+`importScripts` at the top of `background.js`; Firefox lists it before `background.js` in
+`background.scripts`. `IA_PAY_ID` is the extension's id on extensionpay.com - **a placeholder
+(`anaplan-toolkit`) until it is registered there**. `IA_PRO` (Delete Line Items, Lock Monitor) is
+enforced in the worker - `ia_load`/`ia_refresh` for them, and `ia_dump` (Download all), answer
+`{error, pay: true}` without Pro - and mirrored by `pro` in `VIEWS`, which tags their tabs and
+swaps their start screen for the paywall (`#empty-pay`). Get all data is refused in the panel
+(`getAll`), which tells Summary with `ia_getall_status.note`. `IA_payStatus` wraps
+`getUser()`: Pro = `paid` (true only for an active subscription or a one-off payment) or a trial
+under `IA_TRIAL` (7 days) from `trialStartedAt`; cached `IA_PAY_TTL` (60s), the last good answer
+saved as `ia_pay` in `storage.local` and trusted offline for `IA_PAY_GRACE` (7 days). The panel
+asks `ia_pay_status` on open and whenever it is shown again, and `ia_pay_open {what: pay|trial|login}`
+opens ExtPay's pages, then polls every 10s for 10 minutes. `onPaid` is deliberately not used: it
+needs a content script on extensionpay.com, i.e. a new host permission prompt for every existing
+user. extensionpay.com answers CORS with `*`, so no host permission is needed either. ExtPay's own
+`"extpay-…"` string messages are skipped by `onMessage`. The `management` permission is left out
+(Chrome warns on it); ExtPay then tells development installs from `update_url`.
 
 ## Editing constraints
 

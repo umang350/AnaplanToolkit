@@ -35,7 +35,7 @@ mkdir -p "$OUT"
 # Everything the extension loads at runtime, plus the licence documents.
 # popup.html / chunks/popup-* are deliberately excluded: the manifest has no
 # default_popup, so the side panel is the only UI and they are dead code.
-for f in manifest.json background.js \
+for f in manifest.json background.js ExtPay.js \
          sidepanel.html sidepanel.js sidepanel.css views.css \
          actions.html action_usages.html pages.html filter_items.html page_line_items.html sv_filter_items.html \
          sv_views.html sv_line_items.html sv_screens.html sv_actions.html summary.html workspace.html workspace_all.html \

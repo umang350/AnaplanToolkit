@@ -237,6 +237,7 @@ function actions(loaded, total, any) {
   });
   row.appendChild(g);
   downloadAll(row, any);
+  if (getAll.note) row.appendChild(el('span', 'ia-note ia-error', getAll.note));
   if (getAll.running)
     row.appendChild(el('span', 'ia-note', 'Getting ' + (getAll.done + 1) + ' of ' + getAll.total +
                        (getAll.current ? ': ' + getAll.current : '') + '…'));

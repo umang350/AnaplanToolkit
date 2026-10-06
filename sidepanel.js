@@ -19,6 +19,8 @@
  *   -> ia_overview {}                   <- {pages:{page:{ts,busy,size}}} (sent by summary.html)
  *   -> ia_cancel  {}                    stop every gather under way (the Stop button)
  *   -> ia_pg_list {}                    <- {pages:[{guid,name,app,category}], key} (Line Items on Pages' picker)
+ *   -> ia_pay_status {force}            <- {pro, paid, trial, trialEnds, trialUsed, sub, offline} (ExtPay)
+ *   -> ia_pay_open {what}               opens extensionpay.com: 'pay' (upgrade / manage), 'trial', 'login'
  *   <- ia_select  {page}                a keyboard shortcut picked a view
  *   <- ia_state   {page, ts, key}       data is cached as of ts, for model key
  *   <- ia_busy    {page, busy, seq}     gathering started / finished
@@ -112,7 +114,7 @@
        chosen on its start screen and checks it (nothing deleted); the report
        then asks before deleting (ia_dl_delete below). Like `pick`, it is left
        out of Get all data, and its refresh button goes back to the upload. */
-    { page: 'delete_line_items', tab: 'Delete', group: 'Structure', sub: 'Delete', title: 'Delete Line Items', upload: true,
+    { page: 'delete_line_items', tab: 'Delete', group: 'Structure', sub: 'Delete', title: 'Delete Line Items', upload: true, pro: true,
       desc: 'Delete line items from any number of modules, listed in a CSV of module, line item and ID. Each row is checked against the model first, and nothing is deleted until you confirm.',
       preview: ['All', 'Matched', 'Skipped'],
       heading: 'Delete Line Items', search: 'Search by module, line item, ID or status...',
@@ -123,8 +125,9 @@
       heading: 'Revision Tags', search: 'Search by title, description, user or model...',
       cols: ['Title', 'Created by', 'Created on', 'Created in'] },
     /* `live`: runs until Stop (or an hour), then saves what it saw - so it
-       is left out of Get all data, and Stop is labelled as saving. */
-    { page: 'lock_monitor', tab: 'Lock', title: 'Model Lock Monitor', live: true,
+       is left out of Get all data, and Stop is labelled as saving.
+       `pro`: needs Pro or a trial (IA_PRO in background.js, which enforces it). */
+    { page: 'lock_monitor', tab: 'Lock', title: 'Model Lock Monitor', live: true, pro: true,
       desc: 'Asks Anaplan, as often as you choose, whether the model is open, busy (and with what), locked or offline - even when the model page won\'t load. The report fills in as it runs; Stop saves it.',
       preview: ['Timeline', 'Checks'],
       heading: 'Timeline', search: 'Search by status, step or task...',
@@ -170,6 +173,13 @@
       dlFile = document.getElementById('dl-file'),
       dlInfo = document.getElementById('dl-info'),
       dlBack = document.getElementById('dl-back'),
+      emptyPay = document.getElementById('empty-pay'),
+      payText = document.getElementById('pay-text'),
+      payTrial = document.getElementById('pay-trial'),
+      payUp = document.getElementById('pay-up'),
+      payLogin = document.getElementById('pay-login'),
+      payCheck = document.getElementById('pay-check'),
+      payBadge = document.getElementById('pay-badge'),
       skPlaceholder = document.getElementById('sk-placeholder'),
       skHeading = document.getElementById('sk-heading'),
       skHead = document.getElementById('sk-head'),
@@ -180,6 +190,8 @@
 
   // page -> {ts, busy, frame, loaded, served, note, steps, seq}
   var state = {}, byPage = {}, active = VIEWS[0].page, hasTab = true;
+  // What the user has paid for (the payments section, near the end).
+  var pay = { known: false, pro: false }, payPoll = 0, payUntil = 0;
 
   /* On Chrome the panel belongs to one tab (panelFor in background.js): it is
      only seen while that tab is in front, but its document lives on while
@@ -222,12 +234,20 @@
     return b;
   }
 
+  function proTag(b) {
+    var tag = document.createElement('span');
+    tag.className = 'pro';
+    tag.textContent = 'Pro';
+    b.appendChild(tag);
+  }
+
   VIEWS.forEach(function (v) {
     byPage[v.page] = v;
     state[v.page] = { ts: 0, busy: false, frame: null, loaded: false, served: 0,
                       note: '', steps: [], seq: 0 };
     if (!v.group) {
       v.btn = tabButton(v.tab, v.title, function () { select(v.page); });
+      if (v.pro) proTag(v.btn);
       bar.appendChild(v.btn);
       return;
     }
@@ -248,6 +268,7 @@
       tag.textContent = 'Slow';
       v.sbtn.appendChild(tag);
     }
+    if (v.pro) proTag(v.sbtn);
     subBar.appendChild(v.sbtn);
   });
 
@@ -437,13 +458,17 @@
         : v.pick ? (pick.sel.size ? 'Get data for ' + pick.sel.size + (pick.sel.size === 1 ? ' page' : ' pages') : 'Choose pages first')
         : v.upload ? (dl.rows ? 'Check ' + dl.rows.length + (dl.rows.length === 1 ? ' line item' : ' line items') : 'Choose a CSV first')
         : 'Get data';
+      var locked = !!v.pro && pay.known && !pay.pro;
+      emptyLoad.hidden = locked;
       emptyLoad.disabled = !!st.busy || (!!v.pick && !pick.sel.size) || (!!v.upload && !dl.rows);
-      emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
-      emptyLk.hidden = !v.live;
+      emptyNote.textContent = locked ? '' : st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
+      emptyLk.hidden = !v.live || locked;
       emptyPg.hidden = !v.pick;
       if (v.pick) paintPicker(st);
-      emptyDl.hidden = !v.upload;
-      if (v.upload) paintUpload(st);
+      emptyDl.hidden = !v.upload || locked;
+      if (v.upload && !locked) paintUpload(st);
+      emptyPay.hidden = !locked;
+      if (locked) paintPaywall(v);
       paintPreview(v);
     }
     paintProgress();
@@ -509,7 +534,7 @@
       msg.notify = lkNotify.checked;
     }
     send(msg)
-      .then(function (r) { if (r && r.error) fail(page, r.error); },
+      .then(function (r) { if (r && r.pay) payRefresh(true); if (r && r.error) fail(page, r.error); },
             function (e) { fail(page, e && e.message); });
   }
 
@@ -847,6 +872,16 @@
 
   function getAll() {
     if (queue.current) return;
+    // Pro only (the worker refuses Download all the same way).
+    if (!pay.pro) {
+      payRefresh(true).then(function () {
+        if (pay.pro) return getAll();
+        var f = state.summary.frame;
+        if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'ia_getall_status', running: false,
+          note: 'Get all data is a Pro feature - start a free trial or upgrade with the button at the bottom of the panel.' }, location.origin);
+      });
+      return;
+    }
     queue.pages = VIEWS.filter(function (v) {
       return v.page !== 'summary' && !v.off && !v.live && !v.pick && !v.upload && !v.solo && !state[v.page].ts && !state[v.page].busy;
     }).map(function (v) { return v.page; });
@@ -1047,9 +1082,74 @@
       }
     }, function () { render(); });
   }
+  /* Payments (ExtPay, in background.js). The worker holds the status and
+     enforces it; the panel only shows it - a paywall on a Pro view's start
+     screen and a badge in the footer. Paying or starting a trial happens on
+     extensionpay.com in another tab or popup, so the status is read again
+     whenever the panel comes back into view, and every 10s for a while after
+     one of those pages was opened. */
+  function payRefresh(force) {
+    return send({ type: 'ia_pay_status', force: !!force }).then(function (s) {
+      if (!s || s.error) return;
+      var was = pay.pro;
+      pay = s;
+      pay.known = true;
+      if (pay.pro) payUntil = 0;
+      paintBadge();
+      if (was !== pay.pro || byPage[active].pro) render();
+    }, function () {});
+  }
+
+  function daysLeft() {
+    return Math.max(1, Math.ceil((pay.trialEnds - Date.now()) / 864e5));
+  }
+
+  function paintBadge() {
+    document.body.dataset.pro = pay.pro ? '1' : '';
+    payBadge.hidden = !pay.known;
+    payBadge.dataset.plan = pay.paid ? 'pro' : pay.trial ? 'trial' : 'free';
+    payBadge.textContent = pay.paid ? 'Pro' : pay.trial ? 'Trial · ' + daysLeft() + (daysLeft() === 1 ? ' day left' : ' days left')
+      : pay.trialUsed ? 'Trial ended · Upgrade' : 'Upgrade to Pro';
+    payBadge.title = (pay.paid ? 'Manage your subscription' : 'Upgrade to Pro') +
+      (pay.offline ? ' (extensionpay.com could not be reached - showing the last known plan)' : '');
+  }
+
+  function paintPaywall(v) {
+    var past = pay.sub === 'past_due';
+    payText.textContent = past
+      ? 'Your last payment didn\'t go through. Update your payment details to keep using ' + v.title + '.'
+      : pay.trialUsed
+        ? 'Your free trial has ended. ' + v.title + ' is part of Pro - upgrade to keep using it.'
+        : v.title + ' is part of Pro. Try every Pro feature free for 7 days - all it takes is an email address.';
+    payTrial.hidden = pay.trialUsed || past;
+    emptyPay.dataset.trial = payTrial.hidden ? '0' : '1';
+    payUp.textContent = past ? 'Update payment' : 'Upgrade to Pro';
+    payLogin.hidden = past;
+  }
+
+  function payOpen(what) {
+    send({ type: 'ia_pay_open', what: what }).then(function (r) {
+      if (r && r.error) { state[active].note = r.error; render(); }
+    }, function () {});
+    payUntil = Date.now() + 10 * 60e3;
+    if (!payPoll) payPoll = setInterval(function () {
+      if (Date.now() > payUntil) { clearInterval(payPoll); payPoll = 0; return; }
+      payRefresh(true);
+    }, 10e3);
+  }
+
+  payTrial.addEventListener('click', function () { payOpen('trial'); });
+  payUp.addEventListener('click', function () { payOpen('pay'); });
+  payLogin.addEventListener('click', function () { payOpen('login'); });
+  payCheck.addEventListener('click', function () { payRefresh(true); });
+  payBadge.addEventListener('click', function () { payOpen('pay'); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) payRefresh(true); });
+  window.addEventListener('focus', function () { payRefresh(false); });
+
   ready.then(function () {
     sync(true);
     render();
+    payRefresh(false);
   });
   setInterval(function () { if (!refreshBtn.hidden) render(); }, 30000);
 })();

@@ -167,8 +167,8 @@ Inside the Anaplan modelling UI (`⌘⌥` on macOS, `Ctrl+Alt` on Windows/Linux)
 
 ## Privacy
 
-The extension talks to **no server other than Anaplan itself**. There is no analytics, no
-telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your existing session:
+Apart from payments (below), the extension talks to **no server other than Anaplan itself**. There
+is no analytics, no telemetry and no auto-update endpoint. Every Anaplan call uses your existing session:
 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
@@ -180,7 +180,15 @@ telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your 
 All of these calls only read, except that confirmed delete. The extension never asks for or stores a password or API token.
 Results are kept in `storage.session`, compressed when large, and are dropped when the browser
 closes. The Lock Monitor's interval, length and *Notify me* choice are remembered in the panel's
-local storage. Nothing is sent anywhere else.
+local storage.
+
+**Payments** go through [ExtensionPay](https://extensionpay.com) (`ExtPay.js`, backed by Stripe).
+The read-only reports are free; Delete Line Items, the Lock Monitor, *Get all data* and *Download
+all* need Pro or a 7-day free trial. To check your plan the extension sends `extensionpay.com` an
+anonymous key it creates the first time you open the upgrade or trial page, and gets back whether
+you have paid or started a trial (and the email you gave there). Your email and card are entered on
+extensionpay.com and Stripe's own pages - never in the extension - and nothing about your Anaplan
+models is ever sent. Nothing else is sent anywhere.
 
 Permissions requested:
 
@@ -188,7 +196,7 @@ Permissions requested:
 |---|---|
 | `host_permissions: https://*.anaplan.com/*` | read model metadata from the tab you have open |
 | `sidePanel` (Chrome only; Firefox's sidebar needs no permission) | render the UI |
-| `storage` | cache results for the session |
+| `storage` | cache results for the session; remember your plan (ExtPay keeps its key in `storage.sync`) |
 | `notifications` (optional, only if you tick *Notify me* on the Lock tab) | tell you when the model is busy or free again |
 | `downloads` (optional, only if you tick auto-save when deleting line items) | save the delete report to your Downloads folder as the run goes, overwriting one file per run |
 

@@ -24,6 +24,11 @@ BUNDLED LIBRARIES
   Svelte (compiled output)     - MIT Licence, (c) Svelte contributors
   Tailwind CSS (compiled CSS)  - MIT Licence, (c) Tailwind Labs Inc.
   Geist (font)                 - SIL Open Font Licence 1.1, (c) Vercel Inc.
+  ExtPay.js 3.1.2 (unmodified) - (c) Glench. Its LICENSE file says LGPL-3.0,
+                                 its package.json says AGPL-3.0-or-later;
+                                 https://github.com/glench/ExtPay
+                                 (commit 6cf2bbe). Bundles Mozilla's
+                                 webextension-polyfill (MPL 2.0).
 
 TRADEMARKS
   "Anaplan" is a trademark of Anaplan, Inc. This tool is not affiliated with,

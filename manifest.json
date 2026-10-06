@@ -25,7 +25,7 @@
   ],
   "background": {
     "service_worker": "background.js",
-    "scripts": ["background.js"]
+    "scripts": ["ExtPay.js", "background.js"]
   },
   "action": {
     "default_title": "Anaplan Toolkit",
@@ -54,7 +54,7 @@
       "id": "{a2c1d9f0-6e8b-4b3c-9a7d-3f5e0c4d2b91}",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": ["personallyIdentifyingInfo", "financialAndPaymentInfo"]
       }
     },
     "gecko_android": {

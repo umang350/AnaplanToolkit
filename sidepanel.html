@@ -95,6 +95,17 @@
                                 the model, and the report then asks before deleting.</p>
                             <button id="dl-back" type="button" hidden>Back to the report</button>
                         </div>
+                        <!-- Pro views only, until paid or on a trial (sidepanel.js,
+                             the payments section; ExtPay in background.js). -->
+                        <div id="empty-pay" hidden>
+                            <p id="pay-text"></p>
+                            <button id="pay-trial" type="button">Start 7-day free trial</button>
+                            <button id="pay-up" type="button">Upgrade to Pro</button>
+                            <div class="pay-more">
+                                <button id="pay-login" type="button">Already paid? Log in</button>
+                                <button id="pay-check" type="button">Check again</button>
+                            </div>
+                        </div>
                         <p id="empty-note"></p>
                     </div>
                 </div>
@@ -109,6 +120,7 @@
             <span id="brand-text">
                 <strong>Anaplan</strong> &middot; Toolkit
             </span>
+            <button id="pay-badge" type="button" hidden></button>
             <span id="brand-by">Umang&nbsp;Chauhan</span>
         </footer>
     </body>
