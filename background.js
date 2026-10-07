@@ -224,7 +224,7 @@ async function modelKey(tabId){
   return lastKey??``
 }
 function rememberKey(key){
-  lastKey=key,store&&store.set({[`ia:key`]:key}).catch(()=>{})
+  lastKey=key,store&&store.set({[`ia:key`]:key}).catch(e=>console.warn(`Could not remember the model key:`,e))
 }
 
 // Tell the panel when the model in front changes - a tab switch, a window
@@ -515,7 +515,8 @@ async function lkStart(msg){
   // adds to it; Start (ia_load, from the empty screen) begins a new one.
   let prev=null;
   if(msg.type===`ia_refresh`){try{let h=await cacheGet(page,key);h&&Array.isArray(h.data?.samples)&&h.data.samples.length&&(prev=h.data)}catch(e){}}
-  lkLoop(tab,ids,key,run,prev).catch(()=>{}).finally(()=>lkRuns.delete(r));
+  /* A crash in the loop used to vanish, leaving the monitor silently dead on a spinner. */
+  lkLoop(tab,ids,key,run,prev).catch(e=>{console.error(`Lock Monitor stopped:`,e),failPage(tab,page,`The Lock Monitor stopped unexpectedly: ${e?.message||e}`)}).finally(()=>lkRuns.delete(r));
   return{ok:!0}
 }
 

@@ -343,4 +343,5 @@ window.addEventListener('message', function (e) {
 render();
 askOverview();
 // Keeps the "n min ago" labels honest.
-setInterval(function () { if (overview) render(); }, 30000);
+setInterval(function () { if (!document.hidden && overview) render(); }, 30000);
+document.addEventListener('visibilitychange', function () { if (!document.hidden && overview) render(); });
