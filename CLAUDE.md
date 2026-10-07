@@ -31,11 +31,10 @@ extension **and** reload the Anaplan tab — an extension reload orphans content
 already-open frames, and `background.js` reports that condition with a dedicated error message
 rather than retrying.
 
-`dist/`, `dist-firefox/` and the two zips are committed build output. `package.sh` deletes and
-regenerates all four, so re-run it after any change to a shipped file or they will drift from
-source. `package.sh` maintains an explicit allowlist of top-level files — **a new top-level
-HTML/JS/CSS file must be added to that list or it will be missing from the package** (the script
-hard-fails only on files that are listed but absent, not on files present but unlisted).
+`dist/`, `dist-firefox/` and the two zips are git-ignored build output; `package.sh` deletes and
+regenerates all four. `package.sh` maintains an explicit allowlist of top-level files — **a new
+top-level HTML/JS/CSS file must be added to that list**; the script hard-fails on a file that is
+listed but absent *and* on a top-level `*.html`/`*.js`/`*.css` that is present but unlisted.
 
 ## Cross-browser support
 
@@ -163,10 +162,9 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   flags that `innerHTML` as unsafe. Same nodes either way (checked on every template the views use).
   Re-apply it if those chunks are ever rebuilt.
 - `actions`, `workspace`, `filter_items`, `sv_views`, `sv_line_items`, `sv_screens`, `sv_actions`, `process_steps`,
-  `modules`, `line_items`, `lists`, `revisions`, `lock_monitor` and `page_line_items` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view (kept as
-  `chunks/filter_items-RDu0uzD1.js.retired`, which `package.sh` excludes) so filters could show each
+  `modules`, `line_items`, `lists`, `revisions`, `lock_monitor` and `page_line_items` are hand-written ES modules over `chunks/sv_shared.js`. `filter_items` replaced a compiled view so filters could show each
   line item beside its condition and formatting rules their colours; it uses `renderPage`'s `tabs`
-  option. `actions` replaced the compiled Actions view (kept as `chunks/actions-DpK-UuAO.js.retired`)
+  option. `actions` replaced the compiled Actions view
   because that drew every row of every list, each with a copy-button component, on its All tab and on
   every keystroke, hanging the browser on large models; it keeps the old tabs (All first), CSV files and
   columns, shows each tab's total on the tab bar (`renderPage`'s `counts`, replacing
@@ -493,5 +491,3 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   (`sidepanel.js`), `off` in `REPORTS` (`chunks/summary.js`) and `OFF` in `background.js`, which
   refuses `ia_load`/`ia_refresh` for them. The `⌘⌥K` shortcut that started SV Filters is removed
   from `outer.js`/`inner.js`. Re-enabling means undoing all of those.
-- `popup.html` and `chunks/popup-*.js` are dead — the manifest has no `default_popup` and
-  `package.sh` excludes them.

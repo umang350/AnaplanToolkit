@@ -1,8 +1,8 @@
 #!/bin/sh
 # Build clean, shippable copies of the extension for Chrome and Firefox.
 #
-# Copies only the files the manifest actually needs - no development snapshots
-# (.bak / .pre-* / .retired), no git history, no packaging script itself - into
+# Copies only the files the manifest actually needs - no git history, no
+# packaging script itself - into
 # dist/ (Chrome) and dist-firefox/ (Firefox) and zips each. Run:  sh package.sh
 #
 # The two builds share one manifest.json: most Chrome-only (side_panel) and
@@ -29,12 +29,13 @@ if [ -n "$VN" ] && [ "$VN" != "$V" ]; then
   echo "manifest.json: version_name $VN does not match version $V" >&2; exit 1
 fi
 
+ALLOWED=" "
 rm -rf "$OUT" "$ZIP" "$FF_OUT" "$FF_ZIP"
 mkdir -p "$OUT"
 
 # Everything the extension loads at runtime, plus the licence documents.
-# popup.html / chunks/popup-* are deliberately excluded: the manifest has no
-# default_popup, so the side panel is the only UI and they are dead code.
+# A top-level HTML/JS/CSS file that is not in this list fails the build below,
+# so a new view cannot be silently left out of the package.
 for f in manifest.json background.js \
          sidepanel.html sidepanel.js sidepanel.css views.css \
          actions.html action_usages.html pages.html filter_items.html page_line_items.html sv_filter_items.html \
@@ -42,24 +43,23 @@ for f in manifest.json background.js \
          process_steps.html modules.html line_items.html lists.html revisions.html lock_monitor.html \
          delete_line_items.html delete_modules.html \
          icon-16.png icon-32.png icon-48.png icon-128.png \
-         LICENSE.txt NOTICE.txt README.md; do
+         LICENSE.txt NOTICE.txt; do
   [ -f "$f" ] || { echo "missing: $f" >&2; exit 1; }
   cp "$f" "$OUT/"
+  ALLOWED="$ALLOWED$f "
+done
+
+for f in *.html *.js *.css; do
+  case "$ALLOWED" in *" $f "*) ;; *) echo "not in package.sh's file list: $f" >&2; exit 1 ;; esac
 done
 
 for d in chunks content-scripts assets fonts; do
   [ -d "$d" ] || continue
   mkdir -p "$OUT/$d"
   find "$d" -type f \
-    ! -name '*.bak' ! -name '*.pre-*' ! -name '*.retired' ! -name '.DS_Store' \
-    ! -name 'popup-*' \
+    ! -name '.DS_Store' \
     -exec cp {} "$OUT/$d/" \;
 done
-
-# Sanity: nothing from the development history should have slipped through.
-if find "$OUT" -name '*.bak' -o -name '*.pre-*' -o -name '*.retired' | grep -q .; then
-  echo "development snapshots leaked into $OUT" >&2; exit 1
-fi
 
 # Chrome build: minus Firefox's sidebar_action and background.scripts, which
 # Chrome reports on the extensions page ("Unrecognized manifest key",
