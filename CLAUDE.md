@@ -398,8 +398,10 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   own module delete (same body and reply shape as a line item delete; the modules were gone from the
   reply's `modelInfo`; its dialog sent two modules in one request and both went). Setting it to `null`
   switches whole-module deletes off: the report still shows the whole modules but their line items are
-  deleted instead (`mods[].status: off`). How Anaplan words a refused module delete is **not confirmed** -
-  any refusal sends the module's line items the usual way.
+  deleted instead (`mods[].status: off`). A refused module delete (live HAR) names the **line item** in use, like a
+  line item refusal ("'SYS00 Time Settings'.Last day of Month cannot be deleted because it is in use: …"), with
+  no `modelInfo` and `modelDefinitionSerialNumber: 0` - so a serial of 0 or less is taken as none (never kept)
+  and an error with it is a refusal; the module's line items then go the usual way.
   The rest go **whole modules, several to a request** (up to `IA_DL_BATCH` = 200 line items; a bigger
   module goes alone - every applied request returns the whole model, seconds each on a large model, so one
   request per module made an 841-module run take hours): a module before the modules whose line
