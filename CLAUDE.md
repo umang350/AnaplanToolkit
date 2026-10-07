@@ -393,9 +393,13 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   box ticked (`wholeModules`), each whole module goes as a **module delete, one module per request**
   (Anaplan allows only one), in plan order, when no line item this run hasn't deleted yet uses it; a
   refusal sends its line items the usual way, and a whole module whose line items all went that way is
-  deleted (now empty) at the end. The request's XML comes from `IA_DL_MOD(moduleId)`, which is
-  **`null` until read off a HAR of Anaplan's own module delete** - never guess it. While it is null,
-  the report shows the whole modules but their line items are deleted instead (`mods[].status: off`).
+  deleted (now empty) at the end. The request's XML comes from `IA_DL_MOD(moduleId)`:
+  `<ModelDefinition><DeleteModule entityLongId="…"/></ModelDefinition>`, read off a live HAR of Anaplan's
+  own module delete (same body and reply shape as a line item delete; the modules were gone from the
+  reply's `modelInfo`; its dialog sent two modules in one request and both went). Setting it to `null`
+  switches whole-module deletes off: the report still shows the whole modules but their line items are
+  deleted instead (`mods[].status: off`). How Anaplan words a refused module delete is **not confirmed** -
+  any refusal sends the module's line items the usual way.
   The rest go **whole modules, several to a request** (up to `IA_DL_BATCH` = 200 line items; a bigger
   module goes alone - every applied request returns the whole model, seconds each on a large model, so one
   request per module made an 841-module run take hours): a module before the modules whose line
