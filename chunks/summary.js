@@ -45,6 +45,7 @@ var REPORTS = [
   // upload: runs on a CSV chosen in the panel (and can delete), so it is not
   // counted in "loaded" or run by Get all data either.
   { page: 'delete_line_items', name: 'Delete Line Items', unit: 'rows', key: 'rows', upload: true },
+  { page: 'delete_modules', name: 'Delete Modules', unit: 'rows', key: 'rows', upload: true },
   { page: 'revisions', name: 'Revision Tags', keys: [['revisions', 'tags'], ['applied', 'models applied to']] },
   // live: runs until stopped, so it is not counted in "loaded" or run by Get all data.
   { page: 'lock_monitor', name: 'Lock Monitor', unit: 'checks', key: 'samples', live: true },

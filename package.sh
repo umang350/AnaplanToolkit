@@ -40,7 +40,7 @@ for f in manifest.json background.js \
          actions.html action_usages.html pages.html filter_items.html page_line_items.html sv_filter_items.html \
          sv_views.html sv_line_items.html sv_screens.html sv_actions.html summary.html workspace.html workspace_all.html \
          process_steps.html modules.html line_items.html lists.html revisions.html lock_monitor.html \
-         delete_line_items.html \
+         delete_line_items.html delete_modules.html \
          icon-16.png icon-32.png icon-48.png icon-128.png \
          LICENSE.txt NOTICE.txt README.md; do
   [ -f "$f" ] || { echo "missing: $f" >&2; exit 1; }
