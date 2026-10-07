@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`,`page_line_items`,`delete_line_items`,`delete_modules`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`model_health`,`revisions`,`lock_monitor`,`page_line_items`,`delete_line_items`,`delete_modules`],
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -27,7 +27,7 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     LIVE=new Set([`lock_monitor`,`delete_line_items`,`delete_modules`]),
     // Reports a delete makes out of date, dropped from the cache once it has
     // deleted anything (they are read off the model's structure).
-    DL_STALE=[`line_items`,`modules`,`page_line_items`,`filter_items`];
+    DL_STALE=[`line_items`,`model_health`,`modules`,`page_line_items`,`filter_items`];
 
 // Page Line Items' picker requests waiting for their page list (ia_pg_list).
 // Delete Line Items: when each run's report was last kept mid-run (ia_live).

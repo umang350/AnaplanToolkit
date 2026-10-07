@@ -41,6 +41,7 @@ var REPORTS = [
   { page: 'sv_line_items', name: 'SV Items', unit: 'rows', off: true },
   { page: 'modules', name: 'Module List', unit: 'modules', key: 'modules' },
   { page: 'line_items', name: 'Line Items', unit: 'line items', key: 'lineItems' },
+  { page: 'model_health', name: 'Model Health', keys: [['largeItems', 'large line items'], ['duplicates', 'duplicate formulas'], ['complex', 'complex formulas']] },
   { page: 'lists', name: 'Lists', keys: [['lists', 'lists'], ['properties', 'properties']] },
   // upload: runs on a CSV chosen in the panel (and can delete), so it is not
   // counted in "loaded" or run by Get all data either.
