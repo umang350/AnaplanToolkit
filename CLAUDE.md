@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
 the structure of the Anaplan model open in the active tab. Seventeen read-only report views, each
-gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on - and one
-view that changes the model, Delete Line Items (see below). Proprietary internal tool — see `LICENSE.txt` and
+gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on - and two
+views that change the model, Delete Line Items and Delete Modules (see below). Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
 
@@ -450,7 +450,19 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   arrives as `errorInfo.errorMessage` ("X cannot be deleted because it is in use: …") with the serial
   unchanged and no `modelInfo`. Not confirmed: which of `IA_findSess`'s two ways found the id. `upload` in `VIEWS` / `REPORTS` keeps it out of
   Get all data and the loaded count.
-- `summary` (`chunks/summary.js`) is the nineteenth view and the odd one out: no CSV or search, gathered
+- **Delete Modules** (`delete_modules`, Structure group beside Delete Line Items, `IA_gdm` in `inner.js`,
+  `chunks/delete_modules.js`) deletes **whole modules** from a CSV of **Module** and **Module ID** (the
+  Modules report's export works as is; `dmRead`/`DM_COLS` in `sidepanel.js` - each upload tab keeps its own
+  CSV in `ups`, and the start screen's hints are picked by `data-for`). It shares Delete Line Items' machinery:
+  the same panel messages (`ia_dl_pick` / `ia_dl_delete` / `ia_dl_pause`, routed by which tab's frame sent
+  them), the worker's `LIVE` / `ia_live` / `dlKept` / `DL_STALE` handling, and in `inner.js` `IA_dlRead`,
+  `IA_dlRpc` (lean), `IA_dlUsers` and `IA_DL_MOD`. Check matches each row by ID (it must name the module
+  given) or by name, and marks a module `inuse` when a line item in a module that isn't listed uses one of its
+  line items - and, repeated, any listed module a kept module uses. Delete goes **one module per request**, a
+  module before the modules it uses (ties: last module first); a refusal (serial 0 or unchanged, as in Delete
+  Line Items) keeps the module, which is retried while others are deleted (`seen`) - nothing smaller is
+  deleted in its place. A final read decides each row. The confirmation wants the number of modules typed.
+- `summary` (`chunks/summary.js`) is the twentieth view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button

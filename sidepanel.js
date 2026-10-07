@@ -112,11 +112,16 @@
        chosen on its start screen and checks it (nothing deleted); the report
        then asks before deleting (ia_dl_delete below). Like `pick`, it is left
        out of Get all data, and its refresh button goes back to the upload. */
-    { page: 'delete_line_items', tab: 'Delete', group: 'Structure', sub: 'Delete', title: 'Delete Line Items', upload: true,
+    { page: 'delete_line_items', tab: 'Delete', group: 'Structure', sub: 'Delete Items', title: 'Delete Line Items', upload: true,
       desc: 'Delete line items from any number of modules, listed in a CSV of module, line item and ID. Each row is checked against the model first, and nothing is deleted until you confirm.',
       preview: ['All', 'Matched', 'Skipped'],
       heading: 'Delete Line Items', search: 'Search by module, line item, ID or status...',
       cols: ['Module', 'Line Item', 'Status'] },
+    { page: 'delete_modules', tab: 'Delete Modules', group: 'Structure', sub: 'Delete Modules', title: 'Delete Modules', upload: true,
+      desc: 'Delete whole modules, listed in a CSV of module name and ID - each with everything in it. Each module is checked against the model first, and nothing is deleted until you confirm.',
+      preview: ['All', 'Ready', 'Skipped'],
+      heading: 'Delete Modules', search: 'Search by module, ID or status...',
+      cols: ['Module', 'Line Items', 'Status'] },
     { page: 'revisions', tab: 'Revisions', title: 'Revision Tags',
       desc: 'The model\'s revision tags - who created each and when - and every model each one was applied to.',
       preview: ['Revision Tags', 'Applied To'],
@@ -435,9 +440,9 @@
       emptyDesc.textContent = v.desc;
       emptyLoad.textContent = st.busy ? 'Gathering…' : v.live ? 'Start monitoring'
         : v.pick ? (pick.sel.size ? 'Get data for ' + pick.sel.size + (pick.sel.size === 1 ? ' page' : ' pages') : 'Choose pages first')
-        : v.upload ? (dl.rows ? 'Check ' + dl.rows.length + (dl.rows.length === 1 ? ' line item' : ' line items') : 'Choose a CSV first')
+        : v.upload ? (ups[v.page].rows ? 'Check ' + ups[v.page].rows.length + ' ' + (ups[v.page].rows.length === 1 ? UPLOAD[v.page].one : UPLOAD[v.page].many) : 'Choose a CSV first')
         : 'Get data';
-      emptyLoad.disabled = !!st.busy || (!!v.pick && !pick.sel.size) || (!!v.upload && !dl.rows);
+      emptyLoad.disabled = !!st.busy || (!!v.pick && !pick.sel.size) || (!!v.upload && !ups[v.page].rows);
       emptyNote.textContent = st.note || (hasTab ? '' : 'Open an Anaplan model tab first.');
       emptyLk.hidden = !v.live;
       emptyPg.hidden = !v.pick;
@@ -498,7 +503,7 @@
     // mode delete); Check sends the uploaded CSV's.
     if (byPage[page].upload) {
       msg.mode = extra ? 'delete' : 'check';
-      msg.rows = extra ? extra.rows : dl.rows || [];
+      msg.rows = extra ? extra.rows : ups[page].rows || [];
       if (extra) { msg.modelId = extra.modelId; msg.tryInUse = extra.tryInUse; msg.autosave = extra.autosave; msg.wholeModules = extra.wholeModules; }
       st.picking = false;
     }
@@ -754,6 +759,14 @@
                   // Optional: checked against the module named (the Line Items report exports it).
                   moduleId: ['moduleid', 'modulelongid'] };
   var dl = { rows: null, file: '', info: '', error: false };
+  /* Delete Modules' upload: just the module and its ID (the Modules report's
+     export - Module, ModuleId, ... - works unchanged). Each upload tab keeps its
+     own CSV. */
+  var DM_COLS = { module: ['module', 'modulename', 'name'],
+                  moduleId: ['moduleid', 'modulelongid', 'id', 'entitylongid'] };
+  var ups = { delete_line_items: dl, delete_modules: { rows: null, file: '', info: '', error: false } },
+      UPLOAD = { delete_line_items: { one: 'line item', many: 'line items' },
+                 delete_modules: { one: 'module', many: 'modules' } };
 
   function csvParse(text) {
     text = text.replace(/^\ufeff/, '');
@@ -807,19 +820,51 @@
   }
 
   function paintUpload(st) {
+    var u = ups[active];
     dlBack.hidden = !st.frame;
-    dlInfo.textContent = dl.info || '';
-    dlInfo.toggleAttribute('data-error', !!dl.error);
+    dlInfo.textContent = u.info || '';
+    dlInfo.toggleAttribute('data-error', !!u.error);
+    emptyDl.querySelectorAll('[data-for]').forEach(function (p) { p.hidden = p.dataset.for !== active; });
+  }
+
+  function dmRead(name, text) {
+    var u = ups.delete_modules, all = csvParse(text),
+        head = (all[0] || []).map(function (h) { return h.toLowerCase().replace(/[^a-z0-9]/g, ''); }), at = {};
+    Object.keys(DM_COLS).forEach(function (k) {
+      at[k] = -1;
+      DM_COLS[k].some(function (n) { at[k] = head.indexOf(n); return at[k] >= 0; });
+    });
+    u.file = name;
+    u.rows = null;
+    u.error = true;
+    if (at.module < 0 && at.moduleId < 0) {
+      u.info = name + ': no Module or Module ID column in the first row. The CSV needs a header row naming them.';
+      return;
+    }
+    var rows = [];
+    for (var i = 1; i < all.length; i++) {
+      var r = all[i], c = function (k) { return at[k] >= 0 ? String(r[at[k]] || '').trim() : ''; };
+      if (!c('module') && !c('moduleId')) continue;
+      rows.push({ line: rows.length + 1, module: c('module'), moduleId: c('moduleId') });
+    }
+    if (!rows.length) { u.info = name + ': no modules listed under the header row.'; return; }
+    if (rows.length > DL_MAX) { u.info = name + ': ' + rows.length + ' rows - at most ' + DL_MAX + ' at a time.'; return; }
+    u.rows = rows;
+    u.error = false;
+    u.info = name + ': ' + rows.length + (rows.length === 1 ? ' module' : ' modules') +
+      (at.moduleId < 0 ? ' (no Module ID column - matched by name)' : '');
   }
 
   dlFile.addEventListener('change', function () {
     var f = dlFile.files && dlFile.files[0];
     dlFile.value = '';
     if (!f) return;
-    f.text().then(function (t) { dlRead(f.name, t); render(); },
-      function () { dl.rows = null; dl.error = true; dl.info = f.name + ' could not be read.'; render(); });
+    var page = active, u = ups[page];
+    if (!u) return;
+    f.text().then(function (t) { (page === 'delete_modules' ? dmRead : dlRead)(f.name, t); render(); },
+      function () { u.rows = null; u.error = true; u.info = f.name + ' could not be read.'; render(); });
   });
-  dlBack.addEventListener('click', function () { state.delete_line_items.picking = false; render(); });
+  dlBack.addEventListener('click', function () { state[active].picking = false; render(); });
 
   refreshBtn.addEventListener('click', function () {
     if (state[active].busy) stop();
@@ -887,11 +932,13 @@
     /* Delete Line Items' report: back to the upload, delete the rows it
        checked, or pause / resume a delete. The rows come from the report itself (it holds the check's
        result); the report engine checks each of them again before deleting. */
-    var df = state.delete_line_items.frame, ds = state.delete_line_items;
-    if (df && e.source === df.contentWindow && e.origin === location.origin && e.data) {
+    var dp = ['delete_line_items', 'delete_modules'].filter(function (p) {
+          return state[p].frame && e.source === state[p].frame.contentWindow;
+        })[0], ds = dp && state[dp];
+    if (dp && e.origin === location.origin && e.data) {
       if (e.data.type === 'ia_dl_pick' && !ds.busy) { ds.picking = true; render(); }
       if (e.data.type === 'ia_dl_delete' && !ds.busy && Array.isArray(e.data.rows) && e.data.rows.length)
-        start('delete_line_items', true, { rows: e.data.rows, modelId: String(e.data.modelId || ''), tryInUse: !!e.data.tryInUse,
+        start(dp, true, { rows: e.data.rows, modelId: String(e.data.modelId || ''), tryInUse: !!e.data.tryInUse,
           autosave: +e.data.autosave || 0, wholeModules: !!e.data.wholeModules });
       // Pause / Resume, only while a delete runs.
       if (e.data.type === 'ia_dl_pause' && ds.busy)
