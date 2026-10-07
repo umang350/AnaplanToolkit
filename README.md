@@ -216,10 +216,6 @@ chunks/                  report renderers (see Notes for maintainers) and shared
   and SV Filters. There is no Svelte source in this repository; those chunks are
   committed build output. Every other report is a plain ES module on `chunks/sv_shared.js`, which
   carries its own copies of the CSV writer and the search scorer so all views behave the same.
-- `popup.html` and `chunks/popup-*.js` are **not referenced by the manifest**. The side panel
-  replaced the popup, and `package.sh` leaves them out.
-- Files ending `.bak`, `.pre-*` and `.retired` are development snapshots. `package.sh` leaves them
-  out too.
 - [CLAUDE.md](CLAUDE.md) has the full architecture and the details of each report.
 
 See [NOTICE.txt](NOTICE.txt) for third-party components and provenance.
