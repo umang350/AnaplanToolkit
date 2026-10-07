@@ -1,18 +1,16 @@
-# Publishes a GitHub release: run it from the Actions tab (Run workflow) on master.
-# It checks manifest.json is at the version given, builds both packages with
-# package.sh, then tags the commit and uploads the two zips with the notes in
-# .github/release-notes/<version>.md. The store uploads stay manual.
+# Publishes a GitHub release for the version in manifest.json, when its notes
+# (.github/release-notes/<version>.md) reach master - or by hand from the Actions
+# tab (Run workflow). The notes' first line, "# <title>", is the release title
+# (after the version); the rest is the body. It builds both packages with
+# package.sh, tags the commit and uploads the two zips. A version already tagged
+# is skipped, so editing old notes does nothing. The store uploads stay manual.
 name: Release
 
 on:
+  push:
+    branches: [master]
+    paths: ['.github/release-notes/**']
   workflow_dispatch:
-    inputs:
-      version:
-        description: Version to release - must match manifest.json (e.g. 2.9.0)
-        required: true
-      title:
-        description: Release title after the version (e.g. "Delete whole modules")
-        required: true
 
 permissions:
   contents: write
@@ -20,25 +18,32 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      V: ${{ inputs.version }}
-      TITLE: ${{ inputs.title }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the version and notes
+      - name: Find the version and its notes
+        id: v
         run: |
-          m=$(jq -r .version manifest.json)
-          [ "$m" = "$V" ] || { echo "manifest.json is at $m, not $V" >&2; exit 1; }
-          [ -f ".github/release-notes/$V.md" ] || { echo "missing .github/release-notes/$V.md" >&2; exit 1; }
-          if git ls-remote --exit-code --tags origin "refs/tags/$V" >/dev/null; then echo "tag $V already exists" >&2; exit 1; fi
+          V=$(jq -r .version manifest.json)
+          N=".github/release-notes/$V.md"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if [ ! -f "$N" ]; then echo "No notes for $V ($N) - nothing to release."; exit 0; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$V" >/dev/null; then echo "$V is already tagged - nothing to release."; exit 0; fi
+          head -n1 "$N" | grep -q '^# ' || { echo "$N must start with '# <title>'" >&2; exit 1; }
+          echo "title=$(head -n1 "$N" | sed 's/^# *//')" >> "$GITHUB_OUTPUT"
+          tail -n +2 "$N" | sed '/./,$!d' > "$RUNNER_TEMP/notes.md"
+          echo "go=1" >> "$GITHUB_OUTPUT"
 
       - name: Build the packages
+        if: steps.v.outputs.go == '1'
         run: sh package.sh
 
       - name: Tag and publish the release
+        if: steps.v.outputs.go == '1'
         env:
           GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+          TITLE: ${{ steps.v.outputs.title }}
         run: |
           gh release create "$V" anaplan-toolkit.zip anaplan-toolkit-firefox.zip \
-            --target "$GITHUB_SHA" --title "$V: $TITLE" --notes-file ".github/release-notes/$V.md"
+            --target "$GITHUB_SHA" --title "$V: $TITLE" --notes-file "$RUNNER_TEMP/notes.md"
