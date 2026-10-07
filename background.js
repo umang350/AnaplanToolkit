@@ -42,7 +42,7 @@ var store=api.storage?.session||api.storage?.local,
     mem=new Map(),        // cacheId -> {data, ts}
     keyByTab=new Map(),   // tabId -> model key, learned from the content script
     busy=new Set(),       // runs (rid: tab|page) currently gathering
-    pushes=new Map(),     // tag -> interval id of an in-flight push
+    pushes=new Map(),     // tag -> handle ({stop}) of an in-flight push
     route=null,           // {tabId, windowId} the panel is bound to
     lastKey=null,         // most recent model key, so the cache stays readable with no tab open
     prog=new Map(),       // rid -> [{step,detail,i,n,done}] for the run in flight
@@ -138,18 +138,28 @@ function cacheDrop(page,key){
 // Anaplan tab it is for in `to`, and each panel and view (chunks/view_tab.js)
 // drops what is not for its own tab. A panel says which tab it is in with
 // `forTab` on its requests; Firefox's per-window sidebar sends none and hears all.
+//
+// One send at a time. This used to re-send every 10ms until a send settled,
+// and a big payload takes longer than that to reach every page: a Delete Line
+// Items report of 10,909 rows went out several times per live update, to every
+// frame of every panel, and over a 40-minute run the extension's process grew
+// past 2 GB and died. Now the next try waits for the last one to fail with
+// "Receiving end does not exist" (no page listening yet); anything else ends it.
 function push(msg,tag){
   let k=msg.type+(tag||``)+`@`+(msg.to??``),prev=pushes.get(k);
-  prev&&clearInterval(prev);
-  let n=0,id=0;
-  id=setInterval(()=>{
-    n++;
-    api.runtime.sendMessage(msg).then(()=>{clearInterval(id),pushes.get(k)===id&&pushes.delete(k)}).catch(err=>{
-      if(err?.message?.includes(`Receiving end does not exist`)&&n<=RETRY_TICKS)return;
-      clearInterval(id),pushes.get(k)===id&&pushes.delete(k)
-    })
-  },10);
-  pushes.set(k,id)
+  prev&&prev.stop();
+  let n=0,done=!1,tm=0,
+      h={stop(){done=!0,clearTimeout(tm)}},
+      fin=()=>{h.stop(),pushes.get(k)===h&&pushes.delete(k)},
+      go=()=>{
+        if(done)return;
+        n++;
+        api.runtime.sendMessage(msg).then(fin,err=>{
+          if(!done&&err?.message?.includes(`Receiving end does not exist`)&&n<=RETRY_TICKS)return void(tm=setTimeout(go,10));
+          fin()
+        })
+      };
+  pushes.set(k,h),tm=setTimeout(go,10)
 }
 
 // api.tabs.get() resolves for *any* surviving tab, so a remembered id that has

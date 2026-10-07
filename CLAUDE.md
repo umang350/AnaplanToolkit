@@ -387,12 +387,15 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   first; string literals blanked) and bare names of the formula's own module (not after a `.`, so
   list-qualified names don't count). Check marks a row `inuse` when a line item outside the CSV uses it
   (or uses one that does) - left alone unless the confirmation's "Also try" box sends `tryInUse`.
-  The rest go **one request per module, whatever its size**: a module before the modules whose line
+  The rest go **whole modules, several to a request** (up to `IA_DL_BATCH` = 200 line items; a bigger
+  module goes alone - every applied request returns the whole model, seconds each on a large model, so one
+  request per module made an 841-module run take hours): a module before the modules whose line
   items it uses, and inside a request a line item before the ones it uses (ties bottom-up, last module
   first). Modules that use each other in both directions can't both be whole: before each request the
   line items still used by a line item this run deletes later are held back (`hold`, repeated until
   nothing changes) for a later pass. A refusal (a use no formula shows, e.g. a saved view filter) sets
-  aside the line item Anaplan names (`IA_dlBlocker`) and resends the rest; set-aside line items are
+  aside the line item Anaplan names (`IA_dlBlocker`) and resends the rest - when it can't be told which, the
+  request is halved (a refusal is small and fast); set-aside line items are
   retried in later passes while something has been deleted since (`seen`). Tested offline on a
   generated 700-module, ~11,000-line-item model whose formulas are written from a known dependency
   graph: references read 10,558/10,558, in-use flagged exactly, ~1,070 requests with only the hidden
@@ -402,7 +405,9 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   Delete replies are therefore read as a stream (`IA_dlScan`), keeping only `result.modelDefinitionSerialNumber`,
   `txid`, `errorInfo` and a top-level `error`: no error + new serial = every line item in it is gone (all or
   nothing), tracked in the run's `gone` set; anything else falls back to a full `IA_dlRead`. Full reads happen
-  only at the start, the end and in that fallback. **Orphaned runs stop:** reloading the extension cuts the
+  only at the start, the end and in that fallback. **Live snapshots** (`ia_live`) carry every row, so at most one per `max(2s, rows/5 ms)`; the worker's `push`
+  sends one copy at a time (it used to re-send every 10ms until a send settled, so a 10,909-row report went
+  out several times per update to every panel frame and the extension's process died past 2 GB). **Orphaned runs stop:** reloading the extension cuts the
   tab's script off from Stop/Pause, so before each request `IA_alive()` (`runtime.id`) is checked and the
   run ends if it is gone (no final read). Nothing is resent blindly. A
   timeout or network failure stops the run (the request may still complete on Anaplan's side); Stop

@@ -148,7 +148,7 @@ function confirmBox(d) {
       (d.model ? ' in ' + d.model : '') + '? Their data is deleted with them. ' +
       'This can\'t be undone from here - only by restoring the model from Anaplan\'s History.'));
     form.appendChild(el('p', 'text-xs text-muted-foreground',
-      'One request per module, in an order worked out from the formulas so nothing is deleted while a formula ' +
+      'Whole modules, up to 200 line items per request, in an order worked out from the formulas so nothing is deleted while a formula ' +
       'still uses it. A module whose line items depend on another module\'s in both directions is split only where it has to be.'));
     if (inuse.length) {
       var lab = el('label', 'ia-dli-try');
