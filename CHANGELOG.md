@@ -5,6 +5,12 @@ summarised from the commit history.
 
 ## Unreleased
 
+- Lock Monitor: a crash in its loop is now shown in the panel instead of leaving it silently dead.
+- Delete reports: the panel refuses a delete request whose rows are not a list of objects.
+- The panel and Summary no longer re-render every 30s while hidden; they catch up when shown again.
+- Accessibility: visible keyboard focus, slower (not stopped) spinners under reduced-motion, arrow/Home/End
+  keys and roving tabindex on the tab bars, and a live-region progress list.
+- New CI check: manifest JSON, a syntax check of every script, and a package build.
 - Housekeeping: removed the dead popup (`popup.html`, `chunks/popup-*.js`) and the two `.retired`
   view snapshots; `package.sh` now fails on a top-level HTML/JS/CSS file missing from its list and
   no longer ships `README.md`; CLAUDE.md and README corrected to match.

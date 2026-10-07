@@ -224,6 +224,20 @@
     b.innerHTML = '<span class="dot"></span>';
     b.appendChild(document.createTextNode(label));
     b.addEventListener('click', onClick);
+    // Tablist pattern: Left/Right/Home/End move between the enabled tabs of this bar.
+    b.addEventListener('keydown', function (e) {
+      var k = e.key;
+      if (k !== 'ArrowRight' && k !== 'ArrowLeft' && k !== 'Home' && k !== 'End') return;
+      var tabs = Array.prototype.filter.call(b.parentNode.children, function (x) {
+        return x.getAttribute('role') === 'tab' && !x.disabled;
+      });
+      var i = tabs.indexOf(b);
+      var n = k === 'Home' ? 0 : k === 'End' ? tabs.length - 1 :
+              (i + (k === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      e.preventDefault();
+      tabs[n].focus();
+      tabs[n].click();
+    });
     return b;
   }
 
@@ -259,6 +273,7 @@
   function paintTab(b, selected, pages) {
     pages = pages.filter(function (p) { return !byPage[p].off; });
     b.setAttribute('aria-selected', selected ? 'true' : 'false');
+    b.tabIndex = selected ? 0 : -1;   // roving tabindex: Tab enters the bar once, arrows move within it
     b.dataset.has = pages.length && pages.every(function (p) { return state[p].ts; }) ? '1' : '0';
     b.dataset.busy = pages.some(function (p) { return state[p].busy; }) ? '1' : '0';
   }
@@ -937,7 +952,9 @@
         })[0], ds = dp && state[dp];
     if (dp && e.origin === location.origin && e.data) {
       if (e.data.type === 'ia_dl_pick' && !ds.busy) { ds.picking = true; render(); }
-      if (e.data.type === 'ia_dl_delete' && !ds.busy && Array.isArray(e.data.rows) && e.data.rows.length)
+      // The rows drive a destructive run: refuse anything that is not a list of plain objects.
+      if (e.data.type === 'ia_dl_delete' && !ds.busy && Array.isArray(e.data.rows) && e.data.rows.length &&
+          e.data.rows.every(function (r) { return r && typeof r === 'object' && !Array.isArray(r); }))
         start(dp, true, { rows: e.data.rows, modelId: String(e.data.modelId || ''), tryInUse: !!e.data.tryInUse,
           autosave: +e.data.autosave || 0, wholeModules: !!e.data.wholeModules });
       // Pause / Resume, only while a delete runs.
@@ -1100,5 +1117,6 @@
     sync(true);
     render();
   });
-  setInterval(function () { if (!refreshBtn.hidden) render(); }, 30000);
+  setInterval(function () { if (!document.hidden && !refreshBtn.hidden) render(); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && !refreshBtn.hidden) render(); });
 })();

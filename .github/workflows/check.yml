@@ -1,0 +1,24 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Manifest is valid JSON
+        run: jq empty manifest.json
+      - name: Every shipped script parses
+        run: |
+          set -e
+          for f in background.js sidepanel.js content-scripts/*.js; do node --check "$f"; done
+          for f in chunks/*.js; do cp "$f" "/tmp/$(basename "$f" .js).mjs"; node --check "/tmp/$(basename "$f" .js).mjs"; done
+      - name: Package builds (also fails on a file missing from package.sh's list)
+        run: sh package.sh
