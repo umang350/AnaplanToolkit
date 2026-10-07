@@ -499,7 +499,7 @@
     if (byPage[page].upload) {
       msg.mode = extra ? 'delete' : 'check';
       msg.rows = extra ? extra.rows : dl.rows || [];
-      if (extra) { msg.modelId = extra.modelId; msg.tryInUse = extra.tryInUse; msg.autosave = extra.autosave; }
+      if (extra) { msg.modelId = extra.modelId; msg.tryInUse = extra.tryInUse; msg.autosave = extra.autosave; msg.wholeModules = extra.wholeModules; }
       st.picking = false;
     }
     // Lock Monitor: how often, how long, and whether to notify.
@@ -750,7 +750,9 @@
   var DL_MAX = 20000,
       DL_COLS = { module: ['module', 'modulename'],
                   name: ['lineitem', 'lineitemname', 'name', 'lineitems'],
-                  id: ['lineitemid', 'id', 'lineitemlongid', 'entitylongid', 'entityid'] };
+                  id: ['lineitemid', 'id', 'lineitemlongid', 'entitylongid', 'entityid'],
+                  // Optional: checked against the module named (the Line Items report exports it).
+                  moduleId: ['moduleid', 'modulelongid'] };
   var dl = { rows: null, file: '', info: '', error: false };
 
   function csvParse(text) {
@@ -793,7 +795,7 @@
     for (var i = 1; i < all.length; i++) {
       var r = all[i], c = function (k) { return at[k] >= 0 ? String(r[at[k]] || '').trim() : ''; };
       if (!c('module') && !c('name') && !c('id')) continue;
-      rows.push({ line: rows.length + 1, module: c('module'), name: c('name'), id: c('id') });
+      rows.push({ line: rows.length + 1, module: c('module'), name: c('name'), id: c('id'), moduleId: c('moduleId') });
     }
     if (!rows.length) { dl.info = name + ': no line items listed under the header row.'; return; }
     if (rows.length > DL_MAX) { dl.info = name + ': ' + rows.length + ' rows - at most ' + DL_MAX + ' at a time.'; return; }
@@ -890,7 +892,7 @@
       if (e.data.type === 'ia_dl_pick' && !ds.busy) { ds.picking = true; render(); }
       if (e.data.type === 'ia_dl_delete' && !ds.busy && Array.isArray(e.data.rows) && e.data.rows.length)
         start('delete_line_items', true, { rows: e.data.rows, modelId: String(e.data.modelId || ''), tryInUse: !!e.data.tryInUse,
-          autosave: +e.data.autosave || 0 });
+          autosave: +e.data.autosave || 0, wholeModules: !!e.data.wholeModules });
       // Pause / Resume, only while a delete runs.
       if (e.data.type === 'ia_dl_pause' && ds.busy)
         send({ type: 'ia_dl_pause', paused: !!e.data.paused }).catch(function () {});

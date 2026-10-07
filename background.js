@@ -729,8 +729,8 @@ async function handle(msg,sender){
     // Page Line Items scans only the pages picked in the panel.
     if(page===`page_line_items`)trigger.pages=(Array.isArray(msg.pages)?msg.pages:[]).slice(0,1e4).map(String),trigger.sv=!!msg.sv;
     // Delete Line Items: the CSV's rows, and whether this run checks them or deletes them.
-    if(page===`delete_line_items`)trigger.mode=msg.mode===`delete`?`delete`:`check`,trigger.modelId=String(msg.modelId??``),trigger.tryInUse=!!msg.tryInUse,trigger.autosave=+msg.autosave||0,trigger.rows=(Array.isArray(msg.rows)?msg.rows:[]).slice(0,2e4)
-      .map(r=>({line:+r?.line||0,module:String(r?.module??``).slice(0,500),name:String(r?.name??``).slice(0,500),id:String(r?.id??``).slice(0,40)}));
+    if(page===`delete_line_items`)trigger.mode=msg.mode===`delete`?`delete`:`check`,trigger.modelId=String(msg.modelId??``),trigger.tryInUse=!!msg.tryInUse,trigger.autosave=+msg.autosave||0,trigger.wholeModules=!!msg.wholeModules,trigger.rows=(Array.isArray(msg.rows)?msg.rows:[]).slice(0,2e4)
+      .map(r=>({line:+r?.line||0,module:String(r?.module??``).slice(0,500),name:String(r?.name??``).slice(0,500),id:String(r?.id??``).slice(0,40),moduleId:String(r?.moduleId??``).slice(0,40)}));
     gone=await deliver(tab,trigger);
     // A tab opened moments ago has no report engine until its model frame has
     // loaded. Give it a few seconds before calling the script missing - the

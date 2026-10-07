@@ -18,6 +18,11 @@ import { renderPage, el, textCell, idCell, csvText } from './sv_shared.js';
                redraw the report in place
      paused    on a running snapshot while the run waits (Pause)
      calls     delete requests sent so far: {sent, applied, refused}
+     whole     on a row: every line item of its module is in the CSV and ready
+     wholeModules  how many modules are whole; modDelete whether the engine
+               knows Anaplan's module delete request yet (IA_DL_MOD)
+     mods[]    after a delete: each whole module - id, name, items, status
+               (deleted / failed / off = its line items went instead), why
      autosave  minutes between automatic saves of the report (0 = off)
      partial   a copy the worker kept mid-run (at most once a minute) - what
                the panel shows if it was closed before the run ended
@@ -45,14 +50,15 @@ var STATUS = {
   inuse: ['In use', 'soft'],
   skip: ['Skipped', 'gap'],
   deleted: ['Deleted', 'ok'],
-  failed: ['Not deleted', 'bad']
+  failed: ['Not deleted', 'bad'],
+  off: ['Line items instead', 'gap']
 };
 
 function rowsOf(d) { return (d && d.rows) || []; }
 
 function csvRow(r) {
   return { Row: r.line, Module: r.module, ModuleId: r.moduleId, LineItem: r.name, LineItemId: r.id,
-           Status: (STATUS[r.status] || [r.status])[0], Reason: r.why, Order: r.order || '' };
+           Status: (STATUS[r.status] || [r.status])[0], Reason: r.why, Order: r.order || '', WholeModule: r.whole ? 'Yes' : '' };
 }
 
 function stamp(t) {
@@ -109,6 +115,24 @@ if (!globalThis.IA_COLLECT) try {
     if (msg && msg.type === 'delete_line_items_data') autoSave(msg.data);
   });
 } catch (e) { /* not in an extension page */ }
+/* Whole modules: the run's own list after a delete, else worked out from the
+   rows a check marked whole. */
+function modsOf(d) {
+  if (d && Array.isArray(d.mods)) return d.mods;
+  var by = new Map();
+  rowsOf(d).forEach(function (r) {
+    if (!r.whole) return;
+    var m = by.get(r.moduleId) || { id: r.moduleId, name: r.module, items: 0, status: 'ready', why: '' };
+    m.items++;
+    by.set(r.moduleId, m);
+  });
+  return Array.from(by.values());
+}
+function modsDone(d) {
+  var ms = modsOf(d), gone = ms.filter(function (m) { return m.status === 'deleted'; }).length;
+  return gone.toLocaleString() + ' of ' + plural(ms.length, 'whole module', 'whole modules') + ' deleted';
+}
+
 function only(st) { return function (d) { return rowsOf(d).filter(function (r) { return st.indexOf(r.status) >= 0; }); }; }
 function count(d, st) { return only(st)(d).length; }
 function plural(n, one, many) { return n.toLocaleString() + ' ' + (n === 1 ? one : many); }
@@ -169,6 +193,24 @@ function confirmBox(d) {
         ' marked In use (Anaplan will most likely refuse them; they go last)'));
       form.appendChild(lab);
     }
+    /* Whole modules: deleted as modules (one request each, first) when the
+       engine knows Anaplan's module delete; otherwise just said. */
+    var modBox = null, nWhole = d.wholeModules || 0;
+    if (nWhole && d.modDelete) {
+      var mlab = el('label', 'ia-dli-try');
+      modBox = el('input');
+      modBox.type = 'checkbox';
+      modBox.checked = true;
+      mlab.appendChild(modBox);
+      mlab.appendChild(document.createTextNode(' Delete the ' + plural(nWhole, 'module', 'modules') +
+        ' whose every line item is listed as whole modules - one request each, before the rest. ' +
+        'Everything in a module goes with it, saved views included.'));
+      form.appendChild(mlab);
+    } else if (nWhole) {
+      form.appendChild(el('p', 'text-xs text-muted-foreground', plural(nWhole, 'module has', 'modules have') +
+        ' every line item listed. Deleting whole modules isn\'t available yet, so their line items are deleted instead ' +
+        'and the modules are kept (empty).'));
+    }
     var keep = { on: true, every: 10 };
     try { var o = JSON.parse(localStorage.getItem(AUTOSAVE_OPT) || 'null'); if (o) keep = o; } catch (e) {}
     var saveLab = el('label', 'ia-dli-try'), saveBox = el('input'), every = el('select', 'ia-dli-every');
@@ -205,8 +247,10 @@ function confirmBox(d) {
       go.textContent = 'Deleting…';
       var all = tryBox && tryBox.checked ? ready.concat(inuse) : ready;
       if (tryBox) tryBox.disabled = true;
+      if (modBox) modBox.disabled = true;
       window.parent.postMessage({ type: 'ia_dl_delete', modelId: d.modelId, tryInUse: !!(tryBox && tryBox.checked), autosave: mins,
-        rows: all.map(function (r) { return { line: r.line, module: r.module, name: r.name, id: r.id }; }) },
+        wholeModules: !!(modBox && modBox.checked),
+        rows: all.map(function (r) { return { line: r.line, module: r.module, name: r.name, id: r.id, moduleId: r.moduleId }; }) },
         location.origin);
     });
     cancel.addEventListener('click', function () { form.replaceWith(open); });
@@ -249,13 +293,15 @@ function top(d) {
       plural(modulesOf(only(['deleted'])(d)), 'module', 'modules') +
       (kept ? ' · ' + kept.toLocaleString() + ' not deleted' : '') +
       (count(d, ['inuse']) ? ' · ' + count(d, ['inuse']).toLocaleString() + ' left (in use)' : '') +
-      (skip ? ' · ' + skip.toLocaleString() + ' skipped' : '') + callsText(d);
+      (skip ? ' · ' + skip.toLocaleString() + ' skipped' : '') +
+      (modsOf(d).length ? ' · ' + modsDone(d) : '') + callsText(d);
   } else {
     bar.appendChild(pickButton());
     var ready = count(d, ['ready']), used = count(d, ['inuse']);
     line = ready.toLocaleString() + ' of ' + plural(all.length, 'row', 'rows') + ' ready to delete' +
       (d.model ? ' in ' + d.model : '') + (d.groups ? ' (' + plural(d.groups, 'module', 'modules') + ')' : '') +
       (used ? ' · ' + used.toLocaleString() + ' in use by formulas outside the CSV' : '') +
+      (d.wholeModules ? ' · ' + plural(d.wholeModules, 'whole module', 'whole modules') + ' (every line item listed - see Modules)' : '') +
       (skip ? ' · ' + skip.toLocaleString() + ' skipped' : '') + (used || skip ? ' (see Skipped)' : '');
   }
   bar.appendChild(el('span', 'text-xs text-muted-foreground', line));
@@ -322,6 +368,31 @@ renderPage({
       'Line items whose ID, module and name all match the model. A delete removes these and nothing else.'),
     tab('Skipped', 'Skipped and not deleted', only(['skip', 'inuse', 'failed']),
       'Rows that won\'t be (or weren\'t) deleted, with the reason. In use: a formula outside the CSV uses the line item ' +
-      '(or uses one that does), so Anaplan would refuse it - add that line item to the CSV, or leave this one.')
+      '(or uses one that does), so Anaplan would refuse it - add that line item to the CSV, or leave this one.'),
+    {
+      label: 'Modules',
+      heading: 'Whole modules',
+      note: 'Modules whose every line item is in the CSV and ready to delete. These can go as one module delete each ' +
+        'instead of line item by line item.',
+      top: function (d) { return top(d || {}); },
+      rows: modsOf,
+      max: 500,
+      placeholder: 'Search by module, ID or status...',
+      cols: 'grid-cols-12',
+      headers: [{ label: 'Module', cls: 'ia-span-5', sort: function (m) { return m.name; } },
+                { label: 'Line items', cls: 'col-span-2', sort: function (m) { return m.items; } },
+                { label: 'Status', cls: 'ia-span-5', sort: function (m) { return (STATUS[m.status] || [m.status])[0]; } }],
+      key: function (m) { return m.name + ' ' + m.id + ' ' + (STATUS[m.status] || [m.status])[0] + ' ' + (m.why || ''); },
+      cells: function (m) {
+        var name = idCell(m.name || '–', m.id), st = statusCell(m);
+        name.classList.add('ia-span-5');
+        st.className = 'ia-span-5 min-w-0';
+        return [name, textCell(Number(m.items || 0).toLocaleString(), 'col-span-2 text-sm text-foreground'), st];
+      },
+      csvRow: function (m) {
+        return { Module: m.name, ModuleId: m.id, LineItems: m.items, Status: (STATUS[m.status] || [m.status])[0], Reason: m.why || '' };
+      },
+      filename: 'delete-line-items-modules.csv'
+    }
   ]
 });
