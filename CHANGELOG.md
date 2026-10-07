@@ -5,6 +5,7 @@ summarised from the commit history.
 
 ## Unreleased
 
+- New **Structure › Health** report: largest line items and modules by estimated cells, duplicate formulas and complex formulas.
 - Lock Monitor: a crash in its loop is now shown in the panel instead of leaving it silently dead.
 - Delete reports: the panel refuses a delete request whose rows are not a list of objects.
 - The panel and Summary no longer re-render every 30s while hidden; they catch up when shown again.

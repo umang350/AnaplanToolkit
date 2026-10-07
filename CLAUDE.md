@@ -253,6 +253,14 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   "Copy API call" buttons copy an Integration API v2 `curl` (`/processes|imports|exports|actions/
   <id>/tasks`) for the user to run with their own token - the extension never runs anything (its only
   `api.anaplan.com` call is the Lock Monitor's read-only model status).
+- **Model Health** (`model_health`, Structure group, `IA_health`/`IA_gmh` in `inner.js`, `chunks/model_health.js`)
+  is derived from the same `IA_structure()` data as Line Items (no Anaplan calls) and returns only findings, not
+  the formulas' whole set: Large Line Items / Large Modules (cells estimated as the product of the item counts of
+  the lists a line item applies to - Time, Versions and subsets have no count in the cache, so such rows are
+  `partial`), Duplicate Formulas (identical after whitespace is collapsed, 25+ characters) and Complex Formulas
+  (400+ characters, 5+ IFs or 6+ bracket levels). Thresholds are rules of thumb, not Anaplan limits. The analysis was
+  tested offline on fixtures and the view smoke-tested with fake data; **not yet confirmed on a live model**. It is in
+  `DL_STALE` (a delete invalidates it).
 - **Revisions** (`revisions`, `IA_grev`, `chunks/revisions.js`) is one `/jsonrpc` call with no view
   requests and `systemActions: [{actionId: "GET_MODEL_REVISIONS", params: {modelId, workspaceId}}]`,
   as Anaplan's own Revision tags page sends it; the tags are in `result.systemActionResults[].revisions`

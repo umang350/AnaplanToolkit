@@ -108,6 +108,11 @@
       preview: ['Lists', 'Properties'],
       heading: 'Lists', search: 'Search by list, ID or parent...',
       cols: ['List', 'Parent', 'Items', 'Properties'] },
+    { page: 'model_health', tab: 'Health', group: 'Structure', sub: 'Health', title: 'Model Health',
+      desc: 'Where a model is heavy: the largest line items and modules by estimated cells, duplicate formulas and complex formulas.',
+      preview: ['Large Line Items', 'Large Modules', 'Duplicate Formulas', 'Complex Formulas'],
+      heading: 'Model Health', search: 'Search...',
+      cols: ['Module', 'Line Item', 'Applies To', 'Cells'] },
     /* `upload`: the one view that changes the model. It starts from a CSV
        chosen on its start screen and checks it (nothing deleted); the report
        then asks before deleting (ia_dl_delete below). Like `pick`, it is left
