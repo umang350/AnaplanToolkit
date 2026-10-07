@@ -417,7 +417,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   run is busy, so the report fills in as it goes. **Pause / Resume** (the report's button; `ia_dl_pause`
   view -> panel -> worker -> every frame of the tab, `IA_dlPaused` in `inner.js`): the run waits before
   its next request - one already sent is never cut short - ticking a "Paused" step every second so the
-  worker's `STALL` watchdog stays quiet; Stop still ends it. Snapshots carry `paused`. **Saving the
+  worker's `STALL` watchdog stays quiet; Stop still ends it. Snapshots carry `paused` and `calls` (`{sent, applied, refused}` delete requests, shown in the report's status line; the final report keeps them). **Saving the
   report:** the confirmation's auto-save option sends `autosave` (minutes, 5-30) with the delete; the
   view (`autoSave` in `chunks/delete_line_items.js`) saves the report as a CSV in each new
   `autosave`-minute slot from the run's start (`at`) - a view opened mid-run waits for the next slot -

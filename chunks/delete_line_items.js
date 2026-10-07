@@ -17,6 +17,7 @@ import { renderPage, el, textCell, idCell, csvText } from './sv_shared.js';
      running   set on the snapshots sent while a delete runs (ia_live), which
                redraw the report in place
      paused    on a running snapshot while the run waits (Pause)
+     calls     delete requests sent so far: {sent, applied, refused}
      autosave  minutes between automatic saves of the report (0 = off)
      partial   a copy the worker kept mid-run (at most once a minute) - what
                the panel shows if it was closed before the run ended
@@ -111,6 +112,15 @@ if (!globalThis.IA_COLLECT) try {
 function only(st) { return function (d) { return rowsOf(d).filter(function (r) { return st.indexOf(r.status) >= 0; }); }; }
 function count(d, st) { return only(st)(d).length; }
 function plural(n, one, many) { return n.toLocaleString() + ' ' + (n === 1 ? one : many); }
+
+/* Delete requests sent to Anaplan so far (calls on the run's data): several
+   modules go in one request, and a refused one comes back small and fast. */
+function callsText(d) {
+  var c = d.calls;
+  if (!c || !c.sent) return '';
+  return ' · ' + plural(c.sent, 'call', 'calls') + ' to Anaplan (' + (c.applied || 0).toLocaleString() + ' applied, ' +
+    (c.refused || 0).toLocaleString() + ' refused)';
+}
 
 function modulesOf(rows) {
   return new Set(rows.map(function (r) { return r.moduleId || r.module; })).size;
@@ -229,6 +239,7 @@ function top(d) {
     line = (d.paused ? 'Paused · ' : 'Deleting… ') + done.toLocaleString() + ' of ' +
       plural(todo, 'line item', 'line items') + ' deleted so far' +
       (count(d, ['failed']) ? ' · ' + count(d, ['failed']).toLocaleString() + ' refused (tried again while others are deleted)' : '') +
+      callsText(d) +
       (d.paused ? '' : ' · Pause waits for the request already sent') +
       (d.autosave ? ' · saved to Downloads every ' + d.autosave + ' min' : '');
   } else if (d.mode === 'delete') {
@@ -238,7 +249,7 @@ function top(d) {
       plural(modulesOf(only(['deleted'])(d)), 'module', 'modules') +
       (kept ? ' · ' + kept.toLocaleString() + ' not deleted' : '') +
       (count(d, ['inuse']) ? ' · ' + count(d, ['inuse']).toLocaleString() + ' left (in use)' : '') +
-      (skip ? ' · ' + skip.toLocaleString() + ' skipped' : '');
+      (skip ? ' · ' + skip.toLocaleString() + ' skipped' : '') + callsText(d);
   } else {
     bar.appendChild(pickButton());
     var ready = count(d, ['ready']), used = count(d, ['inuse']);
