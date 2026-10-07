@@ -12,7 +12,7 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
-**Version:** 2.8.0
+**Version:** 2.9.0
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
@@ -20,21 +20,20 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ---
 
-## What's new in 2.8.0
+## What's new in 2.9.0
 
-- **Structure › Delete** (new, and the first report that changes the model): delete the line items
-  listed in a CSV - module, line item and ID; the Line Items report's own export works as is - across
-  any number of modules.
-  - **Check first**: every row is matched against the model as Anaplan holds it (ID, module and
-    name must all agree), and line items still used by formulas outside the CSV are marked
-    *In use* and left alone. Nothing is deleted until you type the count to confirm.
-  - **Planned order**: one request per module, ordered from the formulas so nothing is deleted
-    while a formula still uses it. What Anaplan refuses is set aside with its reason and retried
-    once other deletes free it.
-  - **Live report** with each line item's status as the run goes; **Pause / Resume**; and the
-    report can **save itself to Downloads** every 5-30 minutes and when the run ends (optional
-    *downloads* permission).
-- New optional permission: `downloads`, asked for only if you turn on auto-save when deleting.
+- **Structure › Delete Modules** (new): delete whole modules listed in a CSV of module name and ID
+  (the Modules report's own export works as is). Check marks a module *In use* when a module that
+  isn't listed uses its line items; deletes go one module per request, a module before the ones it
+  uses, and a refused module is kept with Anaplan's reason.
+- **Structure › Delete Items** now deletes a whole module, in one request, when every one of its line
+  items is in the CSV (a new *Modules* tab lists them; the CSV can carry a *Module ID* column).
+- **Much faster large deletes**: requests carry whole modules up to 200 line items instead of one
+  module each, and the report shows how many calls were made (applied / refused).
+- **Fixes for long runs**: the extension no longer runs out of memory on large deletes (a 10,909-line
+  report was sent several times per update), Anaplan's large replies are read without building the
+  whole model each time, a run stops if the extension is reloaded mid-run, and a refused line item in
+  a module whose name has spaces is recognised.
 
 ## What it does
 
@@ -57,7 +56,8 @@ demand, grouped as in the panel's tab bar:
 | **Structure** | Modules | Every module with its ID, dimensions, time scale, time range, line item and saved view counts, and the App pages that use it |
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
-| | Delete | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID) across any number of modules. Every row is checked against the model first - including which line items formulas outside the CSV still use - and nothing is deleted until you type the count to confirm. Deletes go one request per module in an order worked out from the formulas; the run can be paused and resumed, and the report can save itself to Downloads every few minutes. |
+| | Delete Items | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID, optional module ID) across any number of modules. Every row is checked against the model first - including which line items formulas outside the CSV still use - and nothing is deleted until you type the count to confirm. Deletes go in requests of whole modules (up to 200 line items) in an order worked out from the formulas, and a module whose every line item is listed is deleted as a module; the run can be paused and resumed, and the report can save itself to Downloads every few minutes. |
+| | Delete Modules | **Changes the model.** Deletes the whole modules listed in a CSV (module, module ID). Each module is checked against the model first - including whether a module that isn't listed still uses it - and nothing is deleted until you type the count to confirm. One module per request, a module before the modules it uses. |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
 | **Lock** | | Checks at an interval you choose whether the model is available, busy, locked or offline, and what is running; shows a timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
@@ -173,7 +173,7 @@ telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
 - `/jsonrpc`: saved views, action definitions, workspace storage and revision tags, and - only
-  when you confirm a delete on Structure › Delete - deleting line items
+  when you confirm a delete on Structure › Delete Items or Delete Modules - deleting line items or modules
 - `api.anaplan.com` (Integration API model status, sent from the Anaplan tab): the Lock Monitor
   only, and only if its session status check doesn't answer
 
