@@ -679,7 +679,7 @@ function runDur(ms) {
 }
 
 export function runPause(d) {
-  if (runPend && (runPend.paused === !!d.paused || Date.now() - runPend.at > 8000)) runPend = null;
+  if (runPend && (runPend.paused === !!d.paused || Date.now() - runPend.at > (d.flight ? 300000 : 8000))) runPend = null;
   var pend = runPend,
       b = el('button', d.paused && !pend ? 'ia-dl-btn ia-danger' : 'ia-dl-btn',
         pend ? (pend.paused ? 'Pausing…' : 'Resuming…') : d.paused ? 'Resume' : 'Pause');
@@ -692,7 +692,8 @@ export function runPause(d) {
     b.textContent = want ? 'Pausing…' : 'Resuming…';
     window.parent.postMessage({ type: 'ia_dl_pause', paused: want }, location.origin);
     setTimeout(function () {
-      if (runPend && runPend.paused === want && b.isConnected) {
+      /* A call in flight can take a minute: the engine pauses once it returns, so keep saying Pausing. */
+      if (runPend && runPend.paused === want && b.isConnected && !d.flight) {
         runPend = null;
         b.disabled = false;
         b.textContent = d.paused ? 'Resume' : 'Pause';
