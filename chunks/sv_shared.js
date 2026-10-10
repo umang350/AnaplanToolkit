@@ -283,7 +283,7 @@ export function renderPage(opts) {
      over instead of drawing itself, so each report's columns live in one place. */
   if (globalThis.IA_COLLECT) { globalThis.IA_COLLECT[opts.page] = opts; return; }
   var mount = document.getElementById('app'),
-      data = null, error = '', query = '', scrolled = false,
+      data = null, error = '', runNote = '', query = '', scrolled = false,
       tabs = opts.tabs || [opts], active = 0, shown = 0;
 
   try {
@@ -297,7 +297,7 @@ export function renderPage(opts) {
             box = live && document.activeElement && mount.contains(document.activeElement) &&
                   document.activeElement.tagName === 'INPUT' ? document.activeElement : null,
             caret = box ? [box.selectionStart, box.selectionEnd] : null;
-        data = msg.data || []; error = '';
+        data = msg.data || []; error = ''; runNote = '';
         if (!live) shown = 0;
         render();
         if (live) {
@@ -306,7 +306,20 @@ export function renderPage(opts) {
           if (inp) { inp.focus(); try { inp.setSelectionRange(caret[0], caret[1]); } catch (e) {} }
         }
       }
-      if (msg.type === 'error') { error = msg.message; render(); }
+      if (msg.type === 'ia_progress' && msg.page === opts.page) {
+        var stepEl = document.getElementById('ia-run-step'),
+            last = Array.isArray(msg.steps) && msg.steps[msg.steps.length - 1];
+        if (last) globalThis.IA_runStep = (last.step || '') + (last.detail ? ' · ' + last.detail : '');
+        if (stepEl && last) stepEl.textContent = globalThis.IA_runStep;
+      }
+      if (msg.type === 'error') {
+        /* A view that changes the model (opts.keepOnError) keeps its report when a
+           run can't start - the reason goes over it and its controls come back,
+           rather than the report being replaced by the error page. */
+        if (opts.keepOnError && data) runNote = msg.message || 'Something went wrong.';
+        else error = msg.message;
+        render();
+      }
     });
   } catch (e) { /* not in an extension page; the states below still render */ }
 
@@ -574,8 +587,237 @@ export function renderPage(opts) {
     content.appendChild(section);
     root.appendChild(content);
 
+    if (runNote) {
+      var nb = el('p', 'text-sm ia-error p-4', runNote);
+      nb.setAttribute('role', 'alert');
+      root.insertBefore(nb, root.firstChild);
+    }
     mount.appendChild(root);
   }
 
   render();
+}
+
+/* The run's log: one row per request the delete sent (and per read of the model or pause), in order - when it
+   started, how long Anaplan took, what it carried, how it came back and, for a refusal, Anaplan's reason.
+   d.log comes from the report engine (content-scripts/inner.js). */
+function logTime(t) {
+  var d = new Date(t), p = function (n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+export function runLogRows(log) {
+  var n = 0, t0 = log && log.length ? log[0].at : 0;
+  return (log || []).map(function (e) {
+    var call = e.kind === 'module' || e.kind === 'line items';
+    if (call) n++;
+    return {
+      Call: call ? n : '',
+      Time: logTime(e.at),
+      'Seconds into run': t0 ? Math.round((e.at - t0) / 100) / 10 : '',
+      'Took (s)': e.ms == null ? '' : Math.round(e.ms / 100) / 10,
+      Kind: e.kind === 'line items' ? 'Delete line items' : e.kind === 'module' ? 'Delete module' :
+        e.kind === 'read' ? 'Read model' : e.kind === 'paused' ? 'Paused' : e.kind,
+      Items: e.items || '',
+      Result: e.result || '',
+      What: e.what || '',
+      Reason: e.why || '',
+      Note: e.note || '',
+      'Serial before': e.serial == null ? '' : e.serial,
+      'Serial after': e.serialAfter == null ? '' : e.serialAfter
+    };
+  });
+}
+
+/* The totals the log adds up to, for the report's status line. */
+export function runLogSummary(log) {
+  var calls = 0, applied = 0, refused = 0, errors = 0, ms = 0, slow = 0, slowest = 0;
+  (log || []).forEach(function (e) {
+    if (e.kind !== 'module' && e.kind !== 'line items') return;
+    calls++;
+    if (e.result === 'applied') applied++;
+    else if (e.result === 'refused') refused++;
+    else errors++;
+    ms += e.ms || 0;
+    if ((e.ms || 0) >= 6e4) slow++;
+    slowest = Math.max(slowest, e.ms || 0);
+  });
+  return { calls: calls, applied: applied, refused: refused, errors: errors, ms: ms, slow: slow, slowest: slowest };
+}
+
+/* A file save that overwrites (the downloads permission, as the report's auto-save) else an ordinary download. */
+export function saveFile(text, name) {
+  var url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8;' })),
+      done = function () { setTimeout(function () { URL.revokeObjectURL(url); }, 6e4); },
+      plain = function () {
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        done();
+      };
+  if (api && api.downloads && api.downloads.download)
+    Promise.resolve(api.downloads.download({ url: url, filename: name, conflictAction: 'overwrite', saveAs: false }))
+      .then(done, plain);
+  else plain();
+}
+
+/* Pause / Resume and the in-flight call, shared by Delete Line Items and Delete
+   Modules. The engine can only pause between requests, so a snapshot says
+   `paused` at once (acknowledging the click) and carries `flight` ({at, what})
+   while a request is out. The button holds its own pending state until a
+   snapshot agrees, so a snapshot from before the click can't flip it back, and
+   it frees itself after 8s if no answer comes. */
+var runPend = null;
+
+function runDur(ms) {
+  var s = Math.max(0, Math.floor(ms / 1000));
+  return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+}
+
+export function runPause(d) {
+  if (runPend && (runPend.paused === !!d.paused || Date.now() - runPend.at > 8000)) runPend = null;
+  var pend = runPend,
+      b = el('button', d.paused && !pend ? 'ia-dl-btn ia-danger' : 'ia-dl-btn',
+        pend ? (pend.paused ? 'Pausing…' : 'Resuming…') : d.paused ? 'Resume' : 'Pause');
+  b.type = 'button';
+  b.disabled = !!pend;
+  b.addEventListener('click', function () {
+    var want = !d.paused;
+    runPend = { paused: want, at: Date.now() };
+    b.disabled = true;
+    b.textContent = want ? 'Pausing…' : 'Resuming…';
+    window.parent.postMessage({ type: 'ia_dl_pause', paused: want }, location.origin);
+    setTimeout(function () {
+      if (runPend && runPend.paused === want && b.isConnected) {
+        runPend = null;
+        b.disabled = false;
+        b.textContent = d.paused ? 'Resume' : 'Pause';
+      }
+    }, 8000);
+  });
+  return b;
+}
+
+/* "Paused · ", "Pausing · " (waiting for the request already sent) or
+   "Deleting… " for the status line. */
+/* The engine's current step on every tab while a run goes (progress ticks once a second,
+   so it also shows how long the call in flight has taken). Filled in by renderPage. */
+export function runStep() {
+  var p = el('p', 'text-xs text-muted-foreground', globalThis.IA_runStep || 'Working…');
+  p.id = 'ia-run-step';
+  p.setAttribute('role', 'status');
+  return p;
+}
+
+/* What Anaplan says keeps a module: "'IMP_x' cannot be deleted because it is referenced by Process
+   'PRS_y'" - an import, export or action of the module that a process uses. Groups the refusals by
+   that process so the report can say which to delete first. */
+export function blockersOf(texts) {
+  var by = new Map();
+  (texts || []).forEach(function (t) {
+    var m = /'([^']*)' cannot be deleted because it is referenced by (\w+) '([^']+)'/.exec(String(t || ''));
+    if (!m) return;
+    var k = m[2] + ' ' + m[3], e = by.get(k) || { kind: m[2], name: m[3], via: new Set(), n: 0 };
+    e.via.add(m[1]);
+    e.n++;
+    by.set(k, e);
+  });
+  return Array.from(by.values());
+}
+
+/* The processes Check found using modules (d.procMods: [{name, by: [{process, via}]}]), in the same shape
+   as blockersOf, merged with what refusals named. */
+export function procBlockers(procMods) {
+  var by = new Map();
+  (procMods || []).forEach(function (m) {
+    (m.by || []).forEach(function (b) {
+      var k = 'Process ' + b.process,
+          e = by.get(k) || { kind: 'Process', name: b.process, via: new Set(), mods: new Set(), n: 0 };
+      (b.via || []).forEach(function (v) { e.via.add(v); });
+      e.mods.add(m.name);
+      e.n = e.mods.size;
+      by.set(k, e);
+    });
+  });
+  return Array.from(by.values());
+}
+
+export function mergeBlockers(a, b) {
+  var by = new Map();
+  a.concat(b).forEach(function (x) {
+    var k = x.kind + ' ' + x.name, e = by.get(k);
+    if (!e) { by.set(k, { kind: x.kind, name: x.name, via: new Set(x.via), mods: new Set(x.mods || []), n: x.n }); return; }
+    x.via.forEach(function (v) { e.via.add(v); });
+    (x.mods ? Array.from(x.mods) : []).forEach(function (v) { e.mods.add(v); });
+    e.n = Math.max(e.n, x.n);
+  });
+  return Array.from(by.values());
+}
+
+/* The process names, compact. `sure` = Anaplan refused a module for it; otherwise the list was read from
+   process steps at Check (an import's target module, an export's module). */
+export function blockersNote(list, sure) {
+  if (!list.length) return null;
+  var sorted = list.slice().sort(function (x, y) { return x.name.localeCompare(y.name); }),
+      names = sorted.map(function (e) { return e.name; }),
+      many = names.length !== 1,
+      box = el('div', 'ia-procs'),
+      head = el('p', 'text-xs text-foreground', sure
+        ? 'Delete ' + (many ? 'these ' + names.length + ' processes' : 'this process') + ' first - Anaplan refused ' +
+          (many ? 'their' : 'its') + ' modules (kept; their line items are deleted):'
+        : 'Used by ' + names.length + ' ' + (many ? 'processes' : 'process') +
+          ' - a module cannot be deleted while a process runs its import or export; those modules are kept and their line items deleted:'),
+      ul = el('ul', 'ia-procs-list');
+  box.appendChild(head);
+  sorted.forEach(function (e) {
+    var li = el('li', null, e.name);
+    li.title = e.n.toLocaleString() + (e.n === 1 ? ' module' : ' modules') + ' - through ' + Array.from(e.via).join(', ');
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  var row = el('div', 'ia-dl'),
+      copy = el('button', 'ia-dl-btn', 'Copy names'),
+      more = el('button', 'ia-dl-btn', 'Copy details');
+  copy.type = more.type = 'button';
+  copy.addEventListener('click', function () {
+    try { navigator.clipboard.writeText(names.join('\n')); copy.textContent = 'Copied'; } catch (e) {}
+  });
+  more.addEventListener('click', function () {
+    var lines = ['Process\tAction\tModule'];
+    sorted.forEach(function (e) {
+      var mods = Array.from(e.mods || []);
+      Array.from(e.via).forEach(function (v) { lines.push(e.name + '\t' + v + '\t' + mods.join(' | ')); });
+    });
+    try { navigator.clipboard.writeText(lines.join('\n')); more.textContent = 'Copied'; } catch (e) {}
+  });
+  row.appendChild(copy);
+  row.appendChild(more);
+  box.appendChild(row);
+  return box;
+}
+
+export function runLead(d) {
+  return d.paused ? (d.flight ? 'Pausing · ' : 'Paused · ') : 'Deleting… ';
+}
+
+/* The call in flight, counted locally from when it was sent; turns to a
+   warning past a minute. Null when nothing is out (or it was quick). */
+export function runWait(d) {
+  var f = d.flight;
+  if (!f || !f.at) return null;
+  var p = el('p', 'text-xs text-muted-foreground'), what = f.what ? ' · ' + f.what : '';
+  function paint() {
+    var ms = Date.now() - f.at, slow = ms >= 6e4;
+    p.hidden = !slow && !d.paused;
+    p.className = 'text-xs ' + (slow ? 'ia-error' : 'text-muted-foreground');
+    p.textContent = (d.paused ? 'Pausing once this call returns' : 'Waiting for Anaplan') + ' · ' + runDur(ms) + what +
+      (slow ? ' · Slow - Anaplan is still working on it. Stop ends the run after this call; it may still complete.' : '');
+  }
+  paint();
+  var t = setInterval(function () { if (!p.isConnected && t) { clearInterval(t); t = 0; } else paint(); }, 1000);
+  return p;
 }

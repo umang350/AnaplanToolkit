@@ -2,7 +2,7 @@
  * Anaplan Toolkit
  * Author: Umang Chauhan
  */
-import { renderPage, el, textCell, idCell, csvText } from './sv_shared.js';
+import { renderPage, el, textCell, idCell, csvText, runPause, runLead, runWait, runStep, runLogRows, runLogSummary, saveFile } from './sv_shared.js';
 
 /* Delete Modules - whole modules from a CSV of module names and IDs. Gathered
    by IA_gdm() in content-scripts/inner.js, as
@@ -29,10 +29,27 @@ var STATUS = {
   inuse: ['In use', 'soft'],
   skip: ['Skipped', 'gap'],
   deleted: ['Deleted', 'ok'],
-  failed: ['Not deleted', 'bad']
+  failed: ['Not deleted', 'bad'],
+  gone: ['Already deleted', 'soft'],
+  kept: ['Module kept', 'soft']
 };
 
 function rowsOf(d) { return (d && d.rows) || []; }
+/* Modules a process runs an import or export of (read at Check): Anaplan keeps them, so they are listed with
+   Skipped with the process named - beside the modules Anaplan actually refused. */
+function procRows(d) {
+  var seen = new Set(rowsOf(d).filter(function (r) { return r.status === 'failed'; }).map(function (r) { return r.moduleId; }));
+  return (d && d.procMods || []).filter(function (m) { return !seen.has(m.id); }).map(function (m) {
+    var by = m.by || [];
+    return { line: '', module: m.name, moduleId: m.id, items: m.items, status: 'kept',
+      why: 'Used by ' + by.slice(0, 3).map(function (b) {
+        var via = b.via || [];
+        return "Process '" + b.process + "'" + (via.length ? " (through '" + via[0] + "'" + (via.length > 1 ? ' +' + (via.length - 1) : '') + ')' : '');
+      }).join(', ') + (by.length > 3 ? ' and ' + (by.length - 3) + ' more' : '') + ' - delete the process first' };
+  });
+}
+function skippedOf(d) { return only(['skip', 'inuse', 'failed'])(d).concat(procRows(d)); }
+
 function only(st) { return function (d) { return rowsOf(d).filter(function (r) { return st.indexOf(r.status) >= 0; }); }; }
 function count(d, st) { return only(st)(d).length; }
 function plural(n, one, many) { return n.toLocaleString() + ' ' + (n === 1 ? one : many); }
@@ -50,6 +67,17 @@ function callsText(d) {
     (c.refused || 0).toLocaleString() + ' refused)';
 }
 
+/* Time Anaplan took, from the run's log: total and the slowest call (the whole log is in Export log). */
+function timeText(d) {
+  if (!d.log || !d.log.length) return '';
+  var s = runLogSummary(d.log), dur = function (ms) {
+    var x = Math.round(ms / 1000);
+    return x < 60 ? x + 's' : Math.floor(x / 60) + 'm ' + String(x % 60).padStart(2, '0') + 's';
+  };
+  return s.calls ? ' · Anaplan took ' + dur(s.ms) + ', slowest call ' + dur(s.slowest) +
+    (s.slow ? ', ' + plural(s.slow, 'call over a minute', 'calls over a minute') : '') : '';
+}
+
 function button(text, cls) {
   var b = el('button', cls || 'ia-dl-btn', text);
   b.type = 'button';
@@ -61,9 +89,19 @@ function stamp(t) {
   return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
 }
 
+function logName(d) {
+  return 'anaplan-delete-modules-' + String(d.model || 'model').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) +
+    '-' + stamp(d.at) + '-log.csv';
+}
+function saveLog(d) {
+  var rows = runLogRows(d && d.log);
+  if (rows.length) saveFile(csvText(rows), logName(d));
+}
+
 function saveReport(d) {
   var rows = rowsOf(d);
   if (!rows.length) return;
+  saveLog(d);
   var url = URL.createObjectURL(new Blob([csvText(rows.map(csvRow))], { type: 'text/csv;charset=utf-8;' })),
       a = document.createElement('a');
   a.href = url;
@@ -94,18 +132,16 @@ function confirmBox(d) {
         go = button('Delete now', 'ia-dl-btn ia-danger'), cancel = button('Cancel'), tryBox = null;
     form.appendChild(el('p', 'text-sm text-foreground',
       'Delete ' + plural(n, 'module', 'modules') + ' (' + plural(items(ready), 'line item', 'line items') + ')' +
-      (d.model ? ' from ' + d.model : '') + '? Everything in a module goes with it - its line items and their data, ' +
-      'and its saved views. This can\'t be undone from here - only by restoring the model from Anaplan\'s History.'));
-    form.appendChild(el('p', 'text-xs text-muted-foreground',
-      'One request per module, in an order worked out from the formulas: a module before the modules it uses. ' +
-      'A module Anaplan refuses is tried again after others are deleted, and is kept if it is still in use.'));
+      (d.model ? ' from ' + d.model : '') + '? Line items, data and saved views go with them, ' +
+      'and this can\'t be undone from here.'));
     if (inuse.length) {
       var lab = el('label', 'ia-dli-try');
       tryBox = el('input');
       tryBox.type = 'checkbox';
+      tryBox.checked = true;   // the extension's reading of formulas; Anaplan decides and a refusal changes nothing
       lab.appendChild(tryBox);
       lab.appendChild(document.createTextNode(' Also try the ' + plural(inuse.length, 'module', 'modules') +
-        ' marked In use (Anaplan will most likely refuse them)'));
+        ' marked In use - they go last, and Anaplan decides (a refusal changes nothing)'));
       form.appendChild(lab);
     }
     input.type = 'text';
@@ -118,6 +154,12 @@ function confirmBox(d) {
     go.addEventListener('click', function () {
       go.disabled = cancel.disabled = input.disabled = true;
       go.textContent = 'Deleting…';
+      /* Until the run's first report arrives (it reads the whole model first, which takes a while on a large
+         one) say what it is doing; the step text is filled in from the engine's progress (renderPage). */
+      var starting = el('p', 'text-xs text-muted-foreground', 'Starting - reading the model from Anaplan…');
+      starting.id = 'ia-run-step';
+      starting.setAttribute('role', 'status');
+      form.appendChild(starting);
       var all = tryBox && tryBox.checked ? ready.concat(inuse) : ready;
       if (tryBox) tryBox.disabled = true;
       window.parent.postMessage({ type: 'ia_dl_delete', modelId: d.modelId, tryInUse: !!(tryBox && tryBox.checked),
@@ -136,29 +178,32 @@ function confirmBox(d) {
 }
 
 function top(d) {
-  var box = el('div', 'space-y-2'), bar = el('div', 'ia-dl'), all = rowsOf(d), skip = count(d, ['skip']), line;
+  var box = el('div', 'space-y-2'), bar = el('div', 'ia-dl'), all = rowsOf(d), skip = count(d, ['skip']), line, wait = null;
   if (d.mode === 'delete' && d.running) {
-    var pause = button(d.paused ? 'Resume' : 'Pause', d.paused ? 'ia-dl-btn ia-danger' : 'ia-dl-btn'),
-        save = button('Save report now'), todo = count(d, ['deleted', 'failed', 'queued']);
-    pause.addEventListener('click', function () {
-      pause.disabled = true;
-      pause.textContent = d.paused ? 'Resuming…' : 'Pausing…';
-      window.parent.postMessage({ type: 'ia_dl_pause', paused: !d.paused }, location.origin);
-    });
+    var pause = runPause(d), save = button('Save report now'), todo = count(d, ['deleted', 'failed', 'queued']);
+    wait = runWait(d);
     save.addEventListener('click', function () { saveReport(d); });
     bar.appendChild(pause);
     bar.appendChild(save);
-    line = (d.paused ? 'Paused · ' : 'Deleting… ') + count(d, ['deleted']).toLocaleString() + ' of ' +
+    var logBtn = button('Export log');
+    logBtn.addEventListener('click', function () { saveLog(d); });
+    bar.appendChild(logBtn);
+    line = runLead(d) + count(d, ['deleted']).toLocaleString() + ' of ' +
       plural(todo, 'module', 'modules') + ' deleted so far' +
-      (count(d, ['failed']) ? ' · ' + count(d, ['failed']).toLocaleString() + ' refused (tried again while others are deleted)' : '') +
-      callsText(d) + (d.paused ? '' : ' · Pause waits for the request already sent');
+      (count(d, ['failed']) ? ' · ' + count(d, ['failed']).toLocaleString() + ' refused' : '') +
+      callsText(d);
   } else if (d.mode === 'delete') {
     bar.appendChild(pickButton());
+    if (d.log && d.log.length) {
+      var logBtn2 = button('Export log');
+      logBtn2.addEventListener('click', function () { saveLog(d); });
+      bar.appendChild(logBtn2);
+    }
     var gone = only(['deleted'])(d), kept = count(d, ['failed']);
     line = plural(gone.length, 'module', 'modules') + ' deleted (' + plural(items(gone), 'line item', 'line items') + ')' +
       (kept ? ' · ' + kept.toLocaleString() + ' not deleted' : '') +
       (count(d, ['inuse']) ? ' · ' + count(d, ['inuse']).toLocaleString() + ' left (in use)' : '') +
-      (skip ? ' · ' + skip.toLocaleString() + ' skipped' : '') + callsText(d);
+      (skip ? ' · ' + skip.toLocaleString() + ' skipped' : '') + callsText(d) + timeText(d);
   } else {
     bar.appendChild(pickButton());
     var ready = count(d, ['ready']), used = count(d, ['inuse']);
@@ -169,13 +214,14 @@ function top(d) {
   }
   bar.appendChild(el('span', 'text-xs text-muted-foreground', line));
   box.appendChild(bar);
+  if (d.mode === 'delete' && d.running && !d.paused) box.appendChild(runStep());
+  if (wait) box.appendChild(wait);
   if (d.stopped) box.appendChild(el('p', 'text-xs ia-error', d.stopped));
   if (d.partial) box.appendChild(el('p', 'text-xs ia-error',
-    'This is the report as it was saved mid-run; the run may have gone on since. Check the CSV again to see what is left.'));
+    'Saved mid-run - the run may have gone on since.'));
   if (d.mode === 'delete' && !d.running && count(d, ['deleted']))
     box.appendChild(el('p', 'text-xs text-muted-foreground',
-      'Reload the Anaplan page to see the change. The Line Items, Modules, Filters and Line Items on Pages ' +
-      'reports were cleared - get them again after reloading.'));
+      'Reload the Anaplan page to see the change; structure reports were cleared.'));
   if (d.mode !== 'delete' && count(d, ['ready'])) box.appendChild(confirmBox(d));
   return box;
 }
@@ -221,14 +267,15 @@ function tab(label, heading, rows, note) {
 }
 
 renderPage({
+  keepOnError: true,
   page: 'delete_modules',
   placeholder: 'Search by module, ID or status...',
   counts: true,
   tabs: [
-    tab('All', 'Delete Modules', rowsOf, 'Row is the module\'s row in your CSV, not counting the header.'),
+    tab('All', 'Delete Modules', rowsOf),
     tab('Ready', 'Modules to delete', only(['ready', 'queued', 'deleted']),
       'Modules whose ID and name match the model. A delete removes these, each with everything in it.'),
-    tab('Skipped', 'Skipped and not deleted', only(['skip', 'inuse', 'failed']),
+    tab('Skipped', 'Skipped and not deleted', skippedOf,
       'Rows that won\'t be (or weren\'t) deleted, with the reason. In use: a line item in a module that isn\'t in the CSV ' +
       'uses one of the module\'s line items, so Anaplan would refuse it - add that module to the CSV, or leave this one.')
   ]

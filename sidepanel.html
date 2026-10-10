@@ -89,15 +89,12 @@
                                 <span>Choose a CSV…</span></label>
                             <p id="dl-info"></p>
                             <p class="dl-hint" data-for="delete_line_items">Columns: <b>Module</b>, <b>Line Item</b> and <b>Line Item ID</b>
-                                (a header row is needed; other columns are ignored). The Line Items report's
-                                Export to CSV works as it is - keep only the rows to delete. A module whose every
-                                line item is listed is deleted as a whole module.</p>
+                                (with a header row). The Line Items report's Export to CSV works as it is -
+                                keep only the rows to delete.</p>
                             <p class="dl-hint" data-for="delete_modules" hidden>Columns: <b>Module</b> and
-                                <b>Module ID</b> (a header row is needed; other columns are ignored). The Modules
-                                report's Export to CSV works as it is - keep only the modules to delete. Each module
-                                goes with everything in it.</p>
-                            <p class="dl-hint">Nothing is deleted at this step: every row is first checked against
-                                the model, and the report then asks before deleting.</p>
+                                <b>Module ID</b> (with a header row). The Modules report's Export to CSV works
+                                as it is - keep only the modules to delete.</p>
+                            <p class="dl-hint">Nothing is deleted yet - rows are checked first, then you confirm.</p>
                             <button id="dl-back" type="button" hidden>Back to the report</button>
                         </div>
                         <p id="empty-note"></p>

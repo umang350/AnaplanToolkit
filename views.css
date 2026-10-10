@@ -319,3 +319,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 3s !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Delete Line Items / Delete Modules: the processes to delete first - names only, one per line. */
+.ia-procs { display: flex; flex-direction: column; gap: .375rem; padding: .5rem .625rem;
+  border: 1px solid var(--border); border-radius: .5rem; background: var(--muted); }
+.ia-procs-list { list-style: none; margin: 0; padding: 0; max-height: 9rem; overflow-y: auto;
+  font-size: .75rem; line-height: 1.5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.ia-procs-list li { overflow-wrap: anywhere; }
+.ia-procs .ia-dl-btn { align-self: flex-start; }
