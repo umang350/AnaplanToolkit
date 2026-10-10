@@ -5,6 +5,15 @@ summarised from the commit history.
 
 ## Unreleased
 
+(nothing yet)
+
+## 2.10.0
+
+See [.github/release-notes/2.10.0.md](.github/release-notes/2.10.0.md). Module deletes batched, modules a
+process uses no longer attempted, run log export, Lock Monitor and accessibility fixes, CI check.
+
+Changes that went in under *Unreleased* before this release:
+
 - Lock Monitor: a crash in its loop is now shown in the panel instead of leaving it silently dead.
 - Delete reports: the panel refuses a delete request whose rows are not a list of objects.
 - The panel and Summary no longer re-render every 30s while hidden; they catch up when shown again.
