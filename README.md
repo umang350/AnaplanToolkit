@@ -22,7 +22,7 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ## What's new in 2.10.0
 
-- **Module deletes are about 5x faster**: modules nothing pending uses go up to 10 to a request (the
+- **Whole-module deletes in Delete Items are about 5x faster**: modules nothing pending uses go up to 10 to a request (the
   request Anaplan's own dialog sends). On an 11,197-line-item / 520-module cleanup a run went from 31
   minutes to 6, with no refused calls.
 - **Modules a process uses are no longer attempted**: Check already lists them, and each refusal cost
@@ -71,7 +71,7 @@ demand, grouped as in the panel's tab bar:
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
 | | Delete Items | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID, optional module ID) across any number of modules. Every row is checked against the model first - including which line items formulas outside the CSV still use - and nothing is deleted until you type the count to confirm. Deletes go in requests of whole modules (up to 200 line items) in an order worked out from the formulas, and a module whose every line item is listed is deleted as a module - several modules to a request, except those a process uses, which are kept; the run can be paused and resumed, and the report can save itself to Downloads every few minutes. |
-| | Delete Modules | **Changes the model.** Deletes the whole modules listed in a CSV (module, module ID). Each module is checked against the model first - including whether a module that isn't listed still uses it - and nothing is deleted until you type the count to confirm. A module before the modules it uses; modules nothing uses go up to 10 to a request, and a refused module is kept with Anaplan's reason. |
+| | Delete Modules | **Changes the model.** Deletes the whole modules listed in a CSV (module, module ID). Each module is checked against the model first - including whether a module that isn't listed still uses it - and nothing is deleted until you type the count to confirm. One module per request, a module before the modules it uses. |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
 | **Lock** | | Checks at an interval you choose whether the model is available, busy, locked or offline, and what is running; shows a timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
