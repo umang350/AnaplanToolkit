@@ -509,14 +509,26 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   - After a module jump the module is switched to Blueprint view (`IA_fxAfterNav`; Blueprint is told from the
     grid header having both "Formula" and "Applies To", the toggle is found by anything naming "blueprint") and
     the line item's row is selected (`IA_fxSelectRow`: the leftmost leaf text equal to the name, whitespace
-    squashed - the grid shows double spaces - then mousedown/up/click). If the toggle isn't found the visible
-    toolbar buttons are logged (`IA_fxDumpButtons`).
+    squashed - the grid shows double spaces - then mousedown/up/click). If the toggle isn't found nothing is
+    clicked and the module just opens (the script logs nothing to the console).
   - Lists and list subsets are references too (`ix.lists`, from the label pages whose key names are
     `hierarch…` / `…Subset…`). A list opens `/tabs/<list id>`. A subset has **no tab of its own** (its own id
     gives Anaplan's "Sorry, an error occurred"), so it opens its parent list's, found by `IA_fxFindList` (any
     field of the subset's info holding a list's id - which field it is was never needed), then clicks the
     list's **Subsets** tab (`IA_fxAfterSubset`: leaf text "Subsets" inside `.dijitTab` / `[role=tab]`) and
     selects the subset's row.
+  - **Applies To column of the Blueprint grid** (`IA_fxAttachGrid` on the framework frame's document, reached
+    from the modeling-ui frame): Cmd/Ctrl+click a list or subset name in the cell opens it like in a formula
+    (mouse-down is stopped too, or the grid selects the cell), and hovering shows a card (kind, parent list,
+    item count, the modules that apply to it - `IA_fxUsers`; **the hover card is not confirmed live**). The
+    column is found by the header cell whose text is exactly "Applies To" (`IA_fxHeaderRect`), the name under
+    the pointer by `caretRangeFromPoint` against `ix.lists` (`IA_fxListAt`, longest name covering the offset).
+    **A subset's name is only unique inside its list** (confirmed: "Time Scale Target Year-Season" exists in two
+    lists), so `IA_fxDisambig` prefers the one the current module's `appliesTo` / `fullAppliesTo` (module and its
+    line items) holds. **A subset's own `parentHierarchyEntityLongId` is not the list whose Subsets tab holds it**
+    (confirmed: it named a top-level list that does not show it); the holder is the list whose own info mentions
+    the subset's id (`IA_fxCollectIds`, `L.holder`), the field only a fallback. Opening a list never falls back to a
+    new tab (an earlier 2s fallback opened a second tab and undid the jump).
   - Hover: a line item / module / list card (format, applies to, time scale, formula via `IA_fxPretty`:
     THEN/ELSE on their own lines, indented per nested IF, a long OR chain broken - display only), or a
     function (`IA_fxFuncAt`: `NAME(`, the `[LOOKUP:` / `[SUM:` aggregation form, IF/THEN/ELSE; never inside a

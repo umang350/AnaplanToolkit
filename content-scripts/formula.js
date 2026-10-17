@@ -53,6 +53,44 @@
     return null;
   }
 
+  function IA_fxIds(v) {
+    return (Array.isArray(v) ? v : []).map(function (x) { return String(x).replace(/_/g, ''); });
+  }
+
+  /* The ids of the lists and subsets a module and its line items apply to. */
+  function IA_fxApplies(mod) {
+    if (!mod._ap) {
+      var ap = new Set();
+      function add(info) { IA_fxIds(info && (info.fullAppliesTo || info.appliesTo)).forEach(function (id) { ap.add(id); }); }
+      add(mod.info);
+      mod.lis.forEach(function (li) { add(li.info); });
+      mod._ap = ap;
+    }
+    return mod._ap;
+  }
+
+  /* A subset's name is only unique inside its list, so a name can mean several. The one the current
+     module applies to wins; otherwise the first stands. */
+  function IA_fxDisambig(ix, L, cur) {
+    var same = L && cur && ix.listsByName.get(L.lower);
+    if (!same || same.length < 2) return L;
+    var ap = IA_fxApplies(cur);
+    for (var i = 0; i < same.length; i++) if (ap.has(same[i].id)) return same[i];
+    return L;
+  }
+
+  /* Every 12-digit id written anywhere in a list's info, to learn which subsets a list holds. */
+  function IA_fxCollectIds(o, into, d) {
+    if (o == null || d > 4) return;
+    if (typeof o === 'number' || typeof o === 'string') {
+      var v = String(o).replace(/_/g, '');
+      if (/^\d{12}$/.test(v)) into.add(v);
+      return;
+    }
+    if (typeof o !== 'object') return;
+    Object.keys(o).slice(0, 3000).forEach(function (k) { IA_fxCollectIds(o[k], into, d + 1); });
+  }
+
   function IA_fxBuild(info) {
     var ids = IA_fxFlat(info.modulesLabelPage && info.modulesLabelPage.entityLongIds);
     var lbs = IA_fxFlat(info.modulesLabelPage && info.modulesLabelPage.labels);
@@ -76,7 +114,7 @@
       byLower.has(mod.lower) || byLower.set(mod.lower, mod);
     }
     /* Names of every entity with a label page (lists, subsets, ...), to show Applies To. */
-    var names = {}, seen = new Set(), lists = [], listByLower = new Map();
+    var names = {}, seen = new Set(), lists = [], listByLower = new Map(), listsByName = new Map();
     (function walk(o, d) {
       if (!o || typeof o !== 'object' || Array.isArray(o) || d > 3 || seen.has(o)) return;
       seen.add(o);
@@ -99,6 +137,7 @@
               var L = { id: String(a[i]), name: String(b[i]), lower: String(b[i]).toLowerCase(), kind: kind, info: infos && infos[i], parent: null };
               lists.push(L);
               listByLower.has(L.lower) || listByLower.set(L.lower, L);
+              (listsByName.get(L.lower) || listsByName.set(L.lower, []).get(L.lower)).push(L);
             }
           }
           return;
@@ -108,8 +147,22 @@
     })(info, 0);
     var listById = new Map();
     lists.forEach(function (L) { if (L.kind === 'List') listById.set(L.id, L); });
-    lists.forEach(function (L) { if (L.kind === 'List subset') L.parent = IA_fxFindList(L.info, listById, 0); });
-    return { mods: mods, byId: byId, byLower: byLower, byFirst: IA_fxByFirst(mods), names: names, lists: lists, listByLower: listByLower, listByFirst: IA_fxByFirst(lists), src: info };
+    /* A subset's own parentHierarchyEntityLongId is NOT the list whose Subsets tab holds it (confirmed on
+       a live model: it named a top-level list that doesn't show the subset). The list that holds it is
+       the one whose own info mentions the subset's id; the subset's field is the fallback. */
+    var holder = new Map();
+    lists.forEach(function (L) {
+      if (L.kind !== 'List' || !L.info) return;
+      var ids = new Set();
+      IA_fxCollectIds(L.info, ids, 0);
+      ids.forEach(function (id) { holder.has(id) || holder.set(id, L); });
+    });
+    lists.forEach(function (L) {
+      if (L.kind !== 'List subset') return;
+      L.holder = holder.get(L.id) || null;
+      L.parent = L.holder || IA_fxFindList(L.info, listById, 0);
+    });
+    return { mods: mods, byId: byId, byLower: byLower, byFirst: IA_fxByFirst(mods), names: names, lists: lists, listByLower: listByLower, listsByName: listsByName, listByFirst: IA_fxByFirst(lists), src: info };
   }
 
   /* ---------- the scanner ---------- */
@@ -169,7 +222,7 @@
   function IA_fxScan(text, ix, cur) {
     var refs = [], diags = [], stack = [], n = text.length, i = 0;
     function ref(s, e, mod, li) { refs.push({ s: s, e: e, mod: mod, li: li || null, list: null }); }
-    function listRef(s, e, list) { refs.push({ s: s, e: e, mod: null, li: null, list: list }); }
+    function listRef(s, e, list) { refs.push({ s: s, e: e, mod: null, li: null, list: IA_fxDisambig(ix, list, cur) }); }
     function bad(s, e, msg, sev) { diags.push({ s: s, e: e, msg: msg, sev: sev || 'error' }); }
     function tail(from) {
       /* A property or list item after a dot: nothing to resolve; skip it. */
@@ -495,8 +548,7 @@
   }
 
   /* Anaplan's toolbar toggle ("Toggle from regular view to Blueprint view"). Its markup is not
-     confirmed, so it is looked for by anything naming blueprint; when none is found the toolbar's
-     buttons are logged (IA_fxDumpButtons) to see what to look for. */
+     confirmed, so it is looked for by anything naming blueprint. */
   function IA_fxBlueprintButton(doc) {
     var sels = ['[title*="lueprint" i]', '[aria-label*="lueprint" i]', '[class*="lueprint" i]'];
     for (var i = 0; i < sels.length; i++) {
@@ -509,27 +561,16 @@
     return null;
   }
 
-  function IA_fxDumpButtons(doc) {
-    var out = [];
-    doc.querySelectorAll('.dijitButton, .dijitToggleButton, [role=button], [role=toolbar] *').forEach(function (e) {
-      if (out.length < 60 && e.offsetParent) {
-        out.push(e.tagName + '.' + String(e.className).slice(0, 90) + ' | title=' + (e.getAttribute('title') || '') +
-          ' | aria-label=' + (e.getAttribute('aria-label') || '') + ' | aria-pressed=' + (e.getAttribute('aria-pressed') || ''));
-      }
-    });
-    IA_fxLog('blueprint toggle not found; visible buttons:\n' + out.join('\n'));
-  }
-
   /* After moving to another module: switch it to Blueprint view, then select the line item's row. */
   function IA_fxAfterNav(name, tries, st) {
     if (IA_fxCancel) return;
-    if (tries <= 0) { if (st.noBtn) { var w0 = IA_fxFrameworkWin(window, 0); w0 && IA_fxDumpButtons(w0.document); } return; }
+    if (tries <= 0) return;
     var w = IA_fxFrameworkWin(window, 0), doc = w && w.document;
     if (doc && doc.body) {
       if (!IA_fxIsBlueprint(doc)) {
         if (!st.clicked) {
           var b = IA_fxBlueprintButton(doc);
-          if (b) { b.click(); st.clicked = true; st.noBtn = false; } else st.noBtn = true;
+          if (b) { b.click(); st.clicked = true; }
         }
       } else if (!name || IA_fxSelectRow(name)) return;
     }
@@ -575,9 +616,8 @@
       /* A list opens as a tab whose id is taken to be the list's own, like a module's. */
       /* A subset has no tab of its own (opening its id gives "Sorry, an error occurred"): its list's does. */
       var target = r.list.kind === 'List subset' ? r.list.parent : r.list;
-      IA_fxLog('opening', r.list.kind, r.list.name, '->', target && target.name, target && target.id);
+      target && IA_fxToast('Opening ' + (r.list.kind === 'List subset' ? "'" + r.list.name + "' in list '" + target.name + "'" : "list '" + target.name + "'"));
       if (!target) {
-        IA_fxLog('subset info (to find its list):', r.list.info ? JSON.stringify(r.list.info).slice(0, 600) : 'none found');
         IA_fxToast("Can't tell which list '" + r.list.name + "' belongs to");
         return;
       }
@@ -598,21 +638,14 @@
     IA_fxCancel = false;
     if (newTab) { window.open(url, '_blank', 'noopener'); return; }
     try { sessionStorage.setItem('IA_fx_pending', JSON.stringify({ tab: tab, li: liName, mode: mode, at: Date.now() })); } catch (e) { /* private mode */ }
-    /* The shell is a single-page app: move its URL and tell its router. If this frame is still here
-       afterwards, the router did not take it - go back and open a tab instead. */
-    var before = location.href;
+    /* The shell is a single-page app: move its URL and tell its router. (An earlier version opened a
+       tab when this frame's URL hadn't changed after 2s, and went back first - but a list jump can work
+       without this frame's URL changing, so that opened a second tab and undid the jump.) */
     try {
       window.top.history.pushState({}, '', url);
       if (mode) setTimeout(function () { IA_fxRun(mode, liName); }, 800);
       window.top.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-    } catch (e) { window.open(url, '_blank', 'noopener'); return; }
-    setTimeout(function () {
-      if (location.href !== before) return;
-      IA_fxCancel = true;
-      try { window.top.history.back(); } catch (e) { /* ignore */ }
-      try { sessionStorage.removeItem('IA_fx_pending'); } catch (e) { /* ignore */ }
-      window.open(url, '_blank', 'noopener');
-    }, 2000);
+    } catch (e) { window.open(url, '_blank', 'noopener'); }
   }
 
   function IA_fxResumePending() {
@@ -623,11 +656,139 @@
     } catch (e) { /* ignore */ }
   }
 
-  /* ---------- Monaco ---------- */
+  /* ---------- the Blueprint grid's Applies To column ---------- */
 
-  function IA_fxLog() {
-    try { console.debug.apply(console, ['[Anaplan Toolkit formula]'].concat([].slice.call(arguments))); } catch (e) { /* ignore */ }
+  /* The list or subset whose name covers the offset in a cell's text ("Region, Product Subset"):
+     the longest one that does. */
+  function IA_fxListAt(text, off, lists) {
+    var low = text.toLowerCase(), best = null;
+    lists.forEach(function (L) {
+      var from = 0, at;
+      while ((at = low.indexOf(L.lower, from)) >= 0) {
+        var end = at + L.lower.length;
+        if (off >= at && off <= end && (!best || L.lower.length > best.lower.length)) best = L;
+        from = at + 1;
+      }
+    });
+    return best;
   }
+
+  /* The header cell's box, to tell the column: climb while the parent holds nothing but the label. */
+  function IA_fxHeaderRect(doc, label) {
+    var tw = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT), nd;
+    while ((nd = tw.nextNode())) {
+      if (nd.nodeValue.trim() !== label) continue;
+      var el = nd.parentElement;
+      if (!el || !el.offsetParent) continue;
+      while (el.parentElement && el.parentElement.textContent.trim() === label) el = el.parentElement;
+      var r = el.getBoundingClientRect();
+      if (r.width) return r;
+    }
+    return null;
+  }
+
+  /* The header box is looked for with a walk over the page: reused for a moment, since a hover asks
+     on every mouse move. */
+  var IA_fxHdr = { doc: null, at: 0, r: null };
+  function IA_fxHeaderCached(doc) {
+    var n = Date.now();
+    if (IA_fxHdr.doc !== doc || n - IA_fxHdr.at > 400) IA_fxHdr = { doc: doc, at: n, r: IA_fxHeaderRect(doc, 'Applies To') };
+    return IA_fxHdr.r;
+  }
+
+  function IA_fxCellList(doc, x, y, ix) {
+    var hr = IA_fxHeaderCached(doc);
+    if (!hr || x < hr.left || x > hr.right) return null;
+    var el = doc.elementFromPoint(x, y), node = null, off = 0;
+    if (!el) return null;
+    if (doc.caretRangeFromPoint) {
+      var rg = doc.caretRangeFromPoint(x, y);
+      node = rg && rg.startContainer; off = rg ? rg.startOffset : 0;
+    } else if (doc.caretPositionFromPoint) {
+      var cp = doc.caretPositionFromPoint(x, y);
+      node = cp && cp.offsetNode; off = cp ? cp.offset : 0;
+    }
+    if (!node || node.nodeType !== 3 || !(el.contains(node) || (node.parentElement && node.parentElement.contains(el)))) return null;
+    return IA_fxDisambig(ix, IA_fxListAt(node.nodeValue, off, ix.lists), IA_fxCurrent(ix));
+  }
+
+  /* Which modules apply to each list or subset id (a module, or any of its line items). Built once per
+     index, on the first hover. */
+  function IA_fxUsers(ix) {
+    if (!ix.usedBy) {
+      var m = new Map();
+      ix.mods.forEach(function (mod) {
+        IA_fxApplies(mod).forEach(function (id) { (m.get(id) || m.set(id, []).get(id)).push(mod.name); });
+      });
+      ix.usedBy = m;
+    }
+    return ix.usedBy;
+  }
+
+  var IA_fxTip = { el: null, key: '', timer: 0 };
+  function IA_fxTipHide() {
+    clearTimeout(IA_fxTip.timer);
+    if (IA_fxTip.el) IA_fxTip.el.remove();
+    IA_fxTip.el = null; IA_fxTip.key = '';
+  }
+
+  function IA_fxTipShow(doc, x, y, L, ix) {
+    var d = doc.createElement('div');
+    d.style.cssText = 'position:fixed;z-index:2147483647;max-width:380px;background:#fff;color:#1b1f3b;border:1px solid #c9ccd6;' +
+      'border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.2);padding:8px 10px;font:12px/1.45 sans-serif;pointer-events:none';
+    function row(text, bold, color) {
+      var r = doc.createElement('div');
+      r.textContent = text;
+      if (bold) r.style.fontWeight = '600';
+      if (color) r.style.color = color;
+      r.style.marginTop = bold ? '0' : '3px';
+      d.appendChild(r);
+    }
+    row(L.name, true);
+    row(L.kind + (L.parent ? ' of ' + L.parent.name : ''));
+    var n = L.info && L.info.itemCount;
+    if (L.kind === 'List' && typeof n === 'number' && n >= 0) row('Items: ' + n);
+    var users = IA_fxUsers(ix).get(L.id) || [];
+    if (users.length) row('Used by ' + users.length + (users.length === 1 ? ' module: ' : ' modules: ') + users.slice(0, 6).join(', ') + (users.length > 6 ? ', ...' : ''));
+    row('Cmd/Ctrl + click to open', false, '#5b6078');
+    doc.body.appendChild(d);
+    var w = doc.defaultView, r = d.getBoundingClientRect();
+    d.style.left = Math.max(4, Math.min(x + 14, w.innerWidth - r.width - 8)) + 'px';
+    d.style.top = Math.max(4, Math.min(y + 18, w.innerHeight - r.height - 8)) + 'px';
+    IA_fxTip.el = d;
+  }
+
+  /* Cmd/Ctrl+click on a list in the Applies To column. The grid is Anaplan's Dojo UI in the framework
+     frame: the mouse-down is stopped too, or the grid would select the cell first. */
+  function IA_fxAttachGrid(doc) {
+    if (doc.__iaFxGrid) return;
+    doc.__iaFxGrid = true;
+    function h(e) {
+      if (!(e.metaKey || e.ctrlKey) || e.button !== 0) return;
+      var ix = IA_fxIndex(), l = ix && IA_fxCellList(doc, e.clientX, e.clientY, ix);
+      if (!l) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      if (e.type === 'click') IA_fxOpen({ list: l, mod: null, li: null }, ix, e.shiftKey || e.altKey);
+    }
+    doc.addEventListener('mousedown', h, true);
+    doc.addEventListener('click', h, true);
+    var last = 0;
+    doc.addEventListener('mousemove', function (e) {
+      var now = Date.now();
+      if (now - last < 60) return;
+      last = now;
+      var ix = IA_fxIndex(), L = ix && IA_fxCellList(doc, e.clientX, e.clientY, ix);
+      if (!L) { IA_fxTip.key && IA_fxTipHide(); return; }
+      if (IA_fxTip.key === L.id) return;
+      IA_fxTipHide();
+      IA_fxTip.key = L.id;
+      IA_fxTip.timer = setTimeout(function () { IA_fxTipShow(doc, e.clientX, e.clientY, L, ix); }, 250);
+    }, true);
+    ['mousedown', 'wheel', 'scroll', 'keydown'].forEach(function (t) { doc.addEventListener(t, IA_fxTipHide, true); });
+    doc.documentElement.addEventListener('mouseleave', IA_fxTipHide);
+  }
+
+  /* ---------- Monaco ---------- */
 
   function IA_fxOffsetAt(model, pos) { return model.getOffsetAt(pos); }
 
@@ -663,7 +824,6 @@
     editor.onMouseDown(function (e) {
       var ev = e.event;
       if (!(ev.metaKey || ev.ctrlKey)) return;
-      IA_fxLog('modifier-click', { left: ev.leftButton, target: e.target && e.target.type, pos: !!(e.target && e.target.position) });
       var h = hit(e);
       if (!IA_fxIndex()) { IA_fxToast('Anaplan Toolkit: model data not found in this page'); return; }
       if (!h) return;
@@ -733,16 +893,18 @@
       if (seen.has(ed) || !IA_fxIsFormula(ed)) return;
       seen.add(ed);
       IA_fxEds.push(ed);
-      IA_fxLog('attached to a formula editor; model data:', !!IA_fxIndex(), 'current module:', (function () { var x = IA_fxIndex(); var c = x && IA_fxCurrent(x); return c && c.name; })());
-      try { IA_fxAttach(monaco, ed); } catch (e) { IA_fxLog('attach failed', e); }
+      try { IA_fxAttach(monaco, ed); } catch (e) { /* leave the editor as Anaplan has it */ }
     }
     function scan() {
+      try {
+        var fw = IA_fxFrameworkWin(window, 0);
+        if (fw && fw.document && fw.document.body) IA_fxAttachGrid(fw.document);
+      } catch (e) { /* torn down */ }
       var monaco = window.monaco;
       if (!monaco || !monaco.editor) return;
       if (!provided) {
         provided = true;
-        IA_fxLog('monaco found; getEditors:', typeof monaco.editor.getEditors, 'onDidCreateEditor:', typeof monaco.editor.onDidCreateEditor);
-        try { IA_fxProvider(monaco); } catch (e) { IA_fxLog('hover provider failed', e); }
+        try { IA_fxProvider(monaco); } catch (e) { /* no hover, the rest still works */ }
         IA_fxResumePending();
         if (monaco.editor.onDidCreateEditor) monaco.editor.onDidCreateEditor(function (ed) { [0, 300, 1500].forEach(function (t) { setTimeout(function () { IA_fxTake(monaco, ed); }, t); }); });
       }
@@ -752,11 +914,10 @@
        onDidCreateEditor. */
     setInterval(scan, 1000);
     scan();
-    IA_fxLog('loaded in', location.href.slice(0, 80));
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { IA_fxPretty: IA_fxPretty, IA_fxFuncAt: IA_fxFuncAt, IA_fxBuild: IA_fxBuild, IA_fxScan: IA_fxScan, IA_fxRefAt: IA_fxRefAt, IA_fxUrl: IA_fxUrl };
+    module.exports = { IA_fxUsers: IA_fxUsers, IA_fxDisambig: IA_fxDisambig, IA_fxListAt: IA_fxListAt, IA_fxPretty: IA_fxPretty, IA_fxFuncAt: IA_fxFuncAt, IA_fxBuild: IA_fxBuild, IA_fxScan: IA_fxScan, IA_fxRefAt: IA_fxRefAt, IA_fxUrl: IA_fxUrl };
   } else if (typeof window !== 'undefined' && window.document) {
     IA_fxInit();
   }

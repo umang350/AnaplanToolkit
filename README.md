@@ -12,7 +12,7 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
-**Version:** 2.11.0
+**Version:** 2.11.1
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
@@ -20,7 +20,16 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ---
 
-## What's new in 2.11.0
+## What's new in 2.11.1
+
+- **Blueprint grid, Applies To column**: Cmd/Ctrl+click a list or list subset to open it (a subset opens its
+  list's Subsets tab with the subset selected), and hover one for its kind, list, item count and the modules
+  that use it.
+- Subsets that share a name in different lists now resolve to the one the current module applies to, and a
+  subset opens the list that actually holds it.
+- A list jump no longer opens a second browser tab.
+
+### 2.11.0
 
 - **Formula editor, Cmd/Ctrl+click** (new): click a module, line item, list or list subset in Anaplan's formula
   editor to open it. A module opens in Blueprint view with the line item's row selected; a subset opens its

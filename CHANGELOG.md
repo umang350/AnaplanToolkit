@@ -7,6 +7,11 @@ summarised from the commit history.
 
 (nothing yet)
 
+## 2.11.1
+
+See [.github/release-notes/2.11.1.md](.github/release-notes/2.11.1.md). Applies To click and hover in the
+Blueprint grid; same-named subsets and subset owners resolved correctly; no extra tab on a list jump.
+
 ## 2.11.0
 
 See [.github/release-notes/2.11.0.md](.github/release-notes/2.11.0.md). Formula editor: Cmd/Ctrl+click to open
