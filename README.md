@@ -12,7 +12,7 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
-**Version:** 2.10.0
+**Version:** 2.11.0
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
@@ -20,7 +20,19 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ---
 
-## What's new in 2.10.0
+## What's new in 2.11.0
+
+- **Formula editor, Cmd/Ctrl+click** (new): click a module, line item, list or list subset in Anaplan's formula
+  editor to open it. A module opens in Blueprint view with the line item's row selected; a subset opens its
+  list's Subsets tab with the subset selected. Cmd/Ctrl+Shift+click opens a module in a new tab.
+- **Formula editor hover** (new): format, dimensions, time scale and a readable layout of the formula for a
+  reference (THEN / ELSE on their own lines, indented per nested IF), and the description, syntax and help
+  link of any Anaplan function.
+- **Formula editor markers**: unbalanced brackets, unterminated quotes, and a `Module.'x'` the module does
+  not have.
+- Reads only what the page already holds; no new permissions and no new servers.
+
+### 2.10.0
 
 - **Whole-module deletes in Delete Items are about 5x faster**: modules nothing pending uses go up to 10 to a request (the
   request Anaplan's own dialog sends). On an 11,197-line-item / 520-module cleanup a run went from 31

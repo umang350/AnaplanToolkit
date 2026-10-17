@@ -84,6 +84,7 @@ content-scripts/
   inner.js              ISOLATED world on framework.jsp — the report engine
   main.js               MAIN world on framework.jsp — reads Anaplan's in-page model cache
   api.js                ISOLATED world, top frame of any Anaplan tab — Lock Monitor's API relay
+  formula.js            MAIN world on the modeling-ui frame — formula editor helpers (below)
 ```
 
 **Why three content scripts.** Anaplan's model metadata lives in page JS (`anaplan.data.
@@ -491,3 +492,41 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   (`sidepanel.js`), `off` in `REPORTS` (`chunks/summary.js`) and `OFF` in `background.js`, which
   refuses `ia_load`/`ia_refresh` for them. The `⌘⌥K` shortcut that started SV Filters is removed
   from `outer.js`/`inner.js`. Re-enabling means undoing all of those.
+
+- **Formula editor helpers** (`content-scripts/formula.js`, MAIN world, `/a/modeling-ui/*`, all frames).
+  Anaplan's formula editor is a Monaco instance exposed as `window.monaco` in the **modeling-ui** frame
+  (`.formula-editor` > `.formula-editor__monaco-wrapper`, two editors, the read-only view and the editing
+  one; this Monaco build has **no `editor.getEditors()`**, so editors are collected from `onDidCreateEditor`);
+  the model cache is in the child framework.jsp frame, same origin, so `IA_fxFrameInfo` reads
+  `anaplan.data.ModelContentCache._modelInfo` through `window.frames`. The third-party "Better Formula Editor"
+  does not work here: it swaps a `<textarea>` for its own Monaco. **Everything below was confirmed on a live
+  model** unless marked otherwise.
+  - Cmd/Ctrl+click opens a reference; Cmd/Ctrl+Shift/Alt+click opens a new tab. A module's tab is
+    `/a/modeling/…/tabs/<module id>` (the tab id is the entity id). In-app navigation is
+    `top.history.pushState` + a `popstate` event (the shell is a single-page app; the editor frame is **not**
+    reloaded, so the current module is read from the top window's URL, `IA_fxHref`), with a new-tab fallback
+    if this frame's URL hasn't changed after 2s (never seen to fire).
+  - After a module jump the module is switched to Blueprint view (`IA_fxAfterNav`; Blueprint is told from the
+    grid header having both "Formula" and "Applies To", the toggle is found by anything naming "blueprint") and
+    the line item's row is selected (`IA_fxSelectRow`: the leftmost leaf text equal to the name, whitespace
+    squashed - the grid shows double spaces - then mousedown/up/click). If the toggle isn't found the visible
+    toolbar buttons are logged (`IA_fxDumpButtons`).
+  - Lists and list subsets are references too (`ix.lists`, from the label pages whose key names are
+    `hierarch…` / `…Subset…`). A list opens `/tabs/<list id>`. A subset has **no tab of its own** (its own id
+    gives Anaplan's "Sorry, an error occurred"), so it opens its parent list's, found by `IA_fxFindList` (any
+    field of the subset's info holding a list's id - which field it is was never needed), then clicks the
+    list's **Subsets** tab (`IA_fxAfterSubset`: leaf text "Subsets" inside `.dijitTab` / `[role=tab]`) and
+    selects the subset's row.
+  - Hover: a line item / module / list card (format, applies to, time scale, formula via `IA_fxPretty`:
+    THEN/ELSE on their own lines, indented per nested IF, a long OR chain broken - display only), or a
+    function (`IA_fxFuncAt`: `NAME(`, the `[LOOKUP:` / `[SUM:` aggregation form, IF/THEN/ELSE; never inside a
+    quoted name, text or comment) from `content-scripts/formula_functions.js` (`IA_FX_FUNCS`: name, category,
+    description, help link - copied from Anaplan's "All functions" help page, so refresh it from there when
+    Anaplan adds functions; `IA_FX_SYNTAX` is hand-written for common ones only, the page has no syntax).
+    That file must stay before `formula.js` in the manifest's `js` list.
+  - Markers for unbalanced brackets, unterminated quotes and `Module.'x'` with no such line item
+    (**not exercised live**). `IA_fxScan` is pure and was tested offline with a fake model (unquoted module
+    names with spaces, `''` escapes, comments, strings, lists).
+  - Not done: completion, signature help, quick fixes, a real validator - Anaplan's own editor already
+    formats and suggests, and a dimension check needs a parser (the third-party extension's ANTLR grammar is
+    the starting point, after checking its licence).

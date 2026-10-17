@@ -7,6 +7,11 @@ summarised from the commit history.
 
 (nothing yet)
 
+## 2.11.0
+
+See [.github/release-notes/2.11.0.md](.github/release-notes/2.11.0.md). Formula editor: Cmd/Ctrl+click to open
+references, hover details for references and functions, markers.
+
 ## 2.10.0
 
 See [.github/release-notes/2.10.0.md](.github/release-notes/2.10.0.md). Module deletes batched, modules a

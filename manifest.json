@@ -3,8 +3,8 @@
   "name": "Anaplan Toolkit – Model Audit & Documentation",
   "short_name": "Anaplan Toolkit",
   "description": "Audit Anaplan models: action IDs, pages, filters, line items, saved views, revisions, locks, CSV. Not affiliated with Anaplan.",
-  "version": "2.10.0",
-  "version_name": "2.10.0",
+  "version": "2.11.0",
+  "version_name": "2.11.0",
   "author": "Umang Chauhan",
   "icons": {
     "16": "icon-16.png",
@@ -92,6 +92,18 @@
       "js": [
         "content-scripts/api.js"
       ]
+    },
+    {
+      "matches": [
+        "https://*.anaplan.com/a/modeling-ui/*"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle",
+      "js": [
+        "content-scripts/formula_functions.js",
+        "content-scripts/formula.js"
+      ],
+      "world": "MAIN"
     },
     {
       "matches": [
