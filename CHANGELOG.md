@@ -5,7 +5,7 @@ summarised from the commit history.
 
 ## Unreleased
 
-(nothing yet)
+- Side panel footer: a "Sponsor" link to https://github.com/sponsors/umang350; `.github/FUNDING.yml` adds the repository's Sponsor button.
 
 ## 2.11.1
 

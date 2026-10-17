@@ -240,6 +240,12 @@ body {
 }
 #brand-text strong { color: var(--foreground); font-weight: 600; }
 
+#brand-sponsor {
+  flex: none; color: var(--foreground); font-weight: 600; text-decoration: none; white-space: nowrap;
+  user-select: auto;
+}
+#brand-sponsor:hover { text-decoration: underline; }
+
 #brand-by { flex: none; opacity: .75; white-space: nowrap; }
 
 /* Lock Monitor's options make the call to action taller than the
