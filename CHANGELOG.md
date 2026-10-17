@@ -9,13 +9,9 @@ summarised from the commit history.
 
 ## 2.11.1
 
-See [.github/release-notes/2.11.1.md](.github/release-notes/2.11.1.md). Applies To click and hover in the
-Blueprint grid; same-named subsets and subset owners resolved correctly; no extra tab on a list jump.
-
-## 2.11.0
-
-See [.github/release-notes/2.11.0.md](.github/release-notes/2.11.0.md). Formula editor: Cmd/Ctrl+click to open
-references, hover details for references and functions, markers.
+See [.github/release-notes/2.11.1.md](.github/release-notes/2.11.1.md). Formula editor: Cmd/Ctrl+click to open
+references, hover details for references and functions, markers; the same click and a hover card in the
+Blueprint grid's Applies To column.
 
 ## 2.10.0
 

@@ -20,6 +20,13 @@ ORIGIN
   Before distributing this extension, confirm that redistribution of the
   derived parts is permitted.
 
+ANAPLAN FUNCTION REFERENCE
+  content-scripts/formula_functions.js lists Anaplan's function names with a short description of each,
+  summarised from Anaplan's public help documentation (help.anaplan.com, "All functions"), and links to
+  those pages. The descriptions are Anaplan's subject matter, not this project's; the syntax lines beside
+  them are written by the Author. The formula editor helpers were written for this project and use no
+  code from other formula-editor extensions.
+
 BUNDLED LIBRARIES
   Svelte (compiled output)     - MIT Licence, (c) Svelte contributors
   Tailwind CSS (compiled CSS)  - MIT Licence, (c) Tailwind Labs Inc.
