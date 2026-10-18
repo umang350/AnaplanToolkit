@@ -231,6 +231,7 @@
 /* Spans the compiled Tailwind CSS lacks (it has only col-span-2 / -3). */
 .ia-span-1 { grid-column: span 1 / span 1; }
 .ia-span-5 { grid-column: span 5 / span 5; }
+.ia-span-6 { grid-column: span 6 / span 6; }
 
 .ia-formula {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -327,3 +328,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-size: .75rem; line-height: 1.5; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .ia-procs-list li { overflow-wrap: anywhere; }
 .ia-procs .ia-dl-btn { align-self: flex-start; }
+
+/* --- Analysis views (chunks/impact.js, lint.js, formula_search.js) ------------ */
+.ia-tag-warn { color: #b45309; }
+.ia-impact summary { cursor: pointer; }
+.ia-impact-body { padding: .375rem 0 .25rem; display: flex; flex-direction: column; gap: .375rem; }
+.ia-impact-pages { display: flex; flex-direction: column; gap: .125rem; }
+.ia-impact-list { margin: 0; padding: 0; list-style: none; max-height: 18rem; overflow: auto; font-size: .75rem; }
+.ia-impact-list li { padding: .0625rem 0; overflow-wrap: anywhere; }
+.ia-impact-list li { display: flex; gap: .5rem; align-items: baseline; }
+.ia-impact-depth { flex: 0 0 3.25rem; color: var(--muted-foreground); font-size: .6875rem; }
+.ia-impact-name { flex: 1 1 auto; min-width: 0; }
+.ia-impact-mod { display: block; color: var(--muted-foreground); font-size: .6875rem; }
+.ia-lint-chips { display: flex; flex-wrap: wrap; gap: .375rem; padding: .25rem 0; }
+.ia-lint-chip { font-size: .75rem; padding: .125rem .5rem; border-radius: 9999px; border: 1px solid var(--border); background: var(--background); cursor: pointer; }
+.ia-lint-chip:hover { background: var(--muted); }
+.ia-lint-warn { color: #b45309; }
+
+.ia-setting { display: flex; gap: .5rem; align-items: flex-start; padding: .25rem 0; font-size: .8125rem; cursor: pointer; }
+.ia-setting input { margin-top: .2rem; }
+.ia-setting small { display: block; color: var(--muted-foreground); font-size: .6875rem; }

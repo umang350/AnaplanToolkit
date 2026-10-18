@@ -11,7 +11,8 @@
  *     Cmd/Ctrl + Shift/Alt + click opens a module in a new tab.
  *   - Hover on a reference shows its type, dimensions and formula.
  *   - Markers for what can be known for certain: unbalanced brackets, unterminated quotes, and
- *     Module.'Line item' where the module has no such line item.
+ *     Module.'Line item' where the module has no such line item; plus Planual findings on the
+ *     formula text (content-scripts/planual.js), and a badge per line item in the Blueprint grid.
  *
  * Nothing here calls Anaplan or any server; it reads the page's own cache and edits nothing.
  * The scanner (IA_fxScan) is pure so it can be tested without a browser.
@@ -471,6 +472,13 @@
       md.push('**' + r.mod.name + '** - module, ' + r.mod.lis.length + ' line items');
       if (ap.length) md.push('Applies to: ' + ap.join(', '));
       if (ts && !/^not applicable$/i.test(ts)) md.push('Time scale: ' + ts);
+      var mg = IA_fxGraph(ix), feeds = new Set(), fed = new Set();
+      r.mod.lis.forEach(function (li) {
+        (mg.usedBy.get(li) || []).forEach(function (u) { u.mod !== r.mod && feeds.add(u.mod.name); });
+        (mg.uses.get(li) || []).forEach(function (u) { u.mod !== r.mod && fed.add(u.mod.name); });
+      });
+      if (feeds.size) md.push('Feeds ' + feeds.size + ' module' + (feeds.size === 1 ? '' : 's') + ': ' + Array.from(feeds).sort().slice(0, 8).join(', ') + (feeds.size > 8 ? ', and ' + (feeds.size - 8) + ' more' : ''));
+      if (fed.size) md.push('Fed by ' + fed.size + ' module' + (fed.size === 1 ? '' : 's') + ': ' + Array.from(fed).sort().slice(0, 8).join(', ') + (fed.size > 8 ? ', and ' + (fed.size - 8) + ' more' : ''));
     } else {
       var li = r.li.info, f = li.format || {}, dt = String(f.dataType || '').toUpperCase();
       var ty = IA_FX_DT[dt] || dt || '?';
@@ -487,9 +495,50 @@
         var lines = IA_fxPretty(String(li.formula)).split('\n'), more = lines.length > 14;
         md.push('```\n' + lines.slice(0, 14).join('\n') + (more ? '\n... (' + (lines.length - 14) + ' more lines)' : '') + '\n```');
       }
+      var g = IA_fxGraph(ix);
+      IA_fxLinkLines('Used by', g.usedBy.get(r.li), r.mod).concat(IA_fxLinkLines('Depends on', g.uses.get(r.li), r.mod))
+        .forEach(function (l) { md.push(l); });
     }
     md.push('*Cmd/Ctrl + click to open*');
     return md.join('\n\n');
+  }
+
+  /* ---------- which formulas use which ----------
+     Built once, on the first hover of a line item or module, by running the same scanner over every
+     formula in the model (a large model takes a moment, once). A line item whose format is No Data
+     is never evaluated, so what its formula names is not a use. A reference to the line item itself
+     is left out. Reads formulas only: pages, saved views, imports and exports are not counted. */
+  function IA_fxGraph(ix) {
+    if (ix.graph) return ix.graph;
+    var usedBy = new Map(), uses = new Map();
+    function link(map, key, val) { (map.get(key) || map.set(key, new Set()).get(key)).add(val); }
+    ix.mods.forEach(function (mod) {
+      mod.lis.forEach(function (li) {
+        li.mod = mod;
+        var f = li.info && li.info.formula;
+        if (typeof f !== 'string' || !f) return;
+        var dt = String((li.info.format && li.info.format.dataType) || '').toUpperCase();
+        if (dt === 'NONE') return;
+        var res;
+        try { res = IA_fxScan(f, ix, mod); } catch (e) { return; }
+        res.refs.forEach(function (r) {
+          if (!r.li || r.li === li) return;
+          link(uses, li, r.li);
+          link(usedBy, r.li, li);
+        });
+      });
+    });
+    return (ix.graph = { usedBy: usedBy, uses: uses });
+  }
+
+  /* "Used by (n)" / "Depends on (n)" lines for a hover card, from a set of line items. */
+  function IA_fxLinkLines(label, set, own) {
+    if (!set || !set.size) return label === 'Used by' ? ['Used by: no formula'] : [];
+    var all = Array.from(set), mods = new Set();
+    all.forEach(function (li) { mods.add(li.mod); });
+    var shown = all.slice(0, 6).map(function (li) { return (li.mod === own ? '' : li.mod.name + '.') + li.name; });
+    return [label + ' (' + all.length + ' line item' + (all.length === 1 ? '' : 's') + ' in ' + mods.size + ' module' +
+            (mods.size === 1 ? '' : 's') + '): ' + shown.join(', ') + (all.length > 6 ? ', and ' + (all.length - 6) + ' more' : '')];
   }
 
   /* ---------- opening a reference ---------- */
@@ -786,13 +835,256 @@
     }, true);
     ['mousedown', 'wheel', 'scroll', 'keydown'].forEach(function (t) { doc.addEventListener(t, IA_fxTipHide, true); });
     doc.documentElement.addEventListener('mouseleave', IA_fxTipHide);
+    IA_fxAttachBadges(doc);
+  }
+
+  /* ---------- Planual badges on the Blueprint grid ----------
+     A small badge after each line item's name in Blueprint view when its formula, name or format breaks
+     a Planual rule (content-scripts/planual.js); clicking it lists the rules, each linked to its page.
+     The badges are an overlay in the framework frame (position: fixed, one element per line item,
+     reused between passes) - Anaplan's own grid nodes are never touched, and the grid scrolls and
+     re-renders under them, so they are placed again on a light timer and on scroll. Only line items
+     of the module whose tab is open are looked for, by the text of the name in the name column (left
+     of the Format header), which is how the row selection finds them too. Not confirmed live: the
+     placement against Anaplan's real grid markup. */
+  /* Panel settings (Summary > Settings), copied onto this document by content-scripts/settings.js; on unless "off". */
+  function IA_fxOn(which) { return document.documentElement.getAttribute('data-ia-planual-' + which) !== 'off'; }
+  var IA_fxPl = new WeakMap();
+  /* Rules the user hid ("Hide this rule" on a card), kept in this page's localStorage - nothing leaves the
+     browser. A hidden rule is left out of the badges and the editor markers alike. */
+  function IA_fxMuted() {
+    try { return new Set(JSON.parse(localStorage.getItem('ia_planual_muted') || '[]')); } catch (e) { return new Set(); }
+  }
+  function IA_fxMute(rule, on) {
+    var m = IA_fxMuted();
+    if (on) m.add(rule); else m.delete(rule);
+    try { localStorage.setItem('ia_planual_muted', JSON.stringify(Array.from(m))); } catch (e) { /* not saved; applies until reload */ }
+    IA_fxMutedNow = m;
+    IA_fxPl = new WeakMap();
+    IA_fxEds.forEach(function (ed) { try { ed.__iaMark && ed.__iaMark(); } catch (e) { /* editor gone */ } });
+  }
+  var IA_fxMutedNow = null;
+  function IA_fxIsMuted(rule) { return (IA_fxMutedNow || (IA_fxMutedNow = IA_fxMuted())).has(rule); }
+
+  function IA_fxPlanualOf(li) {
+    if (typeof IA_planualCheck !== 'function') return [];
+    var hit = IA_fxPl.get(li);
+    if (hit) return hit;
+    var f = li.info && li.info.formula, dt = (li.info && li.info.format && li.info.format.dataType) || '', by = new Map();
+    IA_planualCheck(typeof f === 'string' ? f : '', li.name, dt).forEach(function (x) {
+      if (IA_fxIsMuted(x.rule)) return;
+      var e = by.get(x.rule) || by.set(x.rule, { rule: x.rule, details: [] }).get(x.rule);
+      if (x.detail && e.details.indexOf(x.detail) < 0) e.details.push(x.detail);
+    });
+    var res = Array.from(by.values());
+    IA_fxPl.set(li, res);
+    return res;
+  }
+
+  function IA_fxAttachBadges(doc) {
+    var w = doc.defaultView, layer = null, badges = new Map(), card = null, queued = 0, modBadge = null;
+    function closeCard() { if (card) { card.remove(); card = null; } }
+    function drop() {
+      badges.forEach(function (b) { b.remove(); });
+      badges.clear();
+      if (modBadge) { modBadge.remove(); modBadge = null; }
+      if (layer) { layer.remove(); layer = null; }
+      closeCard();
+    }
+    function sevColor(sev) { return sev === 'warning' ? '#d97706' : '#2563eb'; }
+    function box(css, text) { var d = doc.createElement('div'); d.style.cssText = css || ''; if (text != null) d.textContent = text; return d; }
+
+    /* One rule's block on a card: its linked number, title, what is tested, and Hide. `more` adds lines. */
+    function ruleBlock(rule, lead, more) {
+      var r = IA_PLANUAL[rule] || { title: rule, check: '', sev: 'info' }, row = box('margin-top:7px;padding-left:8px;border-left:3px solid ' + sevColor(r.sev)),
+          a = doc.createElement('a'), url = IA_planualUrl(rule), head = box('display:flex;justify-content:space-between;gap:8px');
+      a.textContent = 'Planual ' + rule;
+      if (url) { a.href = url; a.target = '_blank'; a.rel = 'noreferrer'; }
+      a.style.cssText = 'font-weight:600;color:#0b57d0';
+      var hide = doc.createElement('a');
+      hide.textContent = 'Hide this rule';
+      hide.href = '#';
+      hide.style.cssText = 'color:#5b6078;font-size:11px;white-space:nowrap';
+      hide.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); IA_fxMute(rule, true); closeCard(); soon(); });
+      head.appendChild(a);
+      head.appendChild(hide);
+      row.appendChild(head);
+      row.appendChild(box('', r.title + (lead ? ': ' + lead : '')));
+      row.appendChild(box('color:#5b6078', r.check));
+      if (more) more(row);
+      return row;
+    }
+    function openCard(title, build, anchor) {
+      closeCard();
+      var d = box('position:fixed;z-index:2147483647;width:360px;max-height:60vh;overflow:auto;background:#fff;color:#1b1f3b;' +
+        'border:1px solid #c9ccd6;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.25);padding:8px 10px;font:12px/1.45 sans-serif');
+      d.appendChild(box('font-weight:600;margin-bottom:2px', title));
+      build(d);
+      var muted = Array.from(IA_fxMuted());
+      if (muted.length) {
+        var un = doc.createElement('a');
+        un.textContent = 'Show ' + muted.length + ' hidden rule' + (muted.length === 1 ? '' : 's');
+        un.href = '#';
+        un.style.cssText = 'display:block;margin-top:8px;color:#5b6078;font-size:11px';
+        un.addEventListener('click', function (e) { e.preventDefault(); muted.forEach(function (r) { IA_fxMute(r, false); }); closeCard(); soon(); });
+        d.appendChild(un);
+      }
+      doc.body.appendChild(d);
+      var rc = anchor.getBoundingClientRect(), cr = d.getBoundingClientRect();
+      d.style.left = Math.max(4, Math.min(rc.left, w.innerWidth - cr.width - 8)) + 'px';
+      d.style.top = Math.max(4, Math.min(rc.bottom + 4, w.innerHeight - cr.height - 8)) + 'px';
+      card = d;
+    }
+    function pill(text, color, title) {
+      var b = doc.createElement('span');
+      b.style.cssText = 'position:fixed;pointer-events:auto;cursor:pointer;font:600 10px/14px sans-serif;padding:0 6px;border-radius:7px;' +
+        'color:#fff;white-space:nowrap;user-select:none;background:' + color;
+      b.textContent = text;
+      b.title = title || '';
+      ['mousedown', 'mouseup'].forEach(function (t) { b.addEventListener(t, function (e) { e.stopPropagation(); }); });
+      return b;
+    }
+    /* Warnings are a triangle, info-only findings a circled i. */
+    function icon(found) { return found.some(function (x) { return (IA_PLANUAL[x.rule] || {}).sev === 'warning'; }) ? '\u26A0' : '\u24D8'; }
+    function color(found) { return found.some(function (x) { return (IA_PLANUAL[x.rule] || {}).sev === 'warning'; }) ? '#d97706' : '#2563eb'; }
+
+    function badge(li, found) {
+      var b = pill(icon(found) + ' ' + found.length, color(found),
+        found.map(function (x) { return 'Planual ' + x.rule + ' ' + (IA_PLANUAL[x.rule] || {}).title; }).join('\n'));
+      b.addEventListener('click', function (e) {
+        e.stopPropagation(); e.preventDefault();
+        if (card) { closeCard(); return; }
+        var cur = badges.get(li.id) && badges.get(li.id).__found || found;
+        openCard('Planual - ' + li.name, function (d) {
+          cur.forEach(function (x) { d.appendChild(ruleBlock(x.rule, x.details.slice(0, 8).join(', '))); });
+        }, b);
+      });
+      return b;
+    }
+
+    /* The module header row's badge: every finding in the module, by rule, each line item a link that
+       selects its row. */
+    function moduleBadge() {
+      var b = pill('', '#d97706', 'Planual findings in this module');
+      b.addEventListener('click', function (e) {
+        e.stopPropagation(); e.preventDefault();
+        if (card) { closeCard(); return; }
+        var cur = b.__cur, per = b.__per, byRule = new Map();
+        per.forEach(function (found, li) {
+          found.forEach(function (x) { (byRule.get(x.rule) || byRule.set(x.rule, []).get(x.rule)).push(li); });
+        });
+        openCard('Planual - ' + cur.name + ' (' + per.size + ' line item' + (per.size === 1 ? '' : 's') + ')', function (d) {
+          Array.from(byRule.keys()).sort().forEach(function (rule) {
+            var lis = byRule.get(rule);
+            d.appendChild(ruleBlock(rule, lis.length + ' line item' + (lis.length === 1 ? '' : 's'), function (row) {
+              var list = box('margin-top:3px;display:flex;flex-wrap:wrap;gap:2px 8px');
+              lis.slice(0, 15).forEach(function (li) {
+                var n = doc.createElement('a');
+                n.textContent = li.name;
+                n.href = '#';
+                n.style.cssText = 'color:#0b57d0';
+                n.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopPropagation(); closeCard(); IA_fxSelectRow(li.name); });
+                list.appendChild(n);
+              });
+              if (lis.length > 15) list.appendChild(box('color:#5b6078', 'and ' + (lis.length - 15) + ' more'));
+              row.appendChild(list);
+            }));
+          });
+        }, b);
+      });
+      return b;
+    }
+
+    function tick() {
+      queued = 0;
+      var ix = IA_fxIndex(), cur = ix && IA_fxCurrent(ix);
+      if (!cur || typeof IA_planualCheck !== 'function' || !doc.body || !IA_fxOn('grid')) return drop();
+      var want = new Map(), per = new Map();
+      cur.lis.forEach(function (li) {
+        var f = li.name && IA_fxPlanualOf(li);
+        if (f && f.length) { want.set(li.name.replace(/[\s ]+/g, ' ').trim().toLowerCase(), li); per.set(li, f); }
+      });
+      if (!want.size) return drop();
+      var modName = cur.name.replace(/[\s ]+/g, ' ').trim().toLowerCase();
+      var tw = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT), nd, seen = {}, fmt = null, cands = [], modNode = null;
+      while ((nd = tw.nextNode())) {
+        var raw = nd.nodeValue;
+        if (raw.length > 160) continue;
+        var t = raw.replace(/[\s ]+/g, ' ').trim();
+        if (!t) continue;
+        var el = nd.parentElement;
+        if (!el || !el.offsetParent) continue;
+        if (t === 'Applies To' || t === 'Formula') seen[t] = 1;
+        else if (t === 'Format' && !fmt) fmt = el;
+        var lc = t.toLowerCase(), li = want.get(lc);
+        if (el.closest('.formulaBar, .moduleFormulae, textarea')) continue;
+        if (li) cands.push([nd, li]);
+        else if (lc === modName && !modNode) modNode = nd;
+      }
+      if (!(seen['Applies To'] && seen['Formula']) || !fmt) return drop();   /* not Blueprint view */
+      while (fmt.parentElement && fmt.parentElement.textContent.trim() === 'Format') fmt = fmt.parentElement;
+      var fr = fmt.getBoundingClientRect(), placed = new Set(), rg = doc.createRange();
+      if (!layer) {
+        layer = doc.createElement('div');
+        layer.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483646;pointer-events:none';
+        doc.body.appendChild(layer);
+      }
+      /* Badges line up in one column at the right of the name column, clear of the grid's own icon. Always
+         that column, never after the text: a name too long for its cell is clipped but its text node still
+         runs on into the next column, and a badge placed after it landed on the Formula column. A long
+         name is simply covered at its (already clipped) end. */
+      function put(b, r) {
+        if (!b.parentNode) layer.appendChild(b);
+        b.style.left = Math.round(fr.left - 30 - b.offsetWidth) + 'px';
+        b.style.top = Math.round(r.top + (r.height - 14) / 2) + 'px';
+      }
+      cands.forEach(function (c) {
+        var li = c[1];
+        if (placed.has(li)) return;
+        rg.selectNodeContents(c[0]);
+        var r = rg.getBoundingClientRect();
+        if (!r.width || r.left >= fr.left || r.top < fr.bottom - 2 || (w.innerHeight && r.top > w.innerHeight)) return;
+        placed.add(li);
+        var found = per.get(li), b = badges.get(li.id);
+        if (!b) { b = badge(li, found); badges.set(li.id, b); }
+        b.__found = found;
+        b.textContent = icon(found) + ' ' + found.length;
+        b.style.background = color(found);
+        put(b, r);
+      });
+      badges.forEach(function (b, id) {
+        var li = cur.lis.find(function (l) { return l.id === id; });
+        if (!li || !placed.has(li)) { b.remove(); badges.delete(id); }
+      });
+      /* The module header row: its name, in the name column, above the first line item. */
+      if (modNode) {
+        rg.selectNodeContents(modNode);
+        var mr = rg.getBoundingClientRect();
+        if (mr.width && mr.left < fr.left && mr.top >= fr.bottom - 2) {
+          var total = 0, warn = false;
+          per.forEach(function (found) {
+            found.forEach(function (y) { total++; if ((IA_PLANUAL[y.rule] || {}).sev === 'warning') warn = true; });
+          });
+          modBadge = modBadge || moduleBadge();
+          modBadge.__cur = cur;
+          modBadge.__per = per;
+          modBadge.textContent = (warn ? '\u26A0 ' : '\u24D8 ') + total + ' Planual';
+          modBadge.style.background = warn ? '#d97706' : '#2563eb';
+          put(modBadge, mr);
+        } else if (modBadge) { modBadge.remove(); modBadge = null; }
+      } else if (modBadge) { modBadge.remove(); modBadge = null; }
+    }
+    function soon() { if (!queued) queued = w.requestAnimationFrame ? w.requestAnimationFrame(tick) : setTimeout(tick, 50); }
+    doc.addEventListener('scroll', soon, true);
+    doc.addEventListener('mousedown', function (e) { if (card && !card.contains(e.target)) closeCard(); }, true);
+    setInterval(function () { try { tick(); } catch (e) { /* the page is changing under us; next pass */ } }, 800);
   }
 
   /* ---------- Monaco ---------- */
 
   function IA_fxOffsetAt(model, pos) { return model.getOffsetAt(pos); }
 
-  var IA_fxEds = [];
+  var IA_fxEds = [], IA_fxEdOn = true;
 
   function IA_fxIsFormula(editor) {
     var n = editor.getContainerDomNode && editor.getContainerDomNode();
@@ -849,9 +1141,25 @@
           });
         });
       }
+      /* Planual: what the formula text alone shows (content-scripts/planual.js, shared with Lint). */
+      if (typeof IA_planualCheck === 'function' && IA_fxOn('editor')) {
+        IA_planualCheck(model.getValue()).forEach(function (x) {
+          var rule = IA_PLANUAL[x.rule];
+          if (!rule || x.s < 0 || IA_fxIsMuted(x.rule)) return;
+          var a = model.getPositionAt(x.s), b = model.getPositionAt(x.e), m = {
+            severity: rule.sev === 'warning' ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Info,
+            message: 'Planual ' + x.rule + ' - ' + rule.title + (x.detail ? ': ' + x.detail : '') + '\n' + rule.check,
+            source: 'Anaplan Toolkit',
+            startLineNumber: a.lineNumber, startColumn: a.column, endLineNumber: b.lineNumber, endColumn: b.column,
+          };
+          try { m.code = { value: x.rule, target: monaco.Uri.parse(IA_planualUrl(x.rule)) }; } catch (e) { m.code = x.rule; }
+          out.push(m);
+        });
+      }
       monaco.editor.setModelMarkers(model, 'anaplan-toolkit', out);
     }
     function soon() { clearTimeout(timer); timer = setTimeout(mark, 400); }
+    editor.__iaMark = mark;
     editor.onDidChangeModelContent(soon);
     editor.onDidChangeModel && editor.onDidChangeModel(soon);
     soon();
@@ -909,6 +1217,12 @@
         if (monaco.editor.onDidCreateEditor) monaco.editor.onDidCreateEditor(function (ed) { [0, 300, 1500].forEach(function (t) { setTimeout(function () { IA_fxTake(monaco, ed); }, t); }); });
       }
       if (monaco.editor.getEditors) monaco.editor.getEditors().forEach(function (ed) { IA_fxTake(monaco, ed); });
+      /* The editor setting changed in the panel: redo the markers now rather than at the next edit. */
+      var es = IA_fxOn('editor');
+      if (es !== IA_fxEdOn) {
+        IA_fxEdOn = es;
+        IA_fxEds.forEach(function (ed) { try { ed.__iaMark && ed.__iaMark(); } catch (e) { /* editor gone */ } });
+      }
     }
     /* Editors come and go as line items are picked; a light poll beats depending on one version's
        onDidCreateEditor. */
@@ -917,7 +1231,7 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { IA_fxUsers: IA_fxUsers, IA_fxDisambig: IA_fxDisambig, IA_fxListAt: IA_fxListAt, IA_fxPretty: IA_fxPretty, IA_fxFuncAt: IA_fxFuncAt, IA_fxBuild: IA_fxBuild, IA_fxScan: IA_fxScan, IA_fxRefAt: IA_fxRefAt, IA_fxUrl: IA_fxUrl };
+    module.exports = { IA_fxUsers: IA_fxUsers, IA_fxGraph: IA_fxGraph, IA_fxPlanualOf: IA_fxPlanualOf, IA_fxDisambig: IA_fxDisambig, IA_fxListAt: IA_fxListAt, IA_fxPretty: IA_fxPretty, IA_fxFuncAt: IA_fxFuncAt, IA_fxBuild: IA_fxBuild, IA_fxScan: IA_fxScan, IA_fxRefAt: IA_fxRefAt, IA_fxUrl: IA_fxUrl };
   } else if (typeof window !== 'undefined' && window.document) {
     IA_fxInit();
   }

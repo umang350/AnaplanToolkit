@@ -270,6 +270,7 @@ function noMatchState() {
                  per tab, under a tab bar, with a row count beside the heading.
                  zip: false leaves a tab out of Summary's Download all (Actions'
                  All tab, which only repeats the others).
+     literal     optional: search by words, "phrase" or /regex/ instead of fuzzy match (Formulas)
      counts      optional: each tab's row total on the tab bar (Actions)
                  Without it the page is a single table over the data array,
                  described by the fields above.
@@ -385,9 +386,30 @@ export function renderPage(opts) {
     return keyed.map(function (k) { return k[1]; });
   }
 
+  /* opts.literal (Formulas): the box takes plain words (every one must appear),
+     "an exact phrase" or /a regular expression/ - not the fuzzy scorer, which
+     is meant for names and would let a typo match half a formula. The key is
+     lowercased, so it is case-insensitive. A bad regex matches nothing. */
+  function literalFilter(q) {
+    q = String(q || "").trim();
+    if (!q) return null;
+    var m = /^\/(.+)\/([a-z]*)$/.exec(q);
+    if (m) {
+      try {
+        var re = new RegExp(m[1], (m[2].replace(/[^ims]/g, "") + "i").replace(/(.)(?=.*\1)/g, ""));
+        return function (k) { return re.test(k); };
+      } catch (e) { return function () { return false; }; }
+    }
+    var ph = /^"(.+)"$/.exec(q);
+    if (ph) { var p = ph[1].toLowerCase(); return function (k) { return k.indexOf(p) >= 0; }; }
+    var words = q.toLowerCase().split(/\s+/);
+    return function (k) { return words.every(function (w) { return k.indexOf(w) >= 0; }); };
+  }
+
   function matches() {
     var t = tabs[active];
-    var rows = tabRows(t);
+    var rows = tabRows(t), pred = (t.literal || opts.literal) && literalFilter(query);
+    if (pred) { var kf = keyFn(t); return sorted(t, rows.filter(function (r) { return pred(kf(r)); })); }
     return sorted(t, search(rows, query, keyFn(t)));
   }
 

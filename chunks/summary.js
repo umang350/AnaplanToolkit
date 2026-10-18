@@ -21,6 +21,7 @@
  */
 import { LOGO, el } from './sv_shared.js';
 import { buildFiles, zip, save } from './export_all.js';
+import { buildDocs, buildContext } from './model_docs.js';
 
 var api = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
@@ -46,6 +47,9 @@ var REPORTS = [
   // counted in "loaded" or run by Get all data either.
   { page: 'delete_line_items', name: 'Delete Line Items', unit: 'rows', key: 'rows', upload: true },
   { page: 'delete_modules', name: 'Delete Modules', unit: 'rows', key: 'rows', upload: true },
+  { page: 'impact', name: 'Impact', unit: 'line items', key: 'items' },
+  { page: 'lint', name: 'Lint', unit: 'findings', key: 'findings' },
+  { page: 'formula_search', name: 'Formulas', unit: 'formulas', key: 'formulas' },
   { page: 'revisions', name: 'Revision Tags', keys: [['revisions', 'tags'], ['applied', 'models applied to']] },
   // live: runs until stopped, so it is not counted in "loaded" or run by Get all data.
   { page: 'lock_monitor', name: 'Lock Monitor', unit: 'checks', key: 'samples', live: true },
@@ -241,7 +245,57 @@ function actions(loaded, total, any) {
   if (getAll.running)
     row.appendChild(el('span', 'ia-note', 'Getting ' + (getAll.done + 1) + ' of ' + getAll.total +
                        (getAll.current ? ': ' + getAll.current : '') + '…'));
+  var box = el('div');
+  box.appendChild(row);
+  box.appendChild(docsRow());
+  return box;
+}
+
+/* Model documentation (a Markdown file) and the same model as compact text to
+   copy into an AI assistant. Both are written here from the cached reports
+   (Modules, Line Items, Lists, and Impact / Lint when loaded); nothing is sent
+   anywhere - what is pasted where is the user's call. */
+function docsRow() {
+  var pages = (overview && overview.pages) || {},
+      ready = !!(pages.line_items && pages.line_items.ts) || !!(pages.modules && pages.modules.ts),
+      row = el('div', 'ia-dl'), d = el('button', 'ia-dl-btn', 'Documentation (.md)'),
+      c = el('button', 'ia-dl-btn', 'Copy context for AI');
+  d.type = c.type = 'button';
+  d.disabled = c.disabled = dl.busy || !ready;
+  d.title = ready ? 'Model documentation as a Markdown file: lists, modules, line items and formulas'
+    : 'Load Line Items (and Modules, Lists) first';
+  c.title = ready ? 'Copies the model - structure and formulas - as compact text to paste into an AI assistant. Nothing is sent anywhere by the extension.'
+    : 'Load Line Items (and Modules, Lists) first';
+  d.addEventListener('click', function () { exportDoc('docs'); });
+  c.addEventListener('click', function () { exportDoc('context'); });
+  row.appendChild(d);
+  row.appendChild(c);
+  if (dl.docNote) row.appendChild(el('span', 'ia-note' + (dl.docError ? ' ia-error' : ''), dl.docNote));
   return row;
+}
+
+function exportDoc(kind) {
+  if (dl.busy) return;
+  dl = { busy: true, note: '' };
+  render();
+  var done = function (note, error) { dl = { busy: false, note: '', docNote: note, docError: !!error }; };
+  api.runtime.sendMessage({ type: 'ia_dump' }).then(function (r) {
+    if (!r || !r.pages || (!r.pages.line_items && !r.pages.modules)) throw new Error('Load Modules and Line Items first.');
+    var name = String((model && model.modelName) || 'model').replace(/[\\/:*?"<>|]+/g, '_').trim();
+    if (kind === 'docs') {
+      save(new Blob([buildDocs(r.pages, model)], { type: 'text/markdown' }), name + ' - documentation.md');
+      return done('Saved');
+    }
+    var ctx = buildContext(r.pages, model), msg = 'Copied ' + ctx.chars.toLocaleString() + ' characters (about ' +
+      Math.round(ctx.chars / 4000) + 'k tokens)' + (ctx.included < ctx.modules ? ', ' + ctx.included + ' of ' + ctx.modules + ' modules' : '');
+    return navigator.clipboard.writeText(ctx.text).then(function () { done(msg); }, function () {
+      // The browser refused the clipboard: give the same text as a file instead.
+      save(new Blob([ctx.text], { type: 'text/markdown' }), name + ' - AI context.md');
+      done('Clipboard unavailable - saved as a file instead');
+    });
+  }).catch(function (e) {
+    done((e && e.message) || 'Could not build it.', true);
+  }).then(render);
 }
 
 /* "Download all": every loaded report's CSV files in one .zip, plus the model
@@ -296,6 +350,40 @@ function downloadAllNow() {
   }).then(render);
 }
 
+/* Settings: kept in extension storage (`ia_settings`) and copied into the formula editor's page by
+   content-scripts/settings.js. Everything is on unless switched off here. */
+var settings = { planualGrid: true, planualEditor: true };
+
+function settingsCard() {
+  var s = section('Settings');
+  [['planualGrid', 'Planual badges in Blueprint view', 'The warning and info badges after line item names, and the module summary badge.'],
+   ['planualEditor', 'Planual markers in the formula editor', 'The underlines on the part of a formula that breaks a Planual rule.']
+  ].forEach(function (x) {
+    var label = el('label', 'ia-setting'), box = el('input');
+    box.type = 'checkbox';
+    box.checked = settings[x[0]] !== false;
+    box.addEventListener('change', function () {
+      settings[x[0]] = box.checked;
+      try { api.storage.local.set({ ia_settings: settings }); } catch (e) { /* not saved */ }
+    });
+    var text = el('span');
+    text.appendChild(document.createTextNode(x[1]));
+    text.appendChild(el('small', null, x[2]));
+    label.appendChild(box);
+    label.appendChild(text);
+    s.appendChild(label);
+  });
+  return s;
+}
+
+function loadSettings() {
+  try {
+    Promise.resolve(api.storage.local.get('ia_settings')).then(function (r) {
+      if (r && r.ia_settings) { settings = Object.assign(settings, r.ia_settings); render(); }
+    }, function () {});
+  } catch (e) { /* defaults stand */ }
+}
+
 function render() {
   var root = el('div', 'ia-summary'), bar = el('div', 'ia-bar'), img = el('img');
   img.alt = 'Anaplan Toolkit';
@@ -305,6 +393,7 @@ function render() {
   root.appendChild(modelCard());
   root.appendChild(structureCard());
   root.appendChild(reportsCard());
+  root.appendChild(settingsCard());
   mount.replaceChildren(root);
 }
 
@@ -342,6 +431,7 @@ window.addEventListener('message', function (e) {
 
 render();
 askOverview();
+loadSettings();
 // Keeps the "n min ago" labels honest.
 setInterval(function () { if (!document.hidden && overview) render(); }, 30000);
 document.addEventListener('visibilitychange', function () { if (!document.hidden && overview) render(); });

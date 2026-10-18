@@ -69,6 +69,7 @@
       "all_frames": true,
       "run_at": "document_idle",
       "js": [
+        "content-scripts/planual.js",
         "content-scripts/inner.js"
       ]
     },
@@ -101,9 +102,20 @@
       "run_at": "document_idle",
       "js": [
         "content-scripts/formula_functions.js",
+        "content-scripts/planual.js",
         "content-scripts/formula.js"
       ],
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.anaplan.com/a/modeling-ui/*"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle",
+      "js": [
+        "content-scripts/settings.js"
+      ]
     },
     {
       "matches": [

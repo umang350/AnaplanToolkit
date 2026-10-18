@@ -86,6 +86,9 @@ demand, grouped as in the panel's tab bar:
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
 | | Delete Items | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID, optional module ID) across any number of modules. Every row is checked against the model first - including which line items formulas outside the CSV still use - and nothing is deleted until you type the count to confirm. Deletes go in requests of whole modules (up to 200 line items) in an order worked out from the formulas, and a module whose every line item is listed is deleted as a module - several modules to a request, except those a process uses, which are kept; the run can be paused and resumed, and the report can save itself to Downloads every few minutes. |
 | | Delete Modules | **Changes the model.** Deletes the whole modules listed in a CSV (module, module ID). Each module is checked against the model first - including whether a module that isn't listed still uses it - and nothing is deleted until you type the count to confirm. One module per request, a module before the modules it uses. |
+| **Analysis** | Impact | For every line item, which formulas use it and which it uses, directly and all the way down, with the modules and App pages that reach (and a module-to-module view). Read from formulas only. |
+| | Lint | Checks the model against Anaplan's Planual (Classic engine) and shows each rule's own number, linked to its page: naming 2.01-01, constants 2.01-09, nested IFs 2.02-01, SELECT 2.02-14, RANK 2.02-20, Text formats 2.03-02, list properties 1.05-03 and more. Plus a Housekeeping tab (unused line items and lists, odd spacing). Each check approximates its rule; findings are prompts to look at, not verdicts. |
+| | Formulas | Free-text search over every formula: words, `"an exact phrase"` or a `/regular expression/` |
 | **Revisions** | | The model's revision tags (who created each, when and where) and every model each was applied to |
 | **Lock** | | Checks at an interval you choose whether the model is available, busy, locked or offline, and what is running; shows a timeline and every check, exportable to CSV |
 | **Workspace** | Current | Models in this workspace with size and state, and storage in use against the allowance |
@@ -126,9 +129,27 @@ demand, grouped as in the panel's tab bar:
 
 - **Get all data** gathers every report that isn't loaded yet, one after another.
 - **Download all as CSV** saves every loaded report's CSV files in one .zip.
+- **Settings** switch off the Planual badges in Blueprint view and the Planual markers in the formula editor,
+  independently (both on by default).
+- **Documentation (.md)** saves the model's lists, modules, line items and formulas as a Markdown file.
+- **Copy context for AI** copies the same model as compact text to paste into an AI assistant of your
+  choice. The extension sends nothing anywhere; what you paste, and where, is up to you.
 
 **Notes:**
 
+- Planual findings also show where you work: in the formula editor as warning markers on the offending
+  part of a formula (hover for the rule number and title, click the number for its page), and in
+  Blueprint view as a small badge after a line item's name, in one column (amber triangle for warnings, blue i
+  for info only) - click it for the rules. A badge on the module's header row counts the module's findings
+  by rule, each line item a link to its row. "Hide this rule" on a card turns a rule off (kept in the page's
+  local storage; "Show hidden rules" brings them back). Only checks that
+  need just the line item are there; the rest (repeated formulas, unused items, modules, lists) are in
+  Lint.
+- In the formula editor, hovering a line item or module also shows what uses it and what it depends on,
+  and hovering a module shows the modules it feeds and is fed by (formulas only).
+- The **Analysis** reports (Impact, Lint, Formulas) read the same in-page model data as Structure;
+  Impact also reads the App page list. They look at formulas only, so a line item that a page, saved
+  view, import, export or process uses and no formula does counts as unused.
 - The **Structure** reports read Anaplan's in-page model data, so they make no extra requests;
   Modules also reads the App page list. If Anaplan doesn't hold a field for a given model, that
   column stays empty and the page says so.

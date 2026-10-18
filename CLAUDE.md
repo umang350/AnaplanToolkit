@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
-the structure of the Anaplan model open in the active tab. Seventeen read-only report views, each
+the structure of the Anaplan model open in the active tab. Twenty read-only report views, each
 gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on - and two
 views that change the model, Delete Line Items and Delete Modules (see below). Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
@@ -179,7 +179,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   Hidden, and that rule's source isn't counted at all. `sv_shared.js` deliberately re-implements the CSV writer and the fuzzy
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
-  rebuilt. Keep the two implementations in step; all eighteen views are expected to export and search
+  rebuilt. Keep the two implementations in step; all hand-written views are expected to export and search
   identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Without it a tab gets `DEFAULT_MAX` (400): drawing all 8,000 Filters rows on every keystroke and
@@ -461,7 +461,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   module before the modules it uses (ties: last module first); a refusal (serial 0 or unchanged, as in Delete
   Line Items) keeps the module, which is retried while others are deleted (`seen`) - nothing smaller is
   deleted in its place. A final read decides each row. The confirmation wants the number of modules typed.
-- `summary` (`chunks/summary.js`) is the twentieth view and the odd one out: no CSV or search, gathered
+- `summary` (`chunks/summary.js`) is the twenty-first view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in
   `sidepanel.js` — keep the two in step. Its **Download all as CSV (.zip)** button
@@ -493,6 +493,53 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   refuses `ia_load`/`ia_refresh` for them. The `⌘⌥K` shortcut that started SV Filters is removed
   from `outer.js`/`inner.js`. Re-enabling means undoing all of those.
 
+- **Analysis** (`impact`, `lint`, `formula_search`; `IA_gimp` / `IA_glint` / `IA_gfs` in `inner.js`, `chunks/impact.js`,
+  `lint.js`, `formula_search.js`) is a panel group of three views read off the same `IA_struct` data as Structure.
+  Which line item's formula uses which comes from `IA_depBuild`, which builds the index `IA_dlUsers` (Delete Line
+  Items' scanner) wants from the structure's rows - formulas only, so a line item used by a page, saved view,
+  import, export or process looks unused. **Impact** sends links as positions in `items` (`usedBy` / `uses`), not
+  ids, because they are most of the payload; the view works out "in all" reach lazily per opened row (`reach`),
+  never for every row, and `items()` stamps `row.at` and the payload for the cells and CSV (`renderPage` hands
+  rows only). It also reads `/pages` once (`IA_modPages`, a copy of the block in `IA_gmod`) for App pages per
+  module; a failure leaves the links and says why. **Lint** codes are Anaplan's own Planual rule numbers
+  (hyphenated, e.g. `2.02-14`; read off support.anaplan.com's Planual chapter pages - Classic engine: Modules 2.01,
+  Formulas 2.02, Line Items 2.03, Lists 1.05; the rule numbers sit on those sub-pages, not the chapter pages) plus
+  `H01`-`H04`, this extension's own housekeeping checks that the Planual has no rule for (their own tab). Checks live
+  in `IA_lintRun`; titles, severities and what each tests live in `RULES` in `lint.js` - keep the two in step, and
+  never invent a number: a check with no Planual rule is an `H` code. Each check approximates its rule (e.g. 2.02-01
+  counts IFs rather than nesting; 2.01-09 is the closest rule to hard-coded numbers; an empty module is a valid
+  separator under 2.01-03 and is only flagged if it still has dimensions). Not confirmed against a live model. **Formulas** uses `renderPage`'s
+  `literal` option (words / `"phrase"` / `/regex/`, case-insensitive, matched on the formula only) rather than the
+  fuzzy scorer; the three compiled views and the fuzzy `search()` are untouched. All three are in `DL_STALE`.
+  None is confirmed on a live model yet - only offline against generated data.
+  **Model documentation / AI context** (`chunks/model_docs.js`, buttons on Summary): `buildDocs` (Markdown file) and
+  `buildContext` (compact text, cut at whole modules past 400,000 characters) are written in the page from the
+  `ia_dump` payloads of modules, line_items, lists and, when loaded, impact and lint. Nothing is fetched or sent.
+  **Planual in the formula editor and Blueprint grid** (`content-scripts/planual.js`, a plain script defining
+  `IA_PLANUAL` / `IA_planualCheck` / `IA_planualUrl`, loaded before `formula.js` (MAIN world) **and** before `inner.js`
+  (manifest) so one implementation of the per-line-item checks serves the editor, the grid and Lint's
+  `IA_lintRun`): `IA_planualCheck(formula, name, format)` returns rule numbers with offsets in the formula
+  (`IA_planualBlank` keeps offsets by blanking text, quoted names and comments to same-length spaces). `formula.js`
+  turns them into Monaco markers (`mark()`, code = the rule number linked to its Planual page) and
+  `IA_fxAttachBadges` draws a fixed-position overlay badge after each line item's name in Blueprint view (found
+  by name text left of the Format header, one reused element per line item, re-placed every 0.8s and on scroll;
+  click opens a card listing the rules; Anaplan's own grid nodes are never touched). Badges line up in one column
+  at the right of the name column; a module-header badge lists findings by rule with links that select the row
+  (`IA_fxSelectRow`). "Hide this rule" is kept in the Anaplan page's localStorage (`ia_planual_muted`, in the
+  MAIN world; nothing leaves the browser) and drops the rule from badges and markers. Only per-item rules are
+  there - repeated formulas, unused, module and list rules stay in Lint. `chunks/lint.js` keeps its own copy of
+  the titles; keep it in step with `IA_PLANUAL`. Tested in a harness page with a fake model and grid; **not
+  confirmed against Anaplan's real grid markup or Monaco**.
+  **Settings** (Summary > Settings: `planualGrid`, `planualEditor`, both on by default) live in extension storage
+  (`storage.local.ia_settings`). `formula.js` is in the page's world and cannot read it, so
+  `content-scripts/settings.js` (isolated world, same frames as `formula.js`) copies them onto the document element as
+  `data-ia-planual-grid` / `data-ia-planual-editor` (`on`/`off`) and follows `storage.onChanged`; `formula.js` reads
+  them (`IA_fxOn`) - the badges drop when the grid one is off, and the editor markers are redone on the next 1s scan
+  when the editor one changes. A new setting means touching all of: `settingsCard` in `summary.js`, `settings.js`,
+  and the reader in `formula.js`. The hidden *rules* (per-rule "Hide this rule") are separate, in page localStorage.
+  **Formula editor hover**: `IA_fxGraph` (`formula.js`) runs `IA_fxScan` over every formula once (first hover of a
+  line item or module) for *Used by* / *Depends on* and a module's *Feeds* / *Fed by*; No Data line items are
+  skipped as users, like `IA_dlUsers`. Tested offline with a fake model.
 - **Formula editor helpers** (`content-scripts/formula.js`, MAIN world, `/a/modeling-ui/*`, all frames).
   Anaplan's formula editor is a Monaco instance exposed as `window.monaco` in the **modeling-ui** frame
   (`.formula-editor` > `.formula-editor__monaco-wrapper`, two editors, the read-only view and the editing

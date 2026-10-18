@@ -5,7 +5,15 @@ summarised from the commit history.
 
 ## Unreleased
 
-(nothing yet)
+- **Analysis** (new group): **Impact** (which formulas use each line item and which it uses, directly and
+  downstream, with modules and App pages reached), **Lint** (checks against Anaplan's Planual, each finding showing the rule's own number, plus a Housekeeping tab) and
+  **Formulas** (word, phrase and regular-expression search over every formula).
+- Summary: **Documentation (.md)** and **Copy context for AI** build the model's structure and formulas
+  from the cached reports; nothing is sent anywhere by the extension.
+- Summary > Settings: switch the Planual badges (Blueprint view) and the Planual editor markers off, independently.
+- Planual findings in the formula editor (markers with the rule number, linked) and as badges on line items in the Blueprint grid.
+- Formula editor: hovering a line item shows *Used by* / *Depends on*, and a module shows the modules it
+  feeds and is fed by.
 
 ## 2.11.1
 
