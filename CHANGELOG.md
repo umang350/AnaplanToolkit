@@ -5,6 +5,10 @@ summarised from the commit history.
 
 ## Unreleased
 
+Prepared as 2.12.0 (manifest version bumped, draft notes in `.github/release-drafts/2.12.0.md`, README "What's new"
+written) but not released: to release, `git mv .github/release-drafts/2.12.0.md .github/release-notes/`, rename this heading
+to `## 2.12.0` with a pointer to those notes, update the store blurb, and push.
+
 - **Analysis** (new group): **Impact** (which formulas use each line item and which it uses, directly and
   downstream, with modules and App pages reached), **Lint** (checks against Anaplan's Planual, each finding showing the rule's own number, plus a Housekeeping tab) and
   **Formulas** (word, phrase and regular-expression search over every formula).

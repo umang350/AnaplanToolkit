@@ -12,7 +12,7 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
-**Version:** 2.11.1
+**Version:** 2.12.0
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
@@ -20,7 +20,17 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ---
 
-## What's new in 2.11.1
+## What's new in 2.12.0
+
+- **Analysis** (new): **Impact** (which formulas use each line item and which it uses, directly and downstream, with
+  the modules and App pages reached), **Lint** (checks against Anaplan's Planual, each finding with the rule's own
+  number) and **Formulas** (search every formula by words, phrase or regex).
+- **Planual where you build**: markers in the formula editor and badges on line items in Blueprint view, with
+  per-rule hiding and switches in Summary › Settings.
+- **Formula hover**: what uses a line item and what it depends on.
+- **Documentation (.md)** and **Copy context for AI** on Summary.
+
+### 2.11.1
 
 - **Formula editor, Cmd/Ctrl+click** (new): click a module, line item, list or list subset in Anaplan's formula
   editor to open it. A module opens in Blueprint view with the line item's row selected; a subset opens its
