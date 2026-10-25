@@ -3,12 +3,20 @@
 Plain text on purpose: the Chrome Web Store does not render Markdown, and Firefox Add-ons shows
 the same text. Paste the blocks below as they are. Not shipped in the extension package.
 
-## Summary (manifest `description`, 132 characters at most)
+## Summary
 
-Audit Anaplan models and jump through formulas with Cmd/Ctrl+click. Reports, CSV, lock monitor. Not affiliated with Anaplan.
+Chrome Web Store: the manifest `description`, 132 characters at most.
 
-(124 characters. The manifest still carries the older summary; copy this over `description` in
-`manifest.json` to ship it.)
+Audit and document Anaplan models, run actions from a CSV on any model, lint formulas by the Planual. Not affiliated with Anaplan.
+
+(130 characters. The manifest still carries the older summary, which the store shows; copy this over
+`description` in `manifest.json` to ship it, then rebuild the packages.)
+
+Firefox Add-ons: the summary field, 250 characters at most.
+
+Audit and document Anaplan models: reports on structure, formulas, pages, views, actions and locks, with CSV export. Run actions from a CSV on any model, bulk create and delete modules, lint formulas by the Planual. Not affiliated with Anaplan.
+
+(244 characters.)
 
 ## Description
 
