@@ -467,7 +467,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   The Structure tabs run Modules, Line Items, Lists, Create Modules, Create Items, Delete Items, Delete Modules.
 - **Run Actions** (`run_actions`, Actions group beside Process Steps, `IA_gra` in `inner.js`, `chunks/run_actions.js`) is
   the third view that **changes the model**: processes and other actions (an import runs from the file stored in the model), run one after
-  another from a CSV of Name, Id (and Type) - the Actions report's All export works as is. It reuses the Delete views'
+  another from a CSV of Name, Id (and Type) - the Actions report's All export works as is - on the model in the tab and, with a Model ID column, on others. It reuses the Delete views'
   panel flow (upload tab, `raRead` / `RA_COLS`, `ia_dl_pick` / `ia_dl_delete` / `ia_dl_pause`, internal mode word
   `delete` = run, `LIVE` / `ia_live` / `dlKept`, pause, run log) and adds `stopOnFail` (default **off**: a failed action never stops the run, only Stop does; the
   confirmation's box turns stopping at the first failure on) and `type` to the worker's row sanitizer. **Read off `Run1.har`** (Anaplan's own Actions
@@ -488,8 +488,27 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   `IA_sessx`; XHR `setRequestHeader` is wrapped to read the headers, never to change them); the engine's counter starts
   500 above the page's. When the page moves the txid on mid-run the refused call is sent again once with the page's
   newest (`IA_raRpc`). **Anaplan replays its first answer to a repeated `Request-Serial-Number`** (seen live: a second Check on an idle page reused the first Check's numbers and every row came back with the first Check's answers, though the actions differed), so the counter `IA_raN` lives across runs in the content script and only moves up (a reloaded page has a new session id, hence fresh numbers). `IA_dlScan` now also keeps `systemActionResults` (a few bytes). **A session belongs to one
-  model's page** (confirmed: the same session on a second model, another core, was refused), so this runs on the model
-  in the tab; running several models means opening each one's page in turn - **not built**. Stop ends the run between
+  model** (confirmed: the same session on a second model, another core, was refused) - **but a model's page need not
+  be open**: the page's first call to a model is a handshake (serial -1, txid null, `GET_LOGGED_IN_USER` / `GET_URL`… /
+  `GET_ENTITLEMENTS`, `fetchAllModelSummaries: true`, `Request-Serial-Number` `<session>-1`) and a session id of the
+  caller's own making was accepted from it on the model's own core, with a validate-only start going through (console
+  test, no tab for the model; fetching the model's `framework.jsp` first changed nothing - that page holds no session,
+  only a `workspaceServerGuid`). So **an optional CSV `Model ID` column (and `Workspace ID`) runs rows on other models**
+  (`IA_raShake`, `IA_raModels`, `ctxFor` in `IA_gra`): rows run in CSV order across models, a blank Model ID is the tab's
+  model (which keeps the page's session, as above), the workspace and name come from the CSV or the model list behind
+  Anaplan's Models menu, the model's core is found from the `redirectUrl` the call on this core answers with (never
+  stored - cores move weekly; `IA_dlScan` keeps `redirectUrl`), and a session of the extension's own is made on a model's
+  first row (again once if Anaplan stops recognising it; a model whose handshake fails has only its rows skipped /
+  failed). A run over several models puts the model's name in front of each downloaded file. Downloads, polling and
+  the export call go to the model's own core. **Confirmed live:** the handshake and a validate-only start on another
+  model, and a run over two models (a process and an export on one, an import failing on its missing stored file on the other,
+  downloads prefixed with the model name, the failure not stopping the run). Also confirmed live (`runnewmodelact.har`): a model never opened or captured, on a third core
+  (the tab's core answered the `redirectUrl`, the handshake, a validate-only and a real start, about ten progress polls and
+  the export download all went to the new core, with no page for it). A single run over three models (the tab's, a second, and the never-opened one on the third core)
+  completed: three actions done, the import's expected failure did not stop it, and a 17.6 MB export downloaded in 13s.
+  **Not confirmed live:** the re-handshake after Anaplan drops a session, and Stop. Offline
+  tests (a simulated second core with redirects, sessions that exist only after a handshake, expiry mid-run, a
+  refused handshake, a model missing from the list) all pass. Stop ends the run between
   actions or while one is polled (that action may still finish: no cancel call has been captured). **Confirmed live:**
   the validate-only start for a process, and a real run end to end - an import started, polled and reported failed with
   Anaplan's own "uploaded file is no longer available" on its row (the stored file was gone, as in the HAR).

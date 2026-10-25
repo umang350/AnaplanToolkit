@@ -55,7 +55,7 @@
     /* `upload`, like the Structure views that change the model: a CSV of actions
        is checked first (nothing runs), then the report asks before running them. */
     { page: 'run_actions', tab: 'Run', group: 'Actions', sub: 'Run', title: 'Run Actions', upload: true,
-      desc: 'Run processes and other actions one after another, from a CSV of type, name and ID. Each is validated against the model first, and nothing runs until you confirm. An import runs from the file stored in the model.',
+      desc: 'Run processes and other actions one after another, from a CSV of type, name and ID - on the model in this tab and, with a Model ID column, on other models without opening them. Each is validated first, and nothing runs until you confirm. An import runs from the file stored in the model.',
       preview: ['All', 'Ready', 'Skipped'],
       heading: 'Run Actions', search: 'Search by action, ID or status...',
       cols: ['Action', 'Type', 'Status'] },
@@ -924,7 +924,10 @@
      Rows run in the order given. */
   var RA_COLS = { name: ['name', 'action', 'actionname', 'process'],
                   id: ['id', 'actionid', 'entitylongid', 'processid', 'identifier'],
-                  type: ['type', 'kind', 'actiontype'] };
+                  type: ['type', 'kind', 'actiontype'],
+                  // Optional: another model to run the action on (no tab needed), and its workspace if it is not in your model list.
+                  modelId: ['modelid', 'modelguid', 'modelidentifier'],
+                  workspaceId: ['workspaceid', 'workspaceguid'] };
   function raRead(name, text) {
     var u = ups.run_actions, all = csvParse(text),
         head = (all[0] || []).map(function (h) { return h.toLowerCase().replace(/[^a-z0-9]/g, ''); }), at = {};
@@ -943,13 +946,15 @@
     for (var i = 1; i < all.length; i++) {
       var r = all[i], c = function (k) { return at[k] >= 0 ? String(r[at[k]] || '').trim() : ''; };
       if (!c('id') && !c('name')) continue;
-      rows.push({ line: rows.length + 1, name: c('name'), id: c('id'), type: c('type') });
+      rows.push({ line: rows.length + 1, name: c('name'), id: c('id'), type: c('type'), modelId: c('modelId'), workspaceId: c('workspaceId') });
     }
     if (!rows.length) { u.info = name + ': no actions listed under the header row.'; return; }
     if (rows.length > DL_MAX) { u.info = name + ': ' + rows.length + ' rows - at most ' + DL_MAX + ' at a time.'; return; }
     u.rows = rows;
     u.error = false;
-    u.info = name + ': ' + rows.length + (rows.length === 1 ? ' action' : ' actions');
+    var models = new Set(rows.map(function (r) { return r.modelId.toUpperCase(); }).filter(Boolean)).size;
+    u.info = name + ': ' + rows.length + (rows.length === 1 ? ' action' : ' actions') +
+      (models ? ' on ' + models + (models === 1 ? ' other model' : ' other models') + ' (blank Model ID = the model in this tab)' : '');
   }
 
   function cmRead(name, text, page) {

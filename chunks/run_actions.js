@@ -10,7 +10,8 @@ import { renderPage, el, textCell, idCell, csvText, runPause, runWait, runStep, 
 
      mode      "check" (nothing has run) or "delete" (a run - the same word the Delete views
                use, since the panel's upload flow is shared)
-     rows[]    one per CSV row: line, type, name, id, status (ready / skip / file / queued /
+     rows[]    one per CSV row: line, type, name, id, modelId / model (name) / workspaceId, multi (the run spans
+               several models), status (ready / skip / file / queued /
                running / done / failed / notrun), why (Anaplan's reason, or what the action
                reported), ms (how long it took), taskId
      stopOnFail  a failed action ends the run; off by default - the run carries on and only Stop ends it
@@ -50,7 +51,7 @@ function dur(ms) {
 }
 
 function csvRow(r) {
-  return { Row: r.line, Action: r.name, Id: bare(r.id), Type: kindOf(r), Status: (STATUS[r.status] || [r.status])[0],
+  return { Row: r.line, Model: r.model || '', ModelId: r.modelId || '', Action: r.name, Id: bare(r.id), Type: kindOf(r), Status: (STATUS[r.status] || [r.status])[0],
            Reason: r.why, Seconds: r.ms == null ? '' : Math.round(r.ms / 100) / 10 };
 }
 
@@ -58,6 +59,15 @@ function callsText(d) {
   var c = d.calls;
   if (!c || !c.sent) return '';
   return ' · ' + plural(c.sent, 'call', 'calls') + ' to Anaplan (' + (c.refused || 0).toLocaleString() + ' refused)';
+}
+
+/* Where the run goes, when it isn't just the tab's model: "on 3 models", or " in <name>" for the one other model. */
+function modelsText(d) {
+  if (!d.multi) return '';
+  var rows = rowsOf(d), n = new Set(rows.map(function (r) { return r.modelId; }).filter(Boolean)).size;
+  if (n > 1) return ' on ' + n + ' models';
+  var m = rows.map(function (r) { return r.model; }).filter(Boolean)[0];
+  return m ? ' in ' + m : '';
 }
 
 function timeText(d) {
@@ -115,7 +125,7 @@ function confirmBox(d) {
         go = button('Run now', 'ia-dl-btn ia-danger'), cancel = button('Cancel'),
         lab = el('label', 'ia-dli-try'), cont = el('input');
     form.appendChild(el('p', 'text-sm text-foreground',
-      'Run ' + plural(n, 'action', 'actions') + (d.model ? ' in ' + d.model : '') + ', one after another, in the order listed? ' +
+      'Run ' + plural(n, 'action', 'actions') + (d.multi ? modelsText(d) : d.model ? ' in ' + d.model : '') + ', one after another, in the order listed? ' +
       'Processes, imports and exports change data and can\'t be undone from here. Leave the Anaplan page alone while it runs.'));
     cont.type = 'checkbox';
     cont.checked = false;   // a failed action does not stop the run unless asked; the Stop button always can
@@ -143,7 +153,7 @@ function confirmBox(d) {
       starting.setAttribute('role', 'status');
       form.appendChild(starting);
       window.parent.postMessage({ type: 'ia_dl_delete', modelId: d.modelId, stopOnFail: cont.checked, download: dl.checked,
-        rows: ready.map(function (r) { return { line: r.line, name: r.name, id: r.id, type: r.type }; }) }, location.origin);
+        rows: ready.map(function (r) { return { line: r.line, name: r.name, id: r.id, type: r.type, modelId: r.modelId, workspaceId: r.workspaceId }; }) }, location.origin);
     });
     cancel.addEventListener('click', function () { form.replaceWith(open); });
     var bar = el('div', 'ia-dl');
@@ -182,12 +192,12 @@ function top(d) {
       bar.appendChild(logBtn2);
     }
     var failed = count(d, ['failed']), notrun = count(d, ['notrun']);
-    line = plural(count(d, ['done']), 'action', 'actions') + ' done' + (failed ? ' · ' + failed.toLocaleString() + ' failed' : '') +
+    line = plural(count(d, ['done']), 'action', 'actions') + ' done' + modelsText(d) + (failed ? ' · ' + failed.toLocaleString() + ' failed' : '') +
       (notrun ? ' · ' + notrun.toLocaleString() + ' not run' : '') + callsText(d) + timeText(d);
   } else {
     bar.appendChild(pickButton());
     line = count(d, ['ready']).toLocaleString() + ' of ' + plural(all.length, 'row', 'rows') + ' ready to run' +
-      (d.model ? ' in ' + d.model : '') + (skip ? ' · ' + skip.toLocaleString() + ' skipped (see Skipped)' : '');
+      (d.multi ? modelsText(d) : d.model ? ' in ' + d.model : '') + (skip ? ' · ' + skip.toLocaleString() + ' skipped (see Skipped)' : '');
   }
   bar.appendChild(el('span', 'text-xs text-muted-foreground', line));
   box.appendChild(bar);
@@ -217,7 +227,7 @@ function tab(label, heading, rows, note) {
     rows: rows,
     max: 500,
     placeholder: 'Search by action, ID or status...',
-    cols: 'grid-cols-12',
+    cols: 'grid-cols-12 ia-run-cols',
     headers: [{ label: 'Row', cls: 'ia-span-1', sort: function (r) { return r.line; } },
               { label: 'Action', cls: 'ia-span-4', sort: function (r) { return r.name; } },
               { label: 'Type', cls: 'col-span-2', sort: function (r) { return kindOf(r); } },
@@ -228,10 +238,11 @@ function tab(label, heading, rows, note) {
     cells: function (r) {
       var m = r.id ? idCell(r.name || bare(r.id), bare(r.id)) : textCell(r.name || '–', 'text-sm text-foreground');
       m.classList.add('ia-span-4');
+      if (r.multi && r.model) m.appendChild(el('p', 'text-xs text-muted-foreground', r.model));
       return [
         textCell(String(r.line), 'ia-span-1 text-xs text-muted-foreground'),
         m,
-        textCell(kindOf(r), 'col-span-2 text-sm text-foreground'),
+        textCell(kindOf(r), 'col-span-2 min-w-0 text-sm text-foreground'),
         statusCell(r)
       ];
     },

@@ -22,7 +22,7 @@
    Tailwind CSS has no col-span-4+ to give Name the room it needs, and IDs
    need a fixed width so the header row and every data row line up. */
 .ia-acts-2 { grid-template-columns: minmax(0, 1fr) 9.5rem; column-gap: .5rem; }
-.ia-acts-3 { grid-template-columns: minmax(0, 1fr) 9.5rem 9.5rem; column-gap: .5rem; }
+.ia-acts-3 { grid-template-columns: minmax(8rem, 1fr) minmax(6.5rem, 9.5rem) minmax(6.5rem, 9.5rem); column-gap: .5rem; }   /* Imports: the name keeps a floor on a narrow panel (a track with a fixed maximum grows before a flexible one) */
 .ia-acts-all { grid-template-columns: 4rem minmax(0, 1fr) 11rem; column-gap: .5rem; }
 .ia-act-name { overflow-wrap: anywhere; }
 .ia-act-id { display: flex; align-items: center; gap: .25rem; min-height: 1.75rem; }
@@ -231,6 +231,8 @@
 
 /* Spans the compiled Tailwind CSS lacks (it has only col-span-2 / -3). */
 .ia-span-1 { grid-column: span 1 / span 1; }
+/* Run Actions' rows are the compiled 12-column grid, which has no gap: a long name ran into the Type column. */
+.ia-run-cols { column-gap: .5rem; }
 .ia-span-5 { grid-column: span 5 / span 5; }
 .ia-span-6 { grid-column: span 6 / span 6; }
 
