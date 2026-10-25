@@ -94,7 +94,21 @@
                             <p class="dl-hint" data-for="delete_modules" hidden>Columns: <b>Module</b> and
                                 <b>Module ID</b> (with a header row). The Modules report's Export to CSV works
                                 as it is - keep only the modules to delete.</p>
-                            <p class="dl-hint">Nothing is deleted yet - rows are checked first, then you confirm.</p>
+                            <p class="dl-hint" data-for="create_modules" hidden>Columns: <b>Module</b>, <b>Line Item</b> and
+                                <b>Applies To</b> (with a header row). Applies To names lists and subsets, separated by
+                                <b>;</b>, and is read from a module's first row. An optional <b>Before</b> names the
+                                module a new one goes before (default: the first module). A line item can have a
+                                <b>Formula</b> and a <b>Format</b> (Number or Boolean). A module that already
+                                exists only gets the line items.</p>
+                            <p class="dl-hint" data-for="create_line_items" hidden>Columns: <b>Module</b> and <b>Line Item</b>
+                                (with a header row), and optionally <b>Formula</b> and <b>Format</b> (Number or
+                                Boolean). The modules must already exist - Create Modules makes new ones. New line
+                                items go after the module's last one.</p>
+                            <p class="dl-hint" data-for="run_actions" hidden>Columns: <b>Name</b> and <b>Id</b> (with a header row), and
+                                optionally <b>Type</b>. The Actions report's All export works as it is - keep only the
+                                rows to run, in the order to run them. An import runs from the file stored in the model and
+                                Anaplan fails it if there is none. It runs on the model open in this tab.</p>
+                            <p class="dl-hint">Nothing is changed yet - rows are checked first, then you confirm.</p>
                             <button id="dl-back" type="button" hidden>Back to the report</button>
                         </div>
                         <p id="empty-note"></p>

@@ -45,8 +45,11 @@ var REPORTS = [
   { page: 'lists', name: 'Lists', keys: [['lists', 'lists'], ['properties', 'properties']] },
   // upload: runs on a CSV chosen in the panel (and can delete), so it is not
   // counted in "loaded" or run by Get all data either.
+  { page: 'create_modules', name: 'Create Modules', unit: 'rows', key: 'rows', upload: true },
+  { page: 'create_line_items', name: 'Create Line Items', unit: 'rows', key: 'rows', upload: true },
   { page: 'delete_line_items', name: 'Delete Line Items', unit: 'rows', key: 'rows', upload: true },
   { page: 'delete_modules', name: 'Delete Modules', unit: 'rows', key: 'rows', upload: true },
+  { page: 'run_actions', name: 'Run Actions', unit: 'rows', key: 'rows', upload: true },
   { page: 'impact', name: 'Impact', unit: 'line items', key: 'items' },
   { page: 'lint', name: 'Lint', unit: 'findings', key: 'findings' },
   { page: 'formula_search', name: 'Formulas', unit: 'formulas', key: 'formulas' },

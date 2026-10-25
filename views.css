@@ -198,6 +198,7 @@
 
 /* --- Workspace view (workspace.html / chunks/workspace.js) ----------------- */
 
+.ia-span-3 { grid-column: span 3 / span 3; }
 .ia-span-4 { grid-column: span 4 / span 4; }
 /* State names ("Production maintenance") wrap at spaces, never mid-word. */
 [class*="grid-cols-"] .ia-words p { overflow-wrap: normal; }

@@ -461,6 +461,81 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   module before the modules it uses (ties: last module first); a refusal (serial 0 or unchanged, as in Delete
   Line Items) keeps the module, which is retried while others are deleted (`seen`) - nothing smaller is
   deleted in its place. A final read decides each row. The confirmation wants the number of modules typed.
+- **Create Line Items** (`create_line_items`, `create_line_items.html`) is the same engine and view file as Create
+  Modules (`IA_gcm` with `itemsOnly`, `chunks/create_modules.js` choosing its page from the HTML file name): it only
+  adds line items (with Formula / Format) to modules that exist and skips rows naming a module that doesn't.
+  The Structure tabs run Modules, Line Items, Lists, Create Modules, Create Items, Delete Items, Delete Modules.
+- **Run Actions** (`run_actions`, Actions group beside Process Steps, `IA_gra` in `inner.js`, `chunks/run_actions.js`) is
+  the third view that **changes the model**: processes and other actions (an import runs from the file stored in the model), run one after
+  another from a CSV of Name, Id (and Type) - the Actions report's All export works as is. It reuses the Delete views'
+  panel flow (upload tab, `raRead` / `RA_COLS`, `ia_dl_pick` / `ia_dl_delete` / `ia_dl_pause`, internal mode word
+  `delete` = run, `LIVE` / `ia_live` / `dlKept`, pause, run log) and adds `stopOnFail` (default **off**: a failed action never stops the run, only Stop does; the
+  confirmation's box turns stopping at the first failure on) and `type` to the worker's row sanitizer. **Read off `Run1.har`** (Anaplan's own Actions
+  page): start = one `/jsonrpc` `VIEW_REQUEST_SET` with `systemActions: [{actionId: "START_PROCESS", params: {modelId,
+  validateOnly, processId: "_118...._"}}]` - Anaplan sends it with `validateOnly: true` and then `false` - and
+  `result.systemActionResults[0].taskId` in the reply; then `{requestType: "PROGRESS", workspaceId, modelId, taskId}`
+  polled (1s here) until `taskState: "COMPLETE"`, with `taskResult.successful` and `summaryDetails[].localMessageText`
+  (`IA_raMsgs`) as the outcome. Ids start with their kind (112 import, 116 export, 118 process); a process goes by
+  `processId`, any other action as an inline one-node `processDefinitionJson` (the IMPORT node is the HAR's; **EXPORT and
+  ACTION nodes were not seen** - Check's validate-only call decides, and a row Anaplan refuses is skipped, never run).
+  A validate-only reply with a `prompt_for_file…` key only says the import has a file source - Anaplan's own page still runs it from the file stored in the model (the HAR's imports did and then failed with "The uploaded file is no longer available") - so the row stays Ready with a note and Anaplan decides when it runs (an earlier build marked it `File` and skipped it, wrongly). **Check
+  validates every row (nothing starts); the run validates each action again just before starting it.**
+  **A start call needs what the page's own call carries** (confirmed live, validate-only, with a console test): the
+  `txid` chain, the model's serial, `activeViewIndices`, `Request-Serial-Number` (`<session>-<n>`) and the
+  `X-Client-Session-Id` / `X-Auth-Token-Refresh` / trace headers - a bare body like the delete calls' was refused
+  ("did not recognise the request as originating from a page it had recently delivered") even with the right
+  session. `main.js` keeps them from the page's latest `VIEW_REQUEST_SET` (`IA_sess.x`, `IA_want: "session"` answers
+  `IA_sessx`; XHR `setRequestHeader` is wrapped to read the headers, never to change them); the engine's counter starts
+  500 above the page's. When the page moves the txid on mid-run the refused call is sent again once with the page's
+  newest (`IA_raRpc`). **Anaplan replays its first answer to a repeated `Request-Serial-Number`** (seen live: a second Check on an idle page reused the first Check's numbers and every row came back with the first Check's answers, though the actions differed), so the counter `IA_raN` lives across runs in the content script and only moves up (a reloaded page has a new session id, hence fresh numbers). `IA_dlScan` now also keeps `systemActionResults` (a few bytes). **A session belongs to one
+  model's page** (confirmed: the same session on a second model, another core, was refused), so this runs on the model
+  in the tab; running several models means opening each one's page in turn - **not built**. Stop ends the run between
+  actions or while one is polled (that action may still finish: no cancel call has been captured). **Confirmed live:**
+  the validate-only start for a process, and a real run end to end - an import started, polled and reported failed with
+  Anaplan's own "uploaded file is no longer available" on its row (the stored file was gone, as in the HAR).
+  Also confirmed live: a process (118…) and a standalone export (116…, the inline EXPORT node) each validated, started and
+  completed in about 2s. An export only writes its file into the model; Anaplan's page downloads it with a separate call
+  (`runactwithdown.har`): same-origin `POST <core>/servlet?taskType=export`, multipart `taskType=export`,
+  `exportEntityLongId=<116…>`, `context={workspaceId,modelId,modelName}`, `exportLayout=SAVED_EXPORT`, answered with the
+  file (`Content-Disposition: attachment; filename=…`). The confirmation's **download** box (default on, `msg.download`)
+  does this after each finished action for every export the task lists (`taskResult.compositeDetails`, `importType`
+  `EXPORT_DATA`, `importEntityLongId`; a standalone export falls back to its own id - `IA_raExports` / `IA_raGet`) and
+  hands the file to the browser as a link click from the Anaplan page (no permission; the browser may ask to allow
+  several downloads). A failed download is noted on the row and does not fail the action. **Confirmed live** (the
+  `.xlsx` files arrived).
+  **Not confirmed live:** the progress poll on a long task, other standalone actions (117…), and the engine's stop behaviour; the engine was tested offline
+  against a simulated server (`ra_test.js`-style: check, file, failure, stop-on-fail, continue, txid moved by the page).
+- **Create Modules** (`create_modules`, Structure group, `IA_gcm` in `inner.js`, `chunks/create_modules.js`) is the
+  second view that **changes the model** and reuses Delete Line Items' machinery (upload tab, `ia_dl_*` messages,
+  `LIVE` / `ia_live` / `dlKept` / `DL_STALE`, pause, run log, session fields; the worker's `created` counter plays
+  the part of `deleted`). CSV columns: Module, Line Item (optional), Applies To (optional, lists and subsets
+  separated by `;`, read from a module's first row) and Before (optional existing module a new one goes before,
+  default the model's first module). Check matches names against `IA_cmRead` (a lean `IA_dlRpc` read plus the list
+  and subset label pages) and changes nothing; the run sends one module with its line items per request, in CSV
+  order. **The payload was read off a live HAR** (`AddModule.har`, four modules added then deleted): one
+  `modelChangeXml` of `<ModelDefinition><DefineModule name position="Before" relativeTo versionSelection="NOT_APPLICABLE"
+  viewDefinition="<JSON>"><AppliesTo><Hierarchy name/>...</AppliesTo></DefineModule><DefineLineItem name module/>...`;
+  the viewDefinition is the default view (line items down, Time across and every list/subset on the page axis, or the
+  empty axis across for a module with no dimensions), whose page axes use the lists' and subsets' numeric ids
+  (`_101...`, `_109...`) from `hierarchiesLabelPage` / `hierarchySubsetsLabelPage`. `IA_cmXml` was checked
+  byte-for-byte against three of those captures. Applied = no `errorInfo` and a new serial; a refusal changes nothing.
+  **Second HAR (`Added line items.har`):** a line item in an existing module is `<DefineLineItem name module
+  position="After|Before" relativeTo="<line item>"/>` with no DefineModule (three items After one, listed last first so
+  they end up in order); the engine anchors After the module's last line item and leaves the position out for a module
+  with none (not captured). A line item's properties are `cellChanges` in `submissions[0]` (one per request here):
+  `{modelId, asText:true, noCurrentValue:false, currentText, currentDisplayText, entityLongIds:[moduleId, lineItemId,
+  propertyId], newText}` - `4000000009` formula, `4000000212` format (JSON; Boolean is `{"dataType":"BOOLEAN"}`, the
+  default for a new item is the Number JSON in `IA_gcm`), `4000000203` summary and `4000000353` time scale (seen, not
+  built). The CSV's optional **Formula** and **Format** (Number or Boolean) columns use the first two, after all
+  structure exists (ids re-read from the model); a failed one leaves the row `partial` ("Created - check").
+  **Confirmed live** (Unicorn Candy Company, two runs, every request applied): a new module with a list (Users), an
+  empty module, a module of plain line items, a Boolean format and a formula, all without the `viewIndex` the dialog
+  added to its format edit; and two line items added After the last line item of an existing module that had
+  line items.
+  **Not confirmed live:** adding to an existing module that has no line items (position left out), several line
+  items added to one existing module being kept in CSV order, subsets in Applies To, Before naming another module, a time scale or version setting
+  (omitted), other formats, summary method. A module name with an apostrophe is refused (its escaping in the view JSON
+  is unknown). The final read downgrades anything not found in the model.
 - `summary` (`chunks/summary.js`) is the twenty-first view and the odd one out: no CSV or search, gathered
   automatically when the panel opens (it makes no Anaplan calls), and it asks the worker for
   `ia_overview` to show which reports are cached. Its `REPORTS` list mirrors `VIEWS` in

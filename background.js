@@ -6,7 +6,7 @@ var background=(function(){
 function wxt(m){return m==null||typeof m==`function`?{main:m}:m}
 var api=globalThis.browser?.runtime?.id?globalThis.browser:globalThis.chrome;
 
-var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`,`page_line_items`,`delete_line_items`,`delete_modules`,`impact`,`lint`,`formula_search`],
+var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter_items`,`sv_views`,`sv_line_items`,`sv_screens`,`sv_actions`,`workspace`,`workspace_all`,`process_steps`,`modules`,`line_items`,`lists`,`revisions`,`lock_monitor`,`page_line_items`,`delete_line_items`,`delete_modules`,`create_modules`,`create_line_items`,`run_actions`,`impact`,`lint`,`formula_search`],
     MAX_AGE=216e5,        // 6h - cached results older than this are re-gathered automatically
     RETRY_TICKS=200,      // ~2s of 10ms retries while the side panel registers its listener
     FIRST_SIGN=15e3,      // a triggered run has this long to show its first sign of life
@@ -24,7 +24,7 @@ var PAGES=[`summary`,`actions`,`action_usages`,`pages`,`filter_items`,`sv_filter
     // so their result after an ia_cancel is the report, not a late leftover.
     // Delete Line Items too: Stop ends a delete between batches, and what it
     // did delete must still be reported.
-    LIVE=new Set([`lock_monitor`,`delete_line_items`,`delete_modules`]),
+    LIVE=new Set([`lock_monitor`,`delete_line_items`,`delete_modules`,`create_modules`,`create_line_items`,`run_actions`]),
     // Reports a delete makes out of date, dropped from the cache once it has
     // deleted anything (they are read off the model's structure).
     DL_STALE=[`line_items`,`modules`,`page_line_items`,`filter_items`,`impact`,`lint`,`formula_search`];
@@ -729,9 +729,9 @@ async function handle(msg,sender){
     let trigger={type:`trigger_${page}`,force:msg.type===`ia_refresh`},gone;
     // Page Line Items scans only the pages picked in the panel.
     if(page===`page_line_items`)trigger.pages=(Array.isArray(msg.pages)?msg.pages:[]).slice(0,1e4).map(String),trigger.sv=!!msg.sv;
-    // Delete Line Items: the CSV's rows, and whether this run checks them or deletes them.
-    if(page===`delete_line_items`||page===`delete_modules`)trigger.mode=msg.mode===`delete`?`delete`:`check`,trigger.modelId=String(msg.modelId??``),trigger.tryInUse=!!msg.tryInUse,trigger.autosave=+msg.autosave||0,trigger.wholeModules=!!msg.wholeModules,trigger.rows=(Array.isArray(msg.rows)?msg.rows:[]).slice(0,2e4)
-      .map(r=>({line:+r?.line||0,module:String(r?.module??``).slice(0,500),name:String(r?.name??``).slice(0,500),id:String(r?.id??``).slice(0,40),moduleId:String(r?.moduleId??``).slice(0,40)}));
+    // Delete Line Items / Create Modules: the CSV's rows, and whether this run checks them or deletes them.
+    /* Run Actions rides on the same message (mode `delete` = run it), with Type for its rows and whether a failed action stops the run. */if(page===`delete_line_items`||page===`delete_modules`||page===`create_modules`||page===`create_line_items`||page===`run_actions`)trigger.mode=msg.mode===`delete`?`delete`:`check`,trigger.stopOnFail=msg.stopOnFail===!0,trigger.download=!!msg.download,trigger.modelId=String(msg.modelId??``),trigger.tryInUse=!!msg.tryInUse,trigger.autosave=+msg.autosave||0,trigger.wholeModules=!!msg.wholeModules,trigger.rows=(Array.isArray(msg.rows)?msg.rows:[]).slice(0,2e4)
+      .map(r=>({line:+r?.line||0,module:String(r?.module??``).slice(0,500),name:String(r?.name??``).slice(0,500),type:String(r?.type??``).slice(0,40),id:String(r?.id??``).slice(0,40),moduleId:String(r?.moduleId??``).slice(0,40),appliesTo:String(r?.appliesTo??``).slice(0,2000),before:String(r?.before??``).slice(0,500),formula:String(r?.formula??``).slice(0,8000),format:String(r?.format??``).slice(0,40)}));
     gone=await deliver(tab,trigger);
     // A tab opened moments ago has no report engine until its model frame has
     // loaded. Give it a few seconds before calling the script missing - the
@@ -806,14 +806,14 @@ async function handle(msg,sender){
     // not the model it shows - it would mark the current model's view as loaded.
     setBusy(tabId,page,!1);
     // A delete changed the model: reports read off its structure no longer hold.
-    if((page===`delete_line_items`||page===`delete_modules`)&&msg.data?.deleted>0)for(let p of DL_STALE)cacheDrop(p,msg.key),push({type:`ia_state`,page:p,ts:0,key:msg.key||``,to:tabId},p);
+    if((page===`delete_line_items`||page===`delete_modules`||page===`create_modules`||page===`create_line_items`)&&(msg.data?.deleted>0||msg.data?.created>0))for(let p of DL_STALE)cacheDrop(p,msg.key),push({type:`ia_state`,page:p,ts:0,key:msg.key||``,to:tabId},p);
     return void push({type:`ia_state`,page,ts:hit.ts,key:msg.key||``,to:tabId},page)
   }
 
   // Delete Line Items' running state, after each request it makes: shown on
   // the report straight away rather than only when the run ends. Dropped once
   // the run is no longer busy (finished or stopped) - its ia_result follows.
-  if(msg.type===`ia_live`&&(msg.page===`delete_line_items`||msg.page===`delete_modules`)){
+  if(msg.type===`ia_live`&&(msg.page===`delete_line_items`||msg.page===`delete_modules`||msg.page===`create_modules`||msg.page===`create_line_items`||msg.page===`run_actions`)){
     let r=rid(tabId,msg.page);
     if(stopped.has(r)||!busy.has(r))return;
     learnKey(tabId,msg.key||``);

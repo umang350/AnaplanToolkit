@@ -52,6 +52,13 @@
       preview: ['Steps', 'Not in a process'],
       heading: 'Process Steps', search: 'Search by process, action, source or target...',
       cols: ['Process', '#', 'Action', 'Source', 'Target'] },
+    /* `upload`, like the Structure views that change the model: a CSV of actions
+       is checked first (nothing runs), then the report asks before running them. */
+    { page: 'run_actions', tab: 'Run', group: 'Actions', sub: 'Run', title: 'Run Actions', upload: true,
+      desc: 'Run processes and other actions one after another, from a CSV of type, name and ID. Each is validated against the model first, and nothing runs until you confirm. An import runs from the file stored in the model.',
+      preview: ['All', 'Ready', 'Skipped'],
+      heading: 'Run Actions', search: 'Search by action, ID or status...',
+      cols: ['Action', 'Type', 'Status'] },
     { page: 'pages', tab: 'Modules', group: 'Pages', sub: 'Modules', title: 'Linked Pages',
       desc: 'Which Apps and Pages use your modules, to track lineage from backend to frontend.',
       heading: 'Module Usage in Pages', search: 'Search Modules...', cols: ['Module', 'Used in Pages'] },
@@ -108,6 +115,16 @@
       preview: ['Lists', 'Properties'],
       heading: 'Lists', search: 'Search by list, ID or parent...',
       cols: ['List', 'Parent', 'Items', 'Properties'] },
+    { page: 'create_modules', tab: 'Create Modules', group: 'Structure', sub: 'Create Modules', title: 'Create Modules', upload: true,
+      desc: 'Create modules - with the lists and subsets they apply to - and line items, listed in a CSV of module, line item and applies to. Each row is checked against the model first, and nothing is created until you confirm.',
+      preview: ['All', 'Ready', 'Skipped'],
+      heading: 'Create Modules', search: 'Search by module, line item or status...',
+      cols: ['Module', 'Line Item', 'Status'] },
+    { page: 'create_line_items', tab: 'Create Items', group: 'Structure', sub: 'Create Items', title: 'Create Line Items', upload: true,
+      desc: 'Add line items to modules that already exist, listed in a CSV of module, line item, and optionally formula and format. Each row is checked against the model first, and nothing is created until you confirm.',
+      preview: ['All', 'Ready', 'Skipped'],
+      heading: 'Create Line Items', search: 'Search by module, line item or status...',
+      cols: ['Module', 'Line Item', 'Status'] },
     /* `upload`: the one view that changes the model. It starts from a CSV
        chosen on its start screen and checks it (nothing deleted); the report
        then asks before deleting (ia_dl_delete below). Like `pick`, it is left
@@ -227,7 +244,8 @@
   /* Views sharing a `group` get one button in the top bar plus a second row
      of sub-tabs (Actions: IDs | Usages | Steps; Pages: Modules | Filters;
      Saved View: Filters | List | Items | Screens | Actions; Structure:
-     Modules | Line Items | Lists). Each is still
+     Modules | Line Items | Lists | Create Modules | Create Items | Delete Items | Delete Modules - the
+     views that change the model come last, deletes at the very end). Each is still
      its own page, gather and iframe - only the navigation is merged. `last`
      remembers which member the group button returns to. */
   var groups = {};
@@ -535,7 +553,7 @@
     if (byPage[page].upload) {
       msg.mode = extra ? 'delete' : 'check';
       msg.rows = extra ? extra.rows : ups[page].rows || [];
-      if (extra) { msg.modelId = extra.modelId; msg.tryInUse = extra.tryInUse; msg.autosave = extra.autosave; msg.wholeModules = extra.wholeModules; }
+      if (extra) { msg.modelId = extra.modelId; msg.tryInUse = extra.tryInUse; msg.autosave = extra.autosave; msg.wholeModules = extra.wholeModules; msg.stopOnFail = extra.stopOnFail; msg.download = extra.download; }
       st.picking = false;
     }
     // Lock Monitor: how often, how long, and whether to notify.
@@ -795,9 +813,25 @@
      own CSV. */
   var DM_COLS = { module: ['module', 'modulename', 'name'],
                   moduleId: ['moduleid', 'modulelongid', 'id', 'entitylongid'] };
-  var ups = { delete_line_items: dl, delete_modules: { rows: null, file: '', info: '', error: false } },
+  /* Create Modules' upload: Module, Line Item (optional) and Applies To (optional,
+     lists and subsets separated by ;, taken from a module's first row), plus an
+     optional Before (an existing module to place a new one before), Formula and
+     Format (Number or Boolean) for a line item. */
+  var CM_COLS = { module: ['module', 'modulename'],
+                  name: ['lineitem', 'lineitemname', 'lineitems'],
+                  appliesTo: ['appliesto', 'dimensions', 'lists'],
+                  before: ['before', 'placebefore', 'position'],
+                  formula: ['formula'],
+                  format: ['format', 'dataformat'] };
+  var ups = { delete_line_items: dl, delete_modules: { rows: null, file: '', info: '', error: false },
+              create_modules: { rows: null, file: '', info: '', error: false },
+              create_line_items: { rows: null, file: '', info: '', error: false },
+              run_actions: { rows: null, file: '', info: '', error: false } },
       UPLOAD = { delete_line_items: { one: 'line item', many: 'line items' },
-                 delete_modules: { one: 'module', many: 'modules' } };
+                 delete_modules: { one: 'module', many: 'modules' },
+                 create_modules: { one: 'row', many: 'rows' },
+                 create_line_items: { one: 'row', many: 'rows' },
+                 run_actions: { one: 'action', many: 'actions' } };
 
   function csvParse(text) {
     text = text.replace(/^\ufeff/, '');
@@ -886,13 +920,73 @@
       (at.moduleId < 0 ? ' (no Module ID column - matched by name)' : '');
   }
 
+  /* Run Actions' upload: Name and Id (and Type) - the Actions report's All export (Type, Name, Id, SourceID) works unchanged.
+     Rows run in the order given. */
+  var RA_COLS = { name: ['name', 'action', 'actionname', 'process'],
+                  id: ['id', 'actionid', 'entitylongid', 'processid', 'identifier'],
+                  type: ['type', 'kind', 'actiontype'] };
+  function raRead(name, text) {
+    var u = ups.run_actions, all = csvParse(text),
+        head = (all[0] || []).map(function (h) { return h.toLowerCase().replace(/[^a-z0-9]/g, ''); }), at = {};
+    Object.keys(RA_COLS).forEach(function (k) {
+      at[k] = -1;
+      RA_COLS[k].some(function (n) { at[k] = head.indexOf(n); return at[k] >= 0; });
+    });
+    u.file = name;
+    u.rows = null;
+    u.error = true;
+    if (at.id < 0) {
+      u.info = name + ': no Id column in the first row. The CSV needs a header row with Name and Id (the Actions report\'s Export to CSV has them).';
+      return;
+    }
+    var rows = [];
+    for (var i = 1; i < all.length; i++) {
+      var r = all[i], c = function (k) { return at[k] >= 0 ? String(r[at[k]] || '').trim() : ''; };
+      if (!c('id') && !c('name')) continue;
+      rows.push({ line: rows.length + 1, name: c('name'), id: c('id'), type: c('type') });
+    }
+    if (!rows.length) { u.info = name + ': no actions listed under the header row.'; return; }
+    if (rows.length > DL_MAX) { u.info = name + ': ' + rows.length + ' rows - at most ' + DL_MAX + ' at a time.'; return; }
+    u.rows = rows;
+    u.error = false;
+    u.info = name + ': ' + rows.length + (rows.length === 1 ? ' action' : ' actions');
+  }
+
+  function cmRead(name, text, page) {
+    var u = ups[page || 'create_modules'], all = csvParse(text),
+        head = (all[0] || []).map(function (h) { return h.toLowerCase().replace(/[^a-z0-9]/g, ''); }), at = {};
+    Object.keys(CM_COLS).forEach(function (k) {
+      at[k] = -1;
+      CM_COLS[k].some(function (n) { at[k] = head.indexOf(n); return at[k] >= 0; });
+    });
+    u.file = name;
+    u.rows = null;
+    u.error = true;
+    if (at.module < 0 || (page === 'create_line_items' && at.name < 0)) {
+      u.info = name + (page === 'create_line_items' ? ': no Module and Line Item columns' : ': no Module column') + ' in the first row. The CSV needs a header row naming ' + (page === 'create_line_items' ? 'them.' : 'it.');
+      return;
+    }
+    var rows = [];
+    for (var i = 1; i < all.length; i++) {
+      var r = all[i], c = function (k) { return at[k] >= 0 ? String(r[at[k]] || '').trim() : ''; };
+      if (!c('module') && !c('name')) continue;
+      rows.push({ line: rows.length + 1, module: c('module'), name: c('name'), appliesTo: c('appliesTo'), before: c('before'), formula: c('formula'), format: c('format') });
+    }
+    if (!rows.length) { u.info = name + ': no modules listed under the header row.'; return; }
+    if (rows.length > DL_MAX) { u.info = name + ': ' + rows.length + ' rows - at most ' + DL_MAX + ' at a time.'; return; }
+    var mods = new Set(rows.map(function (r) { return r.module.toLowerCase(); })).size;
+    u.rows = rows;
+    u.error = false;
+    u.info = name + ': ' + rows.length + (rows.length === 1 ? ' row' : ' rows') + ' for ' + mods + (mods === 1 ? ' module' : ' modules');
+  }
+
   dlFile.addEventListener('change', function () {
     var f = dlFile.files && dlFile.files[0];
     dlFile.value = '';
     if (!f) return;
     var page = active, u = ups[page];
     if (!u) return;
-    f.text().then(function (t) { (page === 'delete_modules' ? dmRead : dlRead)(f.name, t); render(); },
+    f.text().then(function (t) { (page === 'create_modules' || page === 'create_line_items' ? cmRead : page === 'delete_modules' ? dmRead : page === 'run_actions' ? raRead : dlRead)(f.name, t, page); render(); },
       function () { u.rows = null; u.error = true; u.info = f.name + ' could not be read.'; render(); });
   });
   dlBack.addEventListener('click', function () { state[active].picking = false; render(); });
@@ -963,7 +1057,7 @@
     /* Delete Line Items' report: back to the upload, delete the rows it
        checked, or pause / resume a delete. The rows come from the report itself (it holds the check's
        result); the report engine checks each of them again before deleting. */
-    var dp = ['delete_line_items', 'delete_modules'].filter(function (p) {
+    var dp = ['delete_line_items', 'delete_modules', 'create_modules', 'create_line_items', 'run_actions'].filter(function (p) {
           return state[p].frame && e.source === state[p].frame.contentWindow;
         })[0], ds = dp && state[dp];
     if (dp && e.origin === location.origin && e.data) {
@@ -972,7 +1066,7 @@
       if (e.data.type === 'ia_dl_delete' && !ds.busy && Array.isArray(e.data.rows) && e.data.rows.length &&
           e.data.rows.every(function (r) { return r && typeof r === 'object' && !Array.isArray(r); }))
         start(dp, true, { rows: e.data.rows, modelId: String(e.data.modelId || ''), tryInUse: !!e.data.tryInUse,
-          autosave: +e.data.autosave || 0, wholeModules: !!e.data.wholeModules });
+          autosave: +e.data.autosave || 0, wholeModules: !!e.data.wholeModules, stopOnFail: e.data.stopOnFail === true, download: !!e.data.download });
       // Pause / Resume, only while a delete runs.
       if (e.data.type === 'ia_dl_pause' && ds.busy)
         send({ type: 'ia_dl_pause', paused: !!e.data.paused }).catch(function () {});

@@ -639,8 +639,9 @@ export function runLogRows(log) {
       Time: logTime(e.at),
       'Seconds into run': t0 ? Math.round((e.at - t0) / 100) / 10 : '',
       'Took (s)': e.ms == null ? '' : Math.round(e.ms / 100) / 10,
-      Kind: e.kind === 'line items' ? 'Delete line items' : e.kind === 'module' ? 'Delete module' :
-        e.kind === 'read' ? 'Read model' : e.kind === 'paused' ? 'Paused' : e.kind,
+      Kind: e.kind === 'line items' ? (e.create ? 'Add line items' : 'Delete line items') : e.kind === 'module' ? (e.create ? 'Create module' : 'Delete module') :
+        e.kind === 'read' ? 'Read model' : e.kind === 'paused' ? 'Paused' :
+        e.kind === 'check' ? 'Validate action' : e.kind === 'action' ? 'Start action' : e.kind === 'task' ? 'Action ran' : e.kind === 'download' ? 'Download export file' : e.kind,
       Items: e.items || '',
       Result: e.result || '',
       What: e.what || '',
