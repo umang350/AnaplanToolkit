@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Manifest V3 extension ("Anaplan Toolkit"), shipped for both Chrome and Firefox, that reports on
 the structure of the Anaplan model open in the active tab. Twenty read-only report views, each
-gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on - and two
-views that change the model, Delete Line Items and Delete Modules (see below). Proprietary internal tool — see `LICENSE.txt` and
+gathered on demand, cached, and exportable to CSV, plus a Summary view the panel opens on - and five
+views that change the model, each started from a CSV and asking before it acts: Delete Line Items, Delete Modules, Create Modules,
+Create Items and Run Actions (see below). Proprietary internal tool — see `LICENSE.txt` and
 `NOTICE.txt` (parts derive from valantic's "Improved Anaplan"; confirm redistribution rights before
 shipping anywhere).
 
@@ -147,8 +148,10 @@ modules cost a minute or more however little is requested — small parallel bat
 views flowing past them. View batches get a 5 min cap (`IA_VTMO`) rather than the usual 90s, are
 never retried, and a timeout stops new batches: Anaplan keeps working on an aborted request, so
 aborting or retrying only adds server load and leaves the model busy after the client has given up.
-The one write is Delete Line Items' `/jsonrpc` call, whose `submissions` carry `DeleteLineItem` model
-changes (see below); every other call only reads.
+The writes are the five CSV views' `/jsonrpc` calls (see below): model changes in `submissions` (deletes and creates) and, for
+Run Actions, `START_PROCESS` system actions, with its `PROGRESS` polling and the export download from
+`<core>/servlet?taskType=export`; for a model other than the tab's, Run Actions also talks to that model's own
+`coreNNNN` on anaplan.com (named by a `redirectUrl`, never stored). Every other call only reads.
 Beyond those, only the Lock Monitor calls Anaplan's Integration API (`api.anaplan.com`, model
 status, with the page's cookies). No non-Anaplan server is ever contacted.
 

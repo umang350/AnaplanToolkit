@@ -3,12 +3,19 @@
 Per-release notes for 2.9.0 onward live in `.github/release-notes/`; earlier entries below are
 summarised from the commit history.
 
-## Unreleased
+## 2.12.0
 
-Prepared as 2.12.0 (manifest version bumped, draft notes in `.github/release-drafts/2.12.0.md`, README "What's new"
-written) but not released: to release, `git mv .github/release-drafts/2.12.0.md .github/release-notes/`, rename this heading
-to `## 2.12.0` with a pointer to those notes, update the store blurb, and push.
+See [.github/release-notes/2.12.0.md](.github/release-notes/2.12.0.md).
 
+- **Actions › Run** (new): runs processes, imports, exports and other actions one after another from a CSV of type, name
+  and ID, on the model in the tab or - with a Model ID (and Workspace ID) column - on other models, **without opening
+  them** (the extension makes its own session with each model's server, the way Anaplan's page does on opening one).
+  Each row is validated first (nothing starts) and the run asks for the count to be typed. Anaplan's own result is shown
+  per action, a failed action does not stop the run unless asked (Stop always does), exports can be downloaded as each
+  finishes (the model's name goes in front of the file's when several models run), and the run can be paused and saved
+  as a report and a log. An import runs from the file stored in the model.
+- **Structure › Create Modules** and **Create Items** (new): create modules - with the lists and subsets they apply to -
+  and line items (with a formula and a Number or Boolean format) from a CSV, or add line items to modules that exist.
 - **Analysis** (new group): **Impact** (which formulas use each line item and which it uses, directly and
   downstream, with modules and App pages reached), **Lint** (checks against Anaplan's Planual, each finding showing the rule's own number, plus a Housekeeping tab) and
   **Formulas** (word, phrase and regular-expression search over every formula).

@@ -22,6 +22,12 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ## What's new in 2.12.0
 
+- **Actions › Run** (new): run processes, imports, exports and other actions one after another from a CSV, on the
+  model in the tab or - with a **Model ID** column - on other models **without opening them**. Each row is validated
+  first and nothing runs until you type the count; a failed action doesn't stop the run (Stop does), exports can be
+  downloaded as each finishes, and the run can be paused and saved as a report and a log.
+- **Structure › Create Modules / Create Items** (new): create modules, with the lists and subsets they apply to, and
+  line items (with a formula and a format) from a CSV, or add line items to modules that exist.
 - **Analysis** (new): **Impact** (which formulas use each line item and which it uses, directly and downstream, with
   the modules and App pages reached), **Lint** (checks against Anaplan's Planual, each finding with the rule's own
   number) and **Formulas** (search every formula by words, phrase or regex).
@@ -84,6 +90,7 @@ demand, grouped as in the panel's tab bar:
 | **Actions** | IDs | Internal IDs for processes, imports, exports, actions and files, for API integrations |
 | | Usages | Where actions are used across Apps and Pages |
 | | Steps | The actions each process runs, in order, with each import's source and target, plus the actions no process runs. A *Copy API call* button gives an Integration API `curl` per process and action. |
+| | Run | **Changes the model.** Runs the processes, imports, exports and other actions listed in a CSV (type, name, ID - the IDs report's *All* export works as it is) one after another, in the order given. A **Model ID** column (and a **Workspace ID** if the model isn't in your model list) runs a row on another model, without opening it; a blank Model ID is the model in this tab. Every row is validated against its model first - nothing starts - and nothing runs until you type the count to confirm. Each action's own result from Anaplan is shown on its row; a failed action doesn't stop the run unless you ask it to (Stop always ends it, between actions or while one is running - an action already running may still finish on Anaplan's side). Export files can be downloaded as each action finishes, the run can be paused, and the report and a request-by-request log can be saved. An import runs from the file stored in the model; Anaplan fails it if there is none. |
 | **Pages** | Modules | Which Apps and Pages use each module (backend → frontend lineage) |
 | | Filters | Line items used as page filters or for conditional formatting, each beside its condition, with the formatting colours |
 | | Line Items | Every line item the widgets on the App pages you choose show, and where (rows, columns, page selector, filter, formatting), by page and by line item. You pick the pages first, by app and category, so a big model only scans what you need. |
@@ -94,6 +101,8 @@ demand, grouped as in the panel's tab bar:
 | **Structure** | Modules | Every module with its ID, dimensions, time scale, time range, line item and saved view counts, and the App pages that use it |
 | | Line Items | Every line item with its ID, format, applies-to, time scale and formula. Search matches formulas too. |
 | | Lists | Every list with its ID, parent and item count, and every list property with its format and formula |
+| | Create Modules | **Changes the model.** Creates the modules listed in a CSV (module, line item, applies to, optionally a formula and a Number or Boolean format), with the lists and subsets each applies to. Every row is checked against the model first and nothing is created until you confirm. |
+| | Create Items | **Changes the model.** Adds the line items listed in a CSV (module, line item, optionally formula and format) to modules that already exist, after each module's last line item. Checked first; nothing is created until you confirm. |
 | | Delete Items | **Changes the model.** Deletes the line items listed in a CSV (module, line item, ID, optional module ID) across any number of modules. Every row is checked against the model first - including which line items formulas outside the CSV still use - and nothing is deleted until you type the count to confirm. Deletes go in requests of whole modules (up to 200 line items) in an order worked out from the formulas, and a module whose every line item is listed is deleted as a module - several modules to a request, except those a process uses, which are kept; the run can be paused and resumed, and the report can save itself to Downloads every few minutes. |
 | | Delete Modules | **Changes the model.** Deletes the whole modules listed in a CSV (module, module ID). Each module is checked against the model first - including whether a module that isn't listed still uses it - and nothing is deleted until you type the count to confirm. One module per request, a module before the modules it uses. |
 | **Analysis** | Impact | For every line item, which formulas use it and which it uses, directly and all the way down, with the modules and App pages that reach (and a module-to-module view). Read from formulas only. |
@@ -163,8 +172,8 @@ demand, grouped as in the panel's tab bar:
 - The **Structure** reports read Anaplan's in-page model data, so they make no extra requests;
   Modules also reads the App page list. If Anaplan doesn't hold a field for a given model, that
   column stays empty and the page says so.
-- **Copy API call** only copies a request to the clipboard. The extension never runs a process or
-  action.
+- **Copy API call** only copies a request to the clipboard. The extension runs a process or action only
+  from **Actions › Run**, for the rows you listed, after you confirm.
 
 **SV Filters and SV Items are disabled** (shown greyed out, tagged *Slow*). Both have to open
 every saved view, and Anaplan evaluates each view's filters before it answers. A few views on
@@ -232,11 +241,16 @@ telemetry and no auto-update endpoint. Every call goes to Anaplan and uses your 
 - `/a/springboard-definition-service/...`: App page definitions
 - `/a/springboard-platform-gateway-service/...`: the model list, for Workspace › All
 - `/jsonrpc`: saved views, action definitions, workspace storage and revision tags, and - only
-  when you confirm a delete on Structure › Delete Items or Delete Modules - deleting line items or modules
+  when you confirm a delete on Structure › Delete Items or Delete Modules, a create on Create Modules or
+  Create Items, or a run on Actions › Run - deleting or creating line items and modules, or starting and
+  following the actions you listed. To run an action on another model, the extension asks Anaplan where that
+  model lives and talks to that model's own server (an address Anaplan names in its reply, always on
+  anaplan.com), with a session of its own for that model - the way Anaplan's page opens one
+- `/servlet?taskType=export`: only when you tick *Download* on Actions › Run, to fetch the file an export wrote
 - `api.anaplan.com` (Integration API model status, sent from the Anaplan tab): the Lock Monitor
   only, and only if its session status check doesn't answer
 
-All of these calls only read, except that confirmed delete. The extension never asks for or stores a password or API token.
+All of these calls only read, except the deletes, creates and runs you confirm. The extension never asks for or stores a password or API token.
 Results are kept in `storage.session`, compressed when large, and are dropped when the browser
 closes. The Lock Monitor's interval, length and *Notify me* choice are remembered in the panel's
 local storage. Nothing is sent anywhere else.
