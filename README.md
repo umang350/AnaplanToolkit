@@ -36,49 +36,6 @@ extension; you may not copy, redistribute, or reuse its code.
 - **Formula hover**: what uses a line item and what it depends on.
 - **Documentation (.md)** and **Copy context for AI** on Summary.
 
-### 2.11.1
-
-- **Formula editor, Cmd/Ctrl+click** (new): click a module, line item, list or list subset in Anaplan's formula
-  editor to open it. A module opens in Blueprint view with the line item's row selected; a subset opens its
-  list's Subsets tab with the subset selected. Cmd/Ctrl+Shift+click opens it in a new tab.
-- **Applies To column**: the same click, and a hover card (kind, list, item count, the modules that use it), on
-  the lists and subsets in the Blueprint grid.
-- **Formula editor hover** (new): format, dimensions, time scale and a readable layout of the formula for a
-  reference (THEN / ELSE on their own lines, indented per nested IF), and the description, syntax and help
-  link of any Anaplan function.
-- **Formula editor markers**: unbalanced brackets, unterminated quotes, and a `Module.'x'` the module does
-  not have.
-- Reads only what the page already holds; no new permissions and no new servers.
-
-### 2.10.0
-
-- **Whole-module deletes in Delete Items are about 5x faster**: modules nothing pending uses go up to 10 to a request (the
-  request Anaplan's own dialog sends). On an 11,197-line-item / 520-module cleanup a run went from 31
-  minutes to 6, with no refused calls.
-- **Modules a process uses are no longer attempted**: Check already lists them, and each refusal cost
-  Anaplan about 50 seconds. They are kept and named in the report with their process, and their line
-  items are deleted one by one - delete the process, then the module.
-- **Export log**: one CSV row per request (when, how long, applied / refused, Anaplan's reason, serials)
-  beside the report; the status line shows Anaplan's time and the slowest call.
-- **Pause** keeps showing *Pausing…* while the call in flight finishes.
-- Lock Monitor crashes are shown in the panel, hidden panels stop re-rendering, keyboard and
-  reduced-motion accessibility, and a CI check.
-
-### 2.9.0
-
-- **Structure › Delete Modules** (new): delete whole modules listed in a CSV of module name and ID
-  (the Modules report's own export works as is). Check marks a module *In use* when a module that
-  isn't listed uses its line items; deletes go one module per request, a module before the ones it
-  uses, and a refused module is kept with Anaplan's reason.
-- **Structure › Delete Items** now deletes a whole module, in one request, when every one of its line
-  items is in the CSV (a new *Modules* tab lists them; the CSV can carry a *Module ID* column).
-- **Much faster large deletes**: requests carry whole modules up to 200 line items instead of one
-  module each, and the report shows how many calls were made (applied / refused).
-- **Fixes for long runs**: the extension no longer runs out of memory on large deletes (a 10,909-line
-  report was sent several times per update), Anaplan's large replies are read without building the
-  whole model each time, a run stops if the extension is reloaded mid-run, and a refused line item in
-  a module whose name has spaces is recognised.
-
 ## What it does
 
 Opens a side panel of reports on the Anaplan model in the active tab. Each report is gathered on
