@@ -3,6 +3,16 @@
 Per-release notes for 2.9.0 onward live in `.github/release-notes/`; earlier entries below are
 summarised from the commit history.
 
+## 2.12.1
+
+See [.github/release-notes/2.12.1.md](.github/release-notes/2.12.1.md).
+
+- New logo (toolbar icon, panel footer, report headers) and a refreshed side panel: filled selected tab, lighter
+  sub-tabs, pill *Get data* button, clearer focus, shadowed cards on Summary.
+- Summary: the repeated header is removed; the other views' header reads "Anaplan Toolkit".
+- Footer: the logo and name link to umang.dev/anaplan, the author to umang.dev; `homepage_url` is umang.dev.
+- Actions › Run: downloaded export files always start with the model's name.
+
 ## 2.12.0
 
 See [.github/release-notes/2.12.0.md](.github/release-notes/2.12.0.md).

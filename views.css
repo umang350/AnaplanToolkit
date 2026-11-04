@@ -351,3 +351,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .ia-setting { display: flex; gap: .5rem; align-items: flex-start; padding: .25rem 0; font-size: .8125rem; cursor: pointer; }
 .ia-setting input { margin-top: .2rem; }
 .ia-setting small { display: block; color: var(--muted-foreground); font-size: .6875rem; }
+
+/* Summary polish: header strip, cards that read as cards, tidier headings. */
+.ia-summary { gap: 1.375rem; padding: 1rem 1rem 1.5rem; }
+.ia-bar { display: flex; align-items: center; padding-bottom: .875rem; border-bottom: 1px solid var(--border); }
+.ia-bar img { height: 1.875rem; }
+.ia-section h2 { margin-bottom: .625rem; }
+.ia-section h2::before {
+  content: ''; width: .1875rem; height: .75rem; margin-right: .5rem; align-self: center;
+  border-radius: 9999px; background: #E60012; flex: none;
+}
+.ia-section h2 { justify-content: flex-start; }
+.ia-section h2 .ia-h-count { margin-left: auto; }
+.ia-fields, .ia-stat, .ia-reports { background: var(--card); box-shadow: 0 1px 2px rgb(0 0 0 / .04); }
+.ia-stat { transition: border-color .15s; }
+.ia-stat:hover { border-color: var(--ring); }
+.ia-stat-n { font-size: 1.125rem; letter-spacing: -.01em; }
+.ia-reports { overflow: hidden; }

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF3B4A"/><stop offset="1" stop-color="#C4000F"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="url(#bg)"/>
+  <!-- A: two legs meeting at a peak, crossbar drawn as three rising bars (a model's data) -->
+  <path d="M30 100 L64 28 L98 100" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  
+  
+  <path d="M43 76 H85" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
+</svg>

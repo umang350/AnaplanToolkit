@@ -19,7 +19,7 @@
  * Styles are ia-* classes in views.css rather than Tailwind utilities: the
  * compiled stylesheet only contains the utilities the bundled views use.
  */
-import { LOGO, el } from './sv_shared.js';
+import { el } from './sv_shared.js';
 import { buildFiles, zip, save } from './export_all.js';
 import { buildDocs, buildContext } from './model_docs.js';
 
@@ -388,11 +388,7 @@ function loadSettings() {
 }
 
 function render() {
-  var root = el('div', 'ia-summary'), bar = el('div', 'ia-bar'), img = el('img');
-  img.alt = 'Anaplan Toolkit';
-  img.src = LOGO;
-  bar.appendChild(img);
-  root.appendChild(bar);
+  var root = el('div', 'ia-summary');
   root.appendChild(modelCard());
   root.appendChild(structureCard());
   root.appendChild(reportsCard());

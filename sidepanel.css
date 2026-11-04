@@ -118,13 +118,9 @@ body {
 .sk-bar, .sk-search, #sk-heading, #sk-head { user-select: none; }
 .sk-bar { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .sk-logo { display: inline-flex; align-items: center; gap: .375rem; }
-.sk-logo b {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 1.5rem; height: 1.5rem; border-radius: .3rem;
-  background: #E60012; color: #fff; font-size: .6875rem; font-weight: 700;
-}
+.sk-logo img { width: 1.5rem; height: 1.5rem; border-radius: .3rem; }
 .sk-logo > span { display: flex; flex-direction: column; line-height: 1.1; }
-.sk-logo strong { font-size: .6875rem; font-weight: 700; }
+.sk-logo strong { font-size: .8125rem; font-weight: 700; }
 .sk-logo small { font-size: .5625rem; color: var(--muted-foreground); }
 .sk-export {
   display: inline-flex; align-items: center; gap: .375rem; height: 2rem; padding: 0 .625rem;
@@ -227,12 +223,7 @@ body {
   user-select: none;
 }
 
-#brand-mark {
-  flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 1.0625rem; height: 1.0625rem; border-radius: .25rem;
-  background: #E60012; color: #fff;
-  font-size: .5625rem; font-weight: 700; letter-spacing: -.02em;
-}
+#brand-mark { flex: none; width: 1.0625rem; height: 1.0625rem; border-radius: .25rem; }
 
 #brand-text {
   flex: 1 1 auto; min-width: 0;
@@ -240,7 +231,13 @@ body {
 }
 #brand-text strong { color: var(--foreground); font-weight: 600; }
 
-#brand-by { flex: none; opacity: .75; white-space: nowrap; }
+#brand-by {
+  flex: none; white-space: nowrap; padding: .1875rem .4375rem; margin: -.1875rem -.25rem -.1875rem 0;
+  border-radius: 9999px; border: 1px solid var(--border);
+  color: var(--muted-foreground); text-decoration: none; font-weight: 500;
+  transition: color .15s, border-color .15s, background-color .15s;
+}
+#brand-by:hover { color: var(--foreground); border-color: var(--ring); background: var(--muted); }
 
 /* Lock Monitor's options make the call to action taller than the
    placeholder rows; grow the card so it doesn't run over the column headers. */
@@ -315,3 +312,39 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 3s !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+
+/* ---------------------------------------------------------------------------
+   Polish: softer chrome, clearer focus, a friendlier call to action.
+   --------------------------------------------------------------------------- */
+#bar { padding: .5rem .625rem; box-shadow: 0 1px 0 rgb(0 0 0 / .02); }
+#tabs button[aria-selected="true"] {
+  background: var(--primary); color: var(--primary-foreground);
+}
+#tabs button[aria-selected="true"] .dot { border-color: var(--primary-foreground); }
+#tabs button[aria-selected="true"][data-has="1"] .dot { background: var(--primary-foreground); }
+#subtabs { padding: .3125rem .625rem; background: var(--sidebar, var(--background)); }
+#subtabs button[aria-selected="true"] {
+  background: var(--background); box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / .06);
+}
+#tabs button:focus-visible, #subtabs button:focus-visible, #refresh:focus-visible,
+#empty-load:focus-visible, #brand-by:focus-visible {
+  outline: 2px solid var(--ring); outline-offset: 1px;
+}
+#empty-cta h1 { letter-spacing: -.01em; }
+#empty-load {
+  padding: .5rem 1.125rem; border-radius: 9999px; font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / .15), 0 4px 12px rgb(0 0 0 / .08);
+  transition: opacity .15s, transform .15s;
+}
+#empty-load:hover:not(:disabled) { transform: translateY(-1px); }
+.sk-card { box-shadow: 0 1px 3px rgb(0 0 0 / .04); overflow: hidden; }
+#brand { padding: .4375rem .625rem; gap: .5rem; background: var(--sidebar, var(--background)); }
+#brand-mark { width: 1.1875rem; height: 1.1875rem; border-radius: .3125rem; }
+
+#brand-logo {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: .4375rem;
+  border-radius: .3125rem; color: inherit; text-decoration: none; transition: opacity .15s;
+}
+#brand-logo:hover { opacity: .8; }
+#brand-logo:hover #brand-text strong { text-decoration: underline; text-underline-offset: 2px; }
+#brand-logo:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }

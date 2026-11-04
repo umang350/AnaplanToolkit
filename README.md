@@ -12,7 +12,7 @@
 Chrome and Firefox extension for analysing Anaplan models. Not affiliated with, endorsed by, or
 supported by Anaplan, Inc.
 
-**Version:** 2.12.0
+**Version:** 2.12.1
 **Author:** Umang Chauhan
 **Copyright:** © 2026 Umang Chauhan. All rights reserved.
 **Licence:** Proprietary — see [LICENSE.txt](LICENSE.txt). You may install and use this
@@ -20,21 +20,13 @@ extension; you may not copy, redistribute, or reuse its code.
 
 ---
 
-## What's new in 2.12.0
+## What's new in 2.12.1
 
-- **Actions › Run** (new): run processes, imports, exports and other actions one after another from a CSV, on the
-  model in the tab or - with a **Model ID** column - on other models **without opening them**. Each row is validated
-  first and nothing runs until you type the count; a failed action doesn't stop the run (Stop does), exports can be
-  downloaded as each finishes, and the run can be paused and saved as a report and a log.
-- **Structure › Create Modules / Create Items** (new): create modules, with the lists and subsets they apply to, and
-  line items (with a formula and a format) from a CSV, or add line items to modules that exist.
-- **Analysis** (new): **Impact** (which formulas use each line item and which it uses, directly and downstream, with
-  the modules and App pages reached), **Lint** (checks against Anaplan's Planual, each finding with the rule's own
-  number) and **Formulas** (search every formula by words, phrase or regex).
-- **Planual where you build**: markers in the formula editor and badges on line items in Blueprint view, with
-  per-rule hiding and switches in Summary › Settings.
-- **Formula hover**: what uses a line item and what it depends on.
-- **Documentation (.md)** and **Copy context for AI** on Summary.
+- **New logo** on the toolbar icon, the panel footer and the report headers.
+- **Refreshed side panel**: filled selected tab, lighter sub-tabs, a pill *Get data* button, clearer keyboard focus
+  and shadowed cards on Summary, which now opens straight onto the model.
+- **Footer links** to [umang.dev](https://umang.dev) and [umang.dev/anaplan](https://umang.dev/anaplan).
+- **Actions › Run**: downloaded export files always start with the model's name.
 
 ## What it does
 
