@@ -122,7 +122,7 @@ async function IA_raProgress(c,taskId){
     return await IA_json(r)
   }finally{clearTimeout(tm)}
 }
-/* Export files. Anaplan's page downloads one with a same-origin POST to <core>/servlet?taskType=export (runactwithdown.har): multipart taskType=export, exportEntityLongId=<116... id>, context={workspaceId,modelId,modelName}, exportLayout=SAVED_EXPORT; the reply is the file (Content-Disposition: attachment; filename="...xlsx"). A finished task lists the exports it ran in taskResult.compositeDetails (importType EXPORT_DATA, importEntityLongId 116...), so a process needs no reading of its steps; a standalone export falls back to its own id. The file is handed to the browser as a download from the Anaplan page (a link click): no extension permission, and the browser may ask once to allow several downloads. A run over several models puts the model's name in front of the file's, as the same export name can exist in each. */
+/* Export files. Anaplan's page downloads one with a same-origin POST to <core>/servlet?taskType=export (runactwithdown.har): multipart taskType=export, exportEntityLongId=<116... id>, context={workspaceId,modelId,modelName}, exportLayout=SAVED_EXPORT; the reply is the file (Content-Disposition: attachment; filename="...xlsx"). A finished task lists the exports it ran in taskResult.compositeDetails (importType EXPORT_DATA, importEntityLongId 116...), so a process needs no reading of its steps; a standalone export falls back to its own id. The file is handed to the browser as a download from the Anaplan page (a link click): no extension permission, and the browser may ask once to allow several downloads. Every file gets the model's name (or its id when the name is unknown) in front of its name, as the same export name can exist in several models. */
 function IA_raExports(tr,id){let out=[],walk=x=>{if(!x||typeof x!==`object`)return;x.importType===`EXPORT_DATA`&&x.importEntityLongId>0&&out.push(String(x.importEntityLongId));for(let d of x.compositeDetails||[])walk(d)};walk(tr);!out.length&&/^116/.test(id)&&out.push(id);return[...new Set(out)]}
 async function IA_raGet(c,id,prefix){
   let fd=new FormData;fd.append(`taskType`,`export`);fd.append(`exportEntityLongId`,String(id));fd.append(`context`,JSON.stringify({workspaceId:c.workspaceId,modelId:c.modelId,modelName:c.modelName||``}));fd.append(`exportLayout`,`SAVED_EXPORT`);
@@ -155,7 +155,7 @@ async function IA_gra(force,msg){
   /* The tab's own model needs the page's session; without one the rows for it can't be checked, so say so up front. */
   needPage=out.some(o=>o.status===`pending`&&o.modelId===curId);
   if(needPage&&(!c.IA_csid||!x))throw Error(`The extension hasn't picked up this Anaplan page's session yet, which running an action needs. Click into the model - open a module or page - then try again.`);
-  /* many: more than one model (downloads then carry the model's name); multi: models are shown on the rows and in the wording - also when the one model isn't the tab's. */let many=new Set(out.filter(o=>o.status===`pending`).map(o=>o.modelId)).size>1,multi=many||out.some(o=>o.status===`pending`&&o.modelId!==curId),
+  /* many: more than one model (downloads always carry the model's name, many or not); multi: models are shown on the rows and in the wording - also when the one model isn't the tab's. */let many=new Set(out.filter(o=>o.status===`pending`).map(o=>o.modelId)).size>1,multi=many||out.some(o=>o.status===`pending`&&o.modelId!==curId),
   base={mode:go?`delete`:`check`,model:c.modelName||``,modelId:c.modelId||``,at:Date.now(),rows:out,stopOnFail,multi},
   calls={sent:0,applied:0,refused:0},log=[],halt=``,last=0,done=0,models=null,ctxs=new Map,
   /* A model's context, made on first use (and kept, a failure too, so its other rows fail at once). */
@@ -235,7 +235,7 @@ async function IA_gra(force,msg){
       else{
         o.status=`done`,o.why=msgs,LG.result=`applied`;done++;
         if(msg?.download){
-          let notes=[],pre=many?`${String(ctx.modelName||o.modelId).replace(/[\\/:*?"<>|]+/g,``).trim()} - `:``;
+          let notes=[],pre=`${String(ctx.modelName||o.modelId||ctx.modelId).replace(/[\\/:*?"<>|]+/g,``).trim()||o.modelId||ctx.modelId} - `;
           for(let eid of IA_raExports(tr,o.id)){
             let dl={at:Date.now(),kind:`download`,items:0,what:`Export ${eid} of ${what}`};log.push(dl);
             try{IA_step(`Running actions`,`${what} · downloading export ${eid}`,done,tot);let f=await IA_raGet(ctx,eid,pre);dl.result=`applied`,dl.note=`${f.name} (${f.bytes} bytes)`;notes.push(`Downloaded ${f.name} (${f.bytes>=1024?(f.bytes/1024).toFixed(1)+` KB`:f.bytes+` bytes`})`)}

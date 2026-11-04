@@ -502,7 +502,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   Anaplan's Models menu, the model's core is found from the `redirectUrl` the call on this core answers with (never
   stored - cores move weekly; `IA_dlScan` keeps `redirectUrl`), and a session of the extension's own is made on a model's
   first row (again once if Anaplan stops recognising it; a model whose handshake fails has only its rows skipped /
-  failed). A run over several models puts the model's name in front of each downloaded file. Downloads, polling and
+  failed). Every downloaded file gets the model's name (its id if the name is unknown) in front. Downloads, polling and
   the export call go to the model's own core. **Confirmed live:** the handshake and a validate-only start on another
   model, and a run over two models (a process and an export on one, an import failing on its missing stored file on the other,
   downloads prefixed with the model name, the failure not stopping the run). Also confirmed live (`runnewmodelact.har`): a model never opened or captured, on a third core
