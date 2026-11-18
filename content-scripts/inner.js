@@ -116,7 +116,7 @@ async function IA_raRpc(c,act,tries){
 /* A refused action is answered inside systemActionResults, not errorInfo: seen live, {actionId: "START_PROCESS", "summary|_err_0": "You are not authorized to run EXP_...", useDetailedResults: "true"} with no taskId. Check used to read that as Ready. */
 function IA_raErr(rr){let a=rr&&rr.systemActionResults&&rr.systemActionResults[0];return a&&typeof a===`object`?Object.keys(a).filter(k=>/_err_/i.test(k)&&a[k]).map(k=>String(a[k])).join(` · `).slice(0,400):``}
 function IA_raCheck(rr){
-  let er=IA_dlErr(rr&&rr.errorInfo)||IA_raErr(rr);if(er)return{st:`skip`,why:er};
+  let er=IA_dlErr(rr&&rr.errorInfo)||IA_raErr(rr);if(er)return{st:`skip`,why:/not authori[sz]ed to run/i.test(er)?`${er} - your role doesn't have this action: see Roles → Actions in this model`:er};
   let sar=rr&&rr.systemActionResults;if(!sar||!sar.length)return{st:`skip`,why:`Anaplan sent no answer for this action`};
   if(Object.keys(sar[0]||{}).some(k=>/^prompt_for_file/.test(k)))return{st:`ready`,why:`Runs from the file stored in the model - Anaplan fails it if there is none`};
   return{st:`ready`,why:``}
