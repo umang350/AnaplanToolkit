@@ -105,7 +105,9 @@ async function IA_raRpc(c,act,tries){
       let c2=await P(0,`session`),x=c2&&c2.IA_sessx;
       if(x&&c2.IA_csid===ss.csid){let n=IA_raSess(c2,x);ss.txid=n.txid,ss.serial=n.serial,ss.views=n.views,ss.rsn=Math.max(ss.rsn,IA_raN,n.rsn),ss.h=n.h;return IA_raRpc(c,act,(tries||0)+1)}
     }
-    let z=Error(`Anaplan refused the request: ${msg.slice(0,300)}`);throw z.IA_refused=!0,z
+    /* Confirmed live: an action id the model doesn't have is answered "A non-Anaplan error occurred", not "not found" (export 116000000200 on a copy of the model that had no such export). */
+    /non-Anaplan error/i.test(msg)&&act&&act.actionId===`START_PROCESS`&&(msg+=` - most likely this model has no action with this ID (IDs differ between models): check it in this model's Actions report`);
+    let z=Error(`Anaplan refused the request: ${msg.slice(0,400)}`);throw z.IA_refused=!0,z
   }
   rr&&rr.txid&&(ss.txid=rr.txid);rr&&+rr.modelDefinitionSerialNumber>0&&(ss.serial=rr.modelDefinitionSerialNumber);
   return rr

@@ -515,6 +515,8 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   live on the model open in the tab only, the page's session was answered "You are not authorized to run …" and "A non-Anaplan
   error occurred" for an export that the same CSV's rows on other models (own sessions) passed. A page-session call that gets any
   per-action error is also retried on an own session. **Not confirmed live** that an own session on the tab's model works.
+  **An action ID the model doesn't have is answered with a top-level `error: "A non-Anaplan error occurred"`** (confirmed live:
+  an export missing from a copy of the model), so `IA_raRpc` adds that likely reason to the row's message.
   **The CSV's Model ID and Workspace ID columns were seen swapped** (both 32 hex): a Workspace ID that is the tab's model, or a
   Model ID that is the tab's workspace, is swapped back; the model list's workspace wins over the CSV's; a model missing from
   the list that is refused on the CSV's workspace is tried once on the tab's.
