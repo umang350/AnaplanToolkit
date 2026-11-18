@@ -150,7 +150,10 @@ async function IA_gra(force,msg){
   if(go&&String(msg?.modelId||``).toUpperCase()!==String(c.modelId||``).toUpperCase())throw Error(`This check was made on another model. Check the CSV again on this one before running.`);
   let curId=String(c.modelId||``).toUpperCase(),key=IA_key(c),stopOnFail=msg?.stopOnFail===!0,
   out=rows.map((r,z)=>{
-    let id=IA_raId(r&&r.id),mid=String(r&&r.modelId||``).trim().toUpperCase(),
+    let id=IA_raId(r&&r.id),mid=String(r&&r.modelId||``).trim().toUpperCase(),wsx=String(r&&r.workspaceId||``).trim();
+    /* Seen live: the Model ID and Workspace ID columns swapped (both 32 hex, so the format can't tell). When the Workspace ID is the tab's model, or the Model ID is the tab's workspace, swap them back. */
+    if(mid&&wsx&&(wsx.toUpperCase()===curId||mid.toLowerCase()===String(c.workspaceId||``).toLowerCase())){let w0=mid.toLowerCase();mid=wsx.toUpperCase();r={...r,workspaceId:w0}}
+    let
         o={line:r&&r.line||z+1,type:String(r&&r.type||``).trim(),name:String(r&&r.name||``).trim(),id,modelId:mid||curId,workspaceId:String(r&&r.workspaceId||``).trim(),model:mid&&mid!==curId?``:c.modelName||``,status:`skip`,why:``};
     if(!id)return o.why=`An Action ID is needed`,o;
     if(mid&&!/^[0-9A-F]{32}$/.test(mid))return o.why=`"${r.modelId}" is not a model ID`,o;
@@ -173,7 +176,7 @@ async function IA_gra(force,msg){
       else try{models||(models=await IA_raModels(c));m=models.get(k)||null;nm=m&&m.name||``}catch(z){if(IA_halt)throw z}
       /* Seen live: a CSV Workspace ID that didn't hold the model made the handshake answer "your permissions have been changed by another user and you are no longer authorised to access this workspace" - for a user with access. The model list says where a model really is, so it wins over the CSV; a model it doesn't list is named in the error. */
       if(m&&m.ws&&String(m.ws).toLowerCase()!==String(ws).toLowerCase())ws=m.ws;
-      else if(!m&&models)note=` (this Model ID isn't in your model list - check the Model ID and Workspace ID in the CSV)`;
+      else if(!m&&models)note=models.has(String(ws).toUpperCase())?` (the Model ID and Workspace ID columns look swapped - the Workspace ID is a model)`:` (this Model ID isn't in your model list - check the Model ID and Workspace ID in the CSV)`;
       let ctx={modelId:k,workspaceId:ws,modelName:nm,base:IA_base()};
       IA_step(`Starting a session`,nm||k);
       try{await IA_raShake(ctx)}
