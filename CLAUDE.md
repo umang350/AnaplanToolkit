@@ -183,7 +183,8 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
   rebuilt. Keep the two implementations in step; all hand-written views are expected to export and search
-  identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
+  identically. One deliberate difference: when any row contains the query as typed, `search()` shows only
+  those (an ID otherwise matched thousands of near-identical IDs); the compiled views still show the fuzzy tail. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Without it a tab gets `DEFAULT_MAX` (400): drawing all 8,000 Filters rows on every keystroke and
   sort hung the browser. Search waits for a 150ms pause in typing, and each tab's rows and search
