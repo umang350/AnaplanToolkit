@@ -498,7 +498,7 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   test, no tab for the model; fetching the model's `framework.jsp` first changed nothing - that page holds no session,
   only a `workspaceServerGuid`). So **an optional CSV `Model ID` column (and `Workspace ID`) runs rows on other models**
   (`IA_raShake`, `IA_raModels`, `ctxFor` in `IA_gra`): rows run in CSV order across models, a blank Model ID is the tab's
-  model (which keeps the page's session, as above), the workspace and name come from the CSV or the model list behind
+  model (an own session first, the page's as fallback - see below), the workspace and name come from the CSV or the model list behind
   Anaplan's Models menu, the model's core is found from the `redirectUrl` the call on this core answers with (never
   stored - cores move weekly; `IA_dlScan` keeps `redirectUrl`), and a session of the extension's own is made on a model's
   first row (again once if Anaplan stops recognising it; a model whose handshake fails has only its rows skipped /
@@ -509,6 +509,17 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   (the tab's core answered the `redirectUrl`, the handshake, a validate-only and a real start, about ten progress polls and
   the export download all went to the new core, with no page for it). A single run over three models (the tab's, a second, and the never-opened one on the third core)
   completed: three actions done, the import's expected failure did not stop it, and a 17.6 MB export downloaded in 13s.
+  **A refused action is answered in `systemActionResults[0]`, not `errorInfo`** (seen live: `"summary|_err_0": "You are not
+  authorized to run EXP_…"`, no `taskId`; `IA_raErr`) - Check used to mark it Ready. **The tab's model now gets a session of the
+  extension's own too** (`ctxFor` in `IA_gra`), with the page's session only as the fallback when that handshake is refused: seen
+  live on the model open in the tab only, the page's session was answered "You are not authorized to run …" and "A non-Anaplan
+  error occurred" for an export that the same CSV's rows on other models (own sessions) passed. A page-session call that gets any
+  per-action error is also retried on an own session. **Not confirmed live** that an own session on the tab's model works.
+  **An action ID the model doesn't have is answered with a top-level `error: "A non-Anaplan error occurred"`** (confirmed live:
+  an export missing from a copy of the model), so `IA_raRpc` adds that likely reason to the row's message.
+  **The CSV's Model ID and Workspace ID columns were seen swapped** (both 32 hex): a Workspace ID that is the tab's model, or a
+  Model ID that is the tab's workspace, is swapped back; the model list's workspace wins over the CSV's; a model missing from
+  the list that is refused on the CSV's workspace is tried once on the tab's.
   **Not confirmed live:** the re-handshake after Anaplan drops a session, and Stop. Offline
   tests (a simulated second core with redirects, sessions that exist only after a handshake, expiry mid-run, a
   refused handshake, a model missing from the list) all pass. Stop ends the run between
