@@ -175,7 +175,17 @@ async function IA_gra(force,msg){
       if(m&&m.ws&&String(m.ws).toLowerCase()!==String(ws).toLowerCase())ws=m.ws;
       else if(!m&&models)note=` (this Model ID isn't in your model list - check the Model ID and Workspace ID in the CSV)`;
       let ctx={modelId:k,workspaceId:ws,modelName:nm,base:IA_base()};
-      IA_step(`Starting a session`,nm||k);try{await IA_raShake(ctx)}catch(z){if(note)z.message=(z.message+note).slice(0,400);throw z}return ctx
+      IA_step(`Starting a session`,nm||k);
+      try{await IA_raShake(ctx)}
+      catch(z){
+        /* A model the list doesn't show, refused on the CSV's workspace: try the tab's workspace once (seen live: a model in the tab's workspace, missing from the list, with another workspace's ID in the CSV). */
+        if(!m&&c.workspaceId&&String(c.workspaceId).toLowerCase()!==String(ws).toLowerCase()&&/authori[sz]ed|workspace/i.test(String(z&&z.message))){
+          let c2={modelId:k,workspaceId:c.workspaceId,modelName:nm,base:IA_base()};
+          try{await IA_raShake(c2);return c2}catch(z2){}
+        }
+        if(note)z.message=(z.message+note).slice(0,400);throw z
+      }
+      return ctx
     })());
     return ctxs.get(k)
   },
