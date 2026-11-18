@@ -168,11 +168,14 @@ async function IA_gra(force,msg){
     if(!ctxs.has(k))ctxs.set(k,(async()=>{
       /* The page's own name can be missing; the model list then names it, so a file never carries the id while the name is to be had (a download prefix used to switch between the two). */
       if(k===curId){let nm=c.modelName||``;if(!nm)try{models||(models=await IA_raModels(c));nm=(models.get(k)||{}).name||``}catch(z){if(IA_halt)throw z}return{modelId:c.modelId,workspaceId:c.workspaceId,modelName:nm,base:IA_base(),ss:IA_raSess(c,x)}}
-      let ws=o.workspaceId,nm=``;
-      if(!ws){IA_step(`Finding the model`,k);models||(models=await IA_raModels(c));let m=models.get(k);if(!m)throw Error(`This model isn't in your model list - add its Workspace ID to the CSV`);ws=m.ws,nm=m.name}
-      else try{models||(models=await IA_raModels(c));nm=(models.get(k)||{}).name||``}catch(z){if(IA_halt)throw z}
+      let ws=o.workspaceId,nm=``,m=null,note=``;
+      if(!ws){IA_step(`Finding the model`,k);models||(models=await IA_raModels(c));m=models.get(k);if(!m)throw Error(`This model isn't in your model list - check the Model ID, or add its Workspace ID to the CSV`);ws=m.ws,nm=m.name}
+      else try{models||(models=await IA_raModels(c));m=models.get(k)||null;nm=m&&m.name||``}catch(z){if(IA_halt)throw z}
+      /* Seen live: a CSV Workspace ID that didn't hold the model made the handshake answer "your permissions have been changed by another user and you are no longer authorised to access this workspace" - for a user with access. The model list says where a model really is, so it wins over the CSV; a model it doesn't list is named in the error. */
+      if(m&&m.ws&&String(m.ws).toLowerCase()!==String(ws).toLowerCase())ws=m.ws;
+      else if(!m&&models)note=` (this Model ID isn't in your model list - check the Model ID and Workspace ID in the CSV)`;
       let ctx={modelId:k,workspaceId:ws,modelName:nm,base:IA_base()};
-      IA_step(`Starting a session`,nm||k);await IA_raShake(ctx);return ctx
+      IA_step(`Starting a session`,nm||k);try{await IA_raShake(ctx)}catch(z){if(note)z.message=(z.message+note).slice(0,400);throw z}return ctx
     })());
     return ctxs.get(k)
   },
