@@ -509,6 +509,11 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   (the tab's core answered the `redirectUrl`, the handshake, a validate-only and a real start, about ten progress polls and
   the export download all went to the new core, with no page for it). A single run over three models (the tab's, a second, and the never-opened one on the third core)
   completed: three actions done, the import's expected failure did not stop it, and a 17.6 MB export downloaded in 13s.
+  **A refused action is answered in `systemActionResults[0]`, not `errorInfo`** (seen live: `"summary|_err_0": "You are not
+  authorized to run EXP_…"`, no `taskId`; `IA_raErr`) - Check used to mark it Ready. Seen on the model open in the tab only, for an
+  action the user can run, while the same CSV's rows on other models (own sessions) ran: so a page-session call refused as "not
+  authorized" moves the tab's model to a session of the extension's own and is sent again (`call` in `IA_gra`). **Not confirmed
+  live** that the own session then runs it.
   **Not confirmed live:** the re-handshake after Anaplan drops a session, and Stop. Offline
   tests (a simulated second core with redirects, sessions that exist only after a handshake, expiry mid-run, a
   refused handshake, a model missing from the list) all pass. Stop ends the run between

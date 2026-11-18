@@ -110,8 +110,10 @@ async function IA_raRpc(c,act,tries){
   rr&&rr.txid&&(ss.txid=rr.txid);rr&&+rr.modelDefinitionSerialNumber>0&&(ss.serial=rr.modelDefinitionSerialNumber);
   return rr
 }
+/* A refused action is answered inside systemActionResults, not errorInfo: seen live, {actionId: "START_PROCESS", "summary|_err_0": "You are not authorized to run EXP_...", useDetailedResults: "true"} with no taskId. Check used to read that as Ready. */
+function IA_raErr(rr){let a=rr&&rr.systemActionResults&&rr.systemActionResults[0];return a&&typeof a===`object`?Object.keys(a).filter(k=>/_err_/i.test(k)&&a[k]).map(k=>String(a[k])).join(` · `).slice(0,400):``}
 function IA_raCheck(rr){
-  let er=IA_dlErr(rr&&rr.errorInfo);if(er)return{st:`skip`,why:er};
+  let er=IA_dlErr(rr&&rr.errorInfo)||IA_raErr(rr);if(er)return{st:`skip`,why:er};
   let sar=rr&&rr.systemActionResults;if(!sar||!sar.length)return{st:`skip`,why:`Anaplan sent no answer for this action`};
   if(Object.keys(sar[0]||{}).some(k=>/^prompt_for_file/.test(k)))return{st:`ready`,why:`Runs from the file stored in the model - Anaplan fails it if there is none`};
   return{st:`ready`,why:``}
@@ -185,7 +187,15 @@ async function IA_gra(force,msg){
   call=async(o,validate)=>{
     let ctx=await ctxFor(o);o.model=ctx.modelName||o.model;calls.sent++;
     let LG={at:Date.now(),kind:validate?`check`:`action`,items:0,what:`${label(o,ctx)}${validate?` (validate)`:``}`,serial:ctx.ss.serial};log.push(LG);
-    try{let rr=await IA_raRpc(ctx,IA_raAct(ctx,o.id,validate));LG.serialAfter=ctx.ss.serial;LG.result=`applied`;calls.applied++;return rr}
+    try{
+      let rr=await IA_raRpc(ctx,IA_raAct(ctx,o.id,validate));
+      /* Seen live: on the model open in the tab, the page's session was answered "You are not authorized to run <action>" for an action the user can run - and the same CSV's rows on other models, each on a session of the extension's own, ran. So once the page's session is refused that way, the tab's model moves to a session of its own (kept for the rest of the run) and the call is sent again. */
+      if(!ctx.ss.own&&/not authori[sz]ed/i.test(IA_raErr(rr))){
+        LG.result=`refused`,LG.why=`${IA_raErr(rr)} (page session - retrying on a session of its own)`.slice(0,300);calls.refused++;LG.ms=Date.now()-LG.at;
+        let c2={modelId:ctx.modelId,workspaceId:ctx.workspaceId,modelName:ctx.modelName,base:ctx.base};IA_step(`Starting a session`,ctx.modelName||ctx.modelId);await IA_raShake(c2);ctxs.set(o.modelId,Promise.resolve(c2));
+        return call(o,validate)
+      }
+      LG.serialAfter=ctx.ss.serial;LG.result=`applied`;calls.applied++;return rr}
     catch(z){LG.result=z.IA_refused?`refused`:`error`,LG.why=String(z?.message||z).slice(0,300);z.IA_refused&&calls.refused++;throw z}
     finally{LG.ms=Date.now()-LG.at}
   },
@@ -218,9 +228,9 @@ async function IA_gra(force,msg){
     let LG=null;
     try{
       let ctx=await ctxFor(o);o.model=ctx.modelName||o.model;what=label(o,ctx);
-      let v=IA_raCheck(await call(o,!0));
+      let v=IA_raCheck(await call(o,!0));ctx=await ctxFor(o);
       if(v.st!==`ready`)throw Object.assign(Error(v.why||`Anaplan would not start this action`),{IA_plain:!0});
-      let rr=await call(o,!1),sr=rr&&rr.systemActionResults&&rr.systemActionResults[0],er=IA_dlErr(rr&&rr.errorInfo);
+      let rr=await call(o,!1),sr=rr&&rr.systemActionResults&&rr.systemActionResults[0],er=IA_dlErr(rr&&rr.errorInfo)||IA_raErr(rr);
       if(er)throw Object.assign(Error(er),{IA_plain:!0});
       if(!sr||!sr.taskId)throw Object.assign(Error(`Anaplan did not return a task for this action`),{IA_plain:!0});
       o.taskId=String(sr.taskId);LG={at:o.startedAt,kind:`task`,items:0,what,taskId:o.taskId};log.push(LG);
