@@ -183,7 +183,8 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   search scorer from `chunks/Empty-*.js` rather than importing them — that chunk's exports are
   minified single letters that would resolve to different functions if the bundle were ever
   rebuilt. Keep the two implementations in step; all hand-written views are expected to export and search
-  identically. `renderPage`'s `max` option draws only that many rows with a "Show more" button
+  identically. One deliberate difference: when any row contains the query as typed, `search()` shows only
+  those (an ID otherwise matched thousands of near-identical IDs); the compiled views still show the fuzzy tail. `renderPage`'s `max` option draws only that many rows with a "Show more" button
   (search and CSV still cover every row) - the Structure reports run to tens of thousands of rows.
   Without it a tab gets `DEFAULT_MAX` (400): drawing all 8,000 Filters rows on every keystroke and
   sort hung the browser. Search waits for a 150ms pause in typing, and each tab's rows and search
@@ -510,16 +511,22 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   the export download all went to the new core, with no page for it). A single run over three models (the tab's, a second, and the never-opened one on the third core)
   completed: three actions done, the import's expected failure did not stop it, and a 17.6 MB export downloaded in 13s.
   **A refused action is answered in `systemActionResults[0]`, not `errorInfo`** (seen live: `"summary|_err_0": "You are not
-  authorized to run EXP_…"`, no `taskId`; `IA_raErr`) - Check used to mark it Ready. **The tab's model now gets a session of the
-  extension's own too** (`ctxFor` in `IA_gra`), with the page's session only as the fallback when that handshake is refused: seen
-  live on the model open in the tab only, the page's session was answered "You are not authorized to run …" and "A non-Anaplan
-  error occurred" for an export that the same CSV's rows on other models (own sessions) passed. A page-session call that gets any
-  per-action error is also retried on an own session. **Not confirmed live** that an own session on the tab's model works.
+  authorized to run EXP_…"`, no `taskId`; `IA_raErr`) - Check used to mark it Ready. That message is **role access** (confirmed
+  live: the export was ticked in Roles → Actions only for a role the user didn't have, on all 23 models of a CSV) - not the
+  session or the model being deployed, which were suspected first. **The tab's model gets a session of the extension's own
+  too** (`ctxFor` in `IA_gra`; confirmed live with a console test and a run), the page's session only as the fallback when that
+  handshake is refused, so every model goes the same way; a page-session call that gets any per-action error is also retried on
+  an own session.
   **An action ID the model doesn't have is answered with a top-level `error: "A non-Anaplan error occurred"`** (confirmed live:
   an export missing from a copy of the model), so `IA_raRpc` adds that likely reason to the row's message.
   **The CSV's Model ID and Workspace ID columns were seen swapped** (both 32 hex): a Workspace ID that is the tab's model, or a
   Model ID that is the tab's workspace, is swapped back; the model list's workspace wins over the CSV's; a model missing from
   the list that is refused on the CSV's workspace is tried once on the tab's.
+  **Speed (a 115-row CSV over ~20 models was too slow):** a handshake (serial -1) is answered with the whole model definition,
+  so `IA_raShake` sends the handshake as its first call and only re-sends it, under a fresh session id, to the core a
+  `redirectUrl` names (it used to probe first: two heavy calls per model); sessions are kept across runs for 20 min
+  (`IA_raCache`), so Run reuses Check's; Check runs 4 models at a time (each model's rows in order on its session) - Run stays
+  in CSV order, one at a time. **Not confirmed live.**
   **Not confirmed live:** the re-handshake after Anaplan drops a session, and Stop. Offline
   tests (a simulated second core with redirects, sessions that exist only after a handshake, expiry mid-run, a
   refused handshake, a model missing from the list) all pass. Stop ends the run between

@@ -402,6 +402,9 @@
       bar.hidden = !loop || !last;
       if (loop) bar.firstChild.style.width = Math.round((s.i / s.n) * 100) + '%';
     });
+    // Keep the running step in sight when the list is longer than the panel.
+    var act = stepList.lastElementChild;
+    if (act && progress.scrollHeight > progress.clientHeight && progress.scrollTop + progress.clientHeight >= progress.scrollHeight - 80) act.scrollIntoView({ block: 'nearest' });
   }
 
   /* Before Get data, the view shows a static sketch of itself - its own tab

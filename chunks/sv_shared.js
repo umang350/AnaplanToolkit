@@ -82,11 +82,17 @@ function score(query, target) {
   return Math.max(0, 1 - best / n);
 }
 
+/* When some rows contain the query as typed, only those are shown: the fuzzy
+   tail is for typos. Without this an ID matched almost every other ID - a 12-digit id is within
+   4 edits of most ids of its kind, so "116000000174" gave 3,638 results on a live model.
+   This departs from the compiled views' vt()/xt(), which still show the fuzzy tail. */
 export function search(list, query, key) {
   if (!query) return list;
-  return list
-    .map(function (item) { return { item: item, score: score(query, key(item)) }; })
-    .filter(function (x) { return x.score >= .65; })
+  var q = query.toLowerCase(),
+      scored = list.map(function (item) { var k = key(item) || ''; return { item: item, hit: k.toLowerCase().includes(q), score: score(query, k) }; }),
+      exact = scored.some(function (x) { return x.hit; });
+  return scored
+    .filter(function (x) { return exact ? x.hit : x.score >= .65; })
     .sort(function (a, b) { return b.score - a.score; })
     .map(function (x) { return x.item; });
 }
