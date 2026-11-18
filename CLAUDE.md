@@ -520,6 +520,11 @@ status, with the page's cookies). No non-Anaplan server is ever contacted.
   **The CSV's Model ID and Workspace ID columns were seen swapped** (both 32 hex): a Workspace ID that is the tab's model, or a
   Model ID that is the tab's workspace, is swapped back; the model list's workspace wins over the CSV's; a model missing from
   the list that is refused on the CSV's workspace is tried once on the tab's.
+  **Speed (a 115-row CSV over ~20 models was too slow):** a handshake (serial -1) is answered with the whole model definition,
+  so `IA_raShake` sends the handshake as its first call and only re-sends it, under a fresh session id, to the core a
+  `redirectUrl` names (it used to probe first: two heavy calls per model); sessions are kept across runs for 20 min
+  (`IA_raCache`), so Run reuses Check's; Check runs 4 models at a time (each model's rows in order on its session) - Run stays
+  in CSV order, one at a time. **Not confirmed live.**
   **Not confirmed live:** the re-handshake after Anaplan drops a session, and Stop. Offline
   tests (a simulated second core with redirects, sessions that exist only after a handshake, expiry mid-run, a
   refused handshake, a model missing from the list) all pass. Stop ends the run between
