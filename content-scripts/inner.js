@@ -158,10 +158,7 @@ async function IA_gra(force,msg){
     if(!id)return o.why=`An Action ID is needed`,o;
     if(mid&&!/^[0-9A-F]{32}$/.test(mid))return o.why=`"${r.modelId}" is not a model ID`,o;
     o.status=`pending`;return o
-  }),
-  /* The tab's own model needs the page's session; without one the rows for it can't be checked, so say so up front. */
-  needPage=out.some(o=>o.status===`pending`&&o.modelId===curId);
-  if(needPage&&(!c.IA_csid||!x))throw Error(`The extension hasn't picked up this Anaplan page's session yet, which running an action needs. Click into the model - open a module or page - then try again.`);
+  });
   /* many: more than one model (downloads always carry the model's name, many or not); multi: models are shown on the rows and in the wording - also when the one model isn't the tab's. */let many=new Set(out.filter(o=>o.status===`pending`).map(o=>o.modelId)).size>1,multi=many||out.some(o=>o.status===`pending`&&o.modelId!==curId),
   base={mode:go?`delete`:`check`,model:c.modelName||``,modelId:c.modelId||``,at:Date.now(),rows:out,stopOnFail,multi},
   calls={sent:0,applied:0,refused:0},log=[],halt=``,last=0,done=0,models=null,ctxs=new Map,
@@ -170,7 +167,14 @@ async function IA_gra(force,msg){
     let k=o.modelId;
     if(!ctxs.has(k))ctxs.set(k,(async()=>{
       /* The page's own name can be missing; the model list then names it, so a file never carries the id while the name is to be had (a download prefix used to switch between the two). */
-      if(k===curId){let nm=c.modelName||``;if(!nm)try{models||(models=await IA_raModels(c));nm=(models.get(k)||{}).name||``}catch(z){if(IA_halt)throw z}return{modelId:c.modelId,workspaceId:c.workspaceId,modelName:nm,base:IA_base(),ss:IA_raSess(c,x)}}
+      if(k===curId){
+        let nm=c.modelName||``;if(!nm)try{models||(models=await IA_raModels(c));nm=(models.get(k)||{}).name||``}catch(z){if(IA_halt)throw z}
+        /* The tab's model gets a session of the extension's own too, like any other model. Seen live, on the model open in the tab only: the page's session was answered "You are not authorized to run ..." and "A non-Anaplan error occurred" for an export that passed on other models' own sessions in the same CSV. The page's session is kept as the fallback for when the handshake is refused. */
+        let own={modelId:c.modelId,workspaceId:c.workspaceId,modelName:nm,base:IA_base()};
+        IA_step(`Starting a session`,nm||k);
+        try{await IA_raShake(own);return own}
+        catch(z){if(IA_halt||!c.IA_csid||!x)throw z;return{modelId:c.modelId,workspaceId:c.workspaceId,modelName:nm,base:IA_base(),ss:IA_raSess(c,x)}}
+      }
       let ws=o.workspaceId,nm=``,m=null,note=``;
       if(!ws){IA_step(`Finding the model`,k);models||(models=await IA_raModels(c));m=models.get(k);if(!m)throw Error(`This model isn't in your model list - check the Model ID, or add its Workspace ID to the CSV`);ws=m.ws,nm=m.name}
       else try{models||(models=await IA_raModels(c));m=models.get(k)||null;nm=m&&m.name||``}catch(z){if(IA_halt)throw z}
@@ -206,8 +210,8 @@ async function IA_gra(force,msg){
     try{
       let rr=await IA_raRpc(ctx,IA_raAct(ctx,o.id,validate));
       /* Seen live: on the model open in the tab, the page's session was answered "You are not authorized to run <action>" for an action the user can run - and the same CSV's rows on other models, each on a session of the extension's own, ran. So once the page's session is refused that way, the tab's model moves to a session of its own (kept for the rest of the run) and the call is sent again. */
-      if(!ctx.ss.own&&/not authori[sz]ed/i.test(IA_raErr(rr))){
-        LG.result=`refused`,LG.why=`${IA_raErr(rr)} (page session - retrying on a session of its own)`.slice(0,300);calls.refused++;LG.ms=Date.now()-LG.at;
+      if(!ctx.ss.own&&(IA_raErr(rr)||IA_dlErr(rr&&rr.errorInfo))){
+        LG.result=`refused`,LG.why=`${IA_raErr(rr)||IA_dlErr(rr&&rr.errorInfo)} (page session - retrying on a session of its own)`.slice(0,300);calls.refused++;LG.ms=Date.now()-LG.at;
         let c2={modelId:ctx.modelId,workspaceId:ctx.workspaceId,modelName:ctx.modelName,base:ctx.base};IA_step(`Starting a session`,ctx.modelName||ctx.modelId);await IA_raShake(c2);ctxs.set(o.modelId,Promise.resolve(c2));
         return call(o,validate)
       }
