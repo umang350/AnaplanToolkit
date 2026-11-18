@@ -168,9 +168,10 @@ body {
 /* Live overview of the gather in flight. Covers the view while there is nothing
    to show yet; shrinks to a strip over the top of existing results on refresh. */
 #progress {
-  position: absolute; inset: 0; overflow-y: auto;
+  position: absolute; inset: 0; overflow-y: auto; z-index: 2;
   padding: 1.25rem 1rem; background: var(--background);
 }
+/* z-index: a view iframe under it was drawn on top (its own loader showed through) and took the wheel, so a long step list could not be scrolled. */
 #progress[hidden] { display: none; }
 #progress-head {
   margin: 0 0 .75rem; font-size: .6875rem; font-weight: 600;

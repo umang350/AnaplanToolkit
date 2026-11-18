@@ -176,18 +176,18 @@ async function IA_gra(force,msg){
         let nm=c.modelName||``;if(!nm)try{models||(models=await (modelsP||(modelsP=IA_raModels(c).catch(z=>{modelsP=null;throw z}))));nm=(models.get(k)||{}).name||``}catch(z){if(IA_halt)throw z}
         /* The tab's model gets a session of the extension's own too, like any other model. Seen live, on the model open in the tab only: the page's session was answered "You are not authorized to run ..." and "A non-Anaplan error occurred" for an export that passed on other models' own sessions in the same CSV. The page's session is kept as the fallback for when the handshake is refused. */
         let own={modelId:c.modelId,workspaceId:c.workspaceId,modelName:nm,base:IA_base()};
-        IA_step(`Starting a session`,nm||k);
+        IA_step(go?`Running actions`:`Checking actions`,`starting a session on ${nm||k}`);
         try{await IA_raShake(own);return own}
         catch(z){if(IA_halt||!c.IA_csid||!x)throw z;return{modelId:c.modelId,workspaceId:c.workspaceId,modelName:nm,base:IA_base(),ss:IA_raSess(c,x)}}
       }
       let ws=o.workspaceId,nm=``,m=null,note=``;
-      if(!ws){IA_step(`Finding the model`,k);models||(models=await (modelsP||(modelsP=IA_raModels(c).catch(z=>{modelsP=null;throw z}))));m=models.get(k);if(!m)throw Error(`This model isn't in your model list - check the Model ID, or add its Workspace ID to the CSV`);ws=m.ws,nm=m.name}
+      if(!ws){IA_step(go?`Running actions`:`Checking actions`,`finding model ${k}`);models||(models=await (modelsP||(modelsP=IA_raModels(c).catch(z=>{modelsP=null;throw z}))));m=models.get(k);if(!m)throw Error(`This model isn't in your model list - check the Model ID, or add its Workspace ID to the CSV`);ws=m.ws,nm=m.name}
       else try{models||(models=await (modelsP||(modelsP=IA_raModels(c).catch(z=>{modelsP=null;throw z}))));m=models.get(k)||null;nm=m&&m.name||``}catch(z){if(IA_halt)throw z}
       /* Seen live: a CSV Workspace ID that didn't hold the model made the handshake answer "your permissions have been changed by another user and you are no longer authorised to access this workspace" - for a user with access. The model list says where a model really is, so it wins over the CSV; a model it doesn't list is named in the error. */
       if(m&&m.ws&&String(m.ws).toLowerCase()!==String(ws).toLowerCase())ws=m.ws;
       else if(!m&&models)note=models.has(String(ws).toUpperCase())?` (the Model ID and Workspace ID columns look swapped - the Workspace ID is a model)`:` (this Model ID isn't in your model list - check the Model ID and Workspace ID in the CSV)`;
       let ctx={modelId:k,workspaceId:ws,modelName:nm,base:IA_base()};
-      IA_step(`Starting a session`,nm||k);
+      IA_step(go?`Running actions`:`Checking actions`,`starting a session on ${nm||k}`);
       try{await IA_raShake(ctx)}
       catch(z){
         /* A model the list doesn't show, refused on the CSV's workspace: try the tab's workspace once (seen live: a model in the tab's workspace, missing from the list, with another workspace's ID in the CSV). */
@@ -217,7 +217,7 @@ async function IA_gra(force,msg){
       /* Seen live: on the model open in the tab, the page's session was answered "You are not authorized to run <action>" for an action the user can run - and the same CSV's rows on other models, each on a session of the extension's own, ran. So once the page's session is refused that way, the tab's model moves to a session of its own (kept for the rest of the run) and the call is sent again. */
       if(!ctx.ss.own&&(IA_raErr(rr)||IA_dlErr(rr&&rr.errorInfo))){
         LG.result=`refused`,LG.why=`${IA_raErr(rr)||IA_dlErr(rr&&rr.errorInfo)} (page session - retrying on a session of its own)`.slice(0,300);calls.refused++;LG.ms=Date.now()-LG.at;
-        let c2={modelId:ctx.modelId,workspaceId:ctx.workspaceId,modelName:ctx.modelName,base:ctx.base};IA_step(`Starting a session`,ctx.modelName||ctx.modelId);await IA_raShake(c2);ctxs.set(o.modelId,Promise.resolve(c2));IA_raCache.set(o.modelId,{ctx:c2,at:Date.now()});
+        let c2={modelId:ctx.modelId,workspaceId:ctx.workspaceId,modelName:ctx.modelName,base:ctx.base};IA_step(go?`Running actions`:`Checking actions`,`starting a session on ${ctx.modelName||ctx.modelId}`);await IA_raShake(c2);ctxs.set(o.modelId,Promise.resolve(c2));IA_raCache.set(o.modelId,{ctx:c2,at:Date.now()});
         return call(o,validate)
       }
       LG.serialAfter=ctx.ss.serial;LG.result=`applied`;calls.applied++;return rr}
